@@ -411,6 +411,10 @@ use collections::{ChunkMap, SizeBucketedChunkMap};
 pub struct HeapAllocator {
     used_chunks: ChunkMap,
     unused_chunks: SizeBucketedChunkMap,
+    // Freed small allocations held out of the free list for compatibility
+    // with software that briefly retains stale pointers. These chunks remain
+    // covered by backing_chunks and must not be returned to the VM separately.
+    quarantined_chunks: ChunkMap,
     // These are chunks that are managed by an external allocator
     external_chunks: ChunkMap,
     backing_chunks: Vec<Chunk>,
@@ -441,6 +445,7 @@ impl HeapAllocator {
         HeapAllocator {
             used_chunks: Default::default(),
             unused_chunks,
+            quarantined_chunks: Default::default(),
             external_chunks: Default::default(),
             backing_chunks,
         }
@@ -497,16 +502,30 @@ impl HeapAllocator {
 
     /// Returns the size of the freed chunk so it can be zeroed if desired
     #[must_use]
-    pub fn free(&mut self, vm: &mut VMAllocator, base: VAddr) -> GuestUSize {
+    pub fn free(
+        &mut self,
+        vm: &mut VMAllocator,
+        base: VAddr,
+        quarantined_allocation_size: Option<GuestUSize>,
+    ) -> GuestUSize {
         if let Some(freed) = self.external_chunks.remove_with_base(base) {
             vm.deallocate(freed.base, freed.size.get());
             return freed.size.get();
         }
 
         let Some(freed) = self.used_chunks.remove_with_base(base) else {
+            if self.quarantined_chunks.get_size_with_base(base).is_some() {
+                log!("Can't free {:#x}, allocation is already quarantined!", base);
+                return 0;
+            }
             log!("Can't free {:#x}, unknown allocation!", base);
             return 0;
         };
+
+        if quarantined_allocation_size == Some(freed.size.get()) {
+            self.quarantined_chunks.insert(freed);
+            return freed.size.get();
+        }
 
         if let Some(adjacent) = self
             .unused_chunks
@@ -536,6 +555,71 @@ impl HeapAllocator {
 
         self.backing_chunks.push(chunk);
         self.unused_chunks.insert(chunk);
+    }
+}
+
+#[cfg(test)]
+mod heap_tests {
+    use super::{HeapAllocator, VMAllocator};
+
+    fn heap() -> (VMAllocator, HeapAllocator) {
+        let mut vm = VMAllocator::new(0x1000, 16 * 1024 * 1024);
+        let heap = HeapAllocator::new(&mut vm, HeapAllocator::HEAP_CHUNK_SIZE);
+        (vm, heap)
+    }
+
+    #[test]
+    fn default_free_reuses_recent_exact_size_chunk() {
+        let (mut vm, mut heap) = heap();
+        let first = heap.alloc(&mut vm, 0x38).unwrap();
+        assert_eq!(first.size.get(), 0x40);
+
+        assert_eq!(heap.free(&mut vm, first.base, None), 0x40);
+        let second = heap.alloc(&mut vm, 0x38).unwrap();
+        assert_eq!(second.base, first.base);
+    }
+
+    #[test]
+    fn exact_size_quarantine_prevents_reuse_and_repeated_free() {
+        let (mut vm, mut heap) = heap();
+        let first = heap.alloc(&mut vm, 0x38).unwrap();
+
+        assert_eq!(heap.free(&mut vm, first.base, Some(0x40)), 0x40);
+        assert_eq!(heap.free(&mut vm, first.base, Some(0x40)), 0);
+
+        let second = heap.alloc(&mut vm, 0x38).unwrap();
+        assert_ne!(second.base, first.base);
+        assert_eq!(
+            heap.quarantined_chunks
+                .get_size_with_base(first.base)
+                .unwrap()
+                .get(),
+            0x40
+        );
+
+        let other_size = heap.alloc(&mut vm, 0x28).unwrap();
+        assert_eq!(other_size.size.get(), 0x30);
+        assert_eq!(heap.free(&mut vm, other_size.base, Some(0x40)), 0x30);
+        let reused = heap.alloc(&mut vm, 0x28).unwrap();
+        assert_eq!(reused.base, other_size.base);
+    }
+
+    #[test]
+    fn quarantine_does_not_retain_external_allocations() {
+        let (mut vm, mut heap) = heap();
+        let external = heap
+            .alloc(&mut vm, HeapAllocator::HEAP_ALLOCATION_THRESHOLD + 1)
+            .unwrap();
+
+        assert!(external.size.get() > HeapAllocator::HEAP_ALLOCATION_THRESHOLD);
+        assert_eq!(
+            heap.free(&mut vm, external.base, Some(external.size.get())),
+            external.size.get()
+        );
+        assert!(heap
+            .quarantined_chunks
+            .get_size_with_base(external.base)
+            .is_none());
     }
 }
 

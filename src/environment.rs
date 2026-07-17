@@ -380,8 +380,10 @@ impl Environment {
             || bundle
                 .bundle_identifier()
                 .starts_with("com.go.starwave.CritterCrunch");
+        let is_ricky = bundle.bundle_identifier() == "com.nabilchatbi.Ricky";
         // We always reset this flag depending on which game is launched.
-        mem.zero_memory_on_free = !is_spore && !is_critter_crunch;
+        mem.zero_memory_on_free = !is_spore && !is_critter_crunch && !is_ricky;
+        mem.quarantined_allocation_size = is_ricky.then_some(0x40);
         if is_spore {
             log!("Applying game-specific hack for Spore Origins: zeroing memory on alloc instead of free.");
         }
@@ -389,6 +391,11 @@ impl Environment {
             // Without this hack, every time a critter 'explodes',
             // the game crashes with a null page access error.
             log!("Applying game-specific hack for Critter Crunch: zeroing memory on alloc instead of free.");
+        }
+        if is_ricky {
+            // Ricky's Unity DelayedCallManager retains freed 0x38-byte
+            // red-black-tree nodes, which the allocator rounds up to 0x40.
+            log!("Applying game-specific hack for Ricky: preserving and quarantining freed 0x40-byte allocations.");
         }
         let executable = mach_o::MachO::load_from_file(
             bundle.executable_path(),

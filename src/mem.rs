@@ -250,9 +250,15 @@ pub struct Mem {
     /// The flag to control if memory is zeroed out on free (`true`, default)
     /// or on alloc (`false`).
     ///
-    /// Right now only one game, Spore Origin, is setting this value to `false`
-    /// via a game-specific hack. See [crate::Environment] for more info.
+    /// Some older games set this to `false` via narrowly scoped compatibility
+    /// hacks. See [crate::Environment] for more information.
     pub(super) zero_memory_on_free: bool,
+
+    /// Keep freed small heap allocations of this allocator-rounded size out of
+    /// the reusable free list. This is an opt-in compatibility policy for apps
+    /// with a known use-after-free bug; external/VM allocations are never
+    /// quarantined.
+    pub(super) quarantined_allocation_size: Option<GuestUSize>,
 }
 
 impl Drop for Mem {
@@ -299,6 +305,7 @@ impl Mem {
             vm_allocator,
             heap_allocator: None,
             zero_memory_on_free: true,
+            quarantined_allocation_size: None,
         }
     }
 
@@ -648,8 +655,9 @@ impl Mem {
 
     /// Free an allocation made with one of the `alloc` methods in `heap`.
     pub fn free_in_heap(&mut self, heap: Option<&mut HeapAllocator>, ptr: MutVoidPtr) {
+        let quarantined_allocation_size = self.quarantined_allocation_size;
         let (vm, heap) = self.allocators_mut(heap);
-        let size = heap.free(vm, ptr.to_bits());
+        let size = heap.free(vm, ptr.to_bits(), quarantined_allocation_size);
 
         if size > HeapAllocator::HEAP_ALLOCATION_THRESHOLD {
             // VM allocations are always 0 initialized.
