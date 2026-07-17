@@ -76,6 +76,41 @@
             "network": "unknown"
           },
           "notes": "Tested from a clean committed tree using bundled default options only. The window was captured for visual verification and the tester then stopped the process. Automated Windows message injection did not produce an SDL touch event and is not treated as evidence that input is broken."
+        },
+        {
+          "id": "2026-07-17-windows-story-in-game",
+          "tested_at": "2026-07-17",
+          "taphle_commit": "d9bc6a5d02322f1902e14ba4a451e8b3a4ade2ee",
+          "host": {
+            "os": "Windows",
+            "os_version": "Windows 11 Pro 10.0.22631",
+            "architecture": "x86_64",
+            "cpu": "13th Gen Intel Core i7-13700H",
+            "gpu": "Intel Iris Xe Graphics, driver 32.0.101.6881"
+          },
+          "artifact": {
+            "archive_ipa_filename": "Ricky (v2.1) [Cracked].ipa",
+            "sha1": "bfd083ab0533bc0c9fc2d3ec471456d41eceeac3",
+            "verification": "archive-content-hash"
+          },
+          "status": "in-game",
+          "booted": true,
+          "summary": "Reaches the first playable Story level on Windows through controlled process-scoped foreground input and primes Ricky's packetized MP3 AudioQueue without the prior format error or output-pointer panic.",
+          "milestones": [
+            "Navigated Story Mode, New Game, PLAY, and both story advances using process-scoped foreground input.",
+            "Entered the first playable Story level, was sent a two-second hold on the on-screen right movement control through the verified tapHLE window, and remained alive for approximately 18 seconds after level entry.",
+            "Completed the previously failing AudioQueuePrime path after Ricky enqueued its three directly described MP3 buffers; error -66681, MP3 decode warnings, and the non-null output-pointer panic did not recur."
+          ],
+          "blocker": "Audible audio output and continuity, action buttons, level completion, hazards/death/restart, saving, and long-session behavior of the 0x40-byte allocation quarantine have not been validated.",
+          "features": {
+            "graphics": "partial",
+            "audio": "partial",
+            "input": "partial",
+            "saving": "unknown",
+            "network": "unknown"
+          },
+          "supersedes": "2026-07-17-windows-menu",
+          "notes": "Tested from a clean exact-commit release build after a full Archive.org verification of the IPA immediately before the run, using bundled default options and a 480x320 client. Every input event revalidated that the foreground window belonged to the spawned tapHLE process. A System.Drawing Graphics.CopyFromScreen capture of the OpenGL window returned a black bitmap and was excluded from evidence; it is not evidence of a rendering regression. Audio remains partial because this automated run proved queue decode/prime progress and process survival, not audible output."
         }
       ]
     }
