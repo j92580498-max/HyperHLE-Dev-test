@@ -34,3 +34,8 @@ android/build
 # Default developer dump file
 
 DUMP.txt
+
+# Python tooling caches
+
+__pycache__/
+*.py[cod]
