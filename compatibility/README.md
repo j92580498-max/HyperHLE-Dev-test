@@ -121,7 +121,10 @@ Full playability is not required. A smaller verified milestone is useful when
 the database states it honestly. Provisional results from a dirty worktree do
 not enter the compatibility database. Commit the implementation checkpoint,
 rerun the exact hash-verified IPA, and then append its report using that exact
-commit hash.
+commit hash. Preserve every commit named by a report when merging: use a
+fast-forward or merge commit, not a squash or rebase that removes the tested
+commit from `HEAD` history. If history must change, rerun the artifact on a new
+preserved commit before recording the result.
 
 ## Editing and checking records
 
@@ -141,9 +144,10 @@ python .\dev-scripts\compatibility.py check --baseline-ref origin/trunk
 ```
 
 `check` validates exact identities, canonical URLs, hashes, report ordering,
-and the generated Markdown without accessing the network. With
-`--baseline-ref`, it also proves that existing reports are an unchanged prefix
-of the new report list.
+the generated Markdown, and that every report's tapHLE commit exists and is an
+ancestor of `HEAD`, without accessing the network. With `--baseline-ref`, it
+also proves that existing reports are an unchanged prefix of the new report
+list.
 
 Never commit an IPA, extracted app, game asset, decryption key, save data,
 personal path, or raw tapHLE log. Summarize only the minimum diagnostic facts

@@ -561,6 +561,66 @@ def _git(root: Path, arguments: list[str]) -> subprocess.CompletedProcess[str]:
     )
 
 
+def check_report_commits(
+    root: Path,
+    current: list[tuple[Path, dict[str, object]]],
+    head_ref: str = "HEAD",
+) -> None:
+    references: list[tuple[str, str]] = []
+    for path, record in current:
+        versions = record.get("versions", [])
+        assert isinstance(versions, list)
+        for version_index, version in enumerate(versions):
+            assert isinstance(version, dict)
+            reports = version.get("reports", [])
+            assert isinstance(reports, list)
+            for report_index, report in enumerate(reports):
+                assert isinstance(report, dict)
+                commit = report.get("taphle_commit")
+                # validate_database() reports malformed values. Keep this Git
+                # check focused on already well-formed commit IDs.
+                if not isinstance(commit, str) or COMMIT_RE.fullmatch(commit) is None:
+                    continue
+                try:
+                    relative_path = path.relative_to(root)
+                except ValueError:
+                    relative_path = path
+                location = (
+                    f"{relative_path}.versions[{version_index}].reports[{report_index}]"
+                    ".taphle_commit"
+                )
+                references.append((location, commit))
+
+    if not references:
+        return
+
+    head = _git(root, ["rev-parse", "--verify", f"{head_ref}^{{commit}}"])
+    if head.returncode != 0:
+        raise CompatibilityError(f"Git reference {head_ref!r} does not resolve to a commit")
+    head_commit = head.stdout.strip()
+
+    errors: list[str] = []
+    for location, commit in references:
+        verify = _git(root, ["cat-file", "-e", f"{commit}^{{commit}}"])
+        if verify.returncode != 0:
+            errors.append(f"{location}: {commit} does not resolve to a Git commit")
+            continue
+        ancestor = _git(root, ["merge-base", "--is-ancestor", commit, head_commit])
+        if ancestor.returncode == 1:
+            errors.append(
+                f"{location}: {commit} is not an ancestor of {head_ref}; "
+                "report commits must remain in tapHLE history"
+            )
+        elif ancestor.returncode != 0:
+            detail = ancestor.stderr.strip()
+            errors.append(
+                f"{location}: could not check ancestry against {head_ref}"
+                + (f": {detail}" if detail else "")
+            )
+    if errors:
+        raise CompatibilityError("Report commit check failed:\n- " + "\n- ".join(errors))
+
+
 def check_append_only(
     root: Path, baseline_ref: str, current: list[tuple[Path, dict[str, object]]]
 ) -> None:
@@ -693,13 +753,24 @@ def markdown_for_records(records: list[tuple[Path, dict[str, object]]]) -> str:
                     f"- Availability review: {archive['availability']['checked_at']} ({str(archive['availability']['status']).replace('-', ' ')})",
                 ]
             )
-            aliases = [
-                str(file_record["ipa_filename"])
-                for file_record in archive["files"]
-                if isinstance(file_record, dict) and file_record.get("tested") is False
-            ]
+            aliases = []
+            other_files = []
+            for file_record in archive["files"]:
+                if not isinstance(file_record, dict) or file_record.get("tested") is not False:
+                    continue
+                destination = (
+                    aliases
+                    if all(file_record[algorithm] == tested_file[algorithm] for algorithm in HASH_RE)
+                    else other_files
+                )
+                destination.append(str(file_record["ipa_filename"]))
             if aliases:
                 lines.append("- Byte-identical Archive filename aliases: " + ", ".join(f"`{name}`" for name in aliases))
+            if other_files:
+                lines.append(
+                    "- Other Archive filenames with different content hashes (not the tested artifact): "
+                    + ", ".join(f"`{name}`" for name in other_files)
+                )
             if not reports:
                 lines.extend(["", "No verified Windows test report has been recorded yet."])
                 continue
@@ -1052,6 +1123,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "check":
             records = validate_database(root)
             render(root, check_only=True)
+            check_report_commits(root, records)
             if args.baseline_ref:
                 check_append_only(root, args.baseline_ref, records)
             print(f"Compatibility database is valid ({len(records)} app record(s)); no network used.")

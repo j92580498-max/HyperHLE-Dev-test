@@ -110,6 +110,126 @@ class CompatibilityTests(unittest.TestCase):
         self.assertEqual(observed["bundle_version"], "2.1")
         self.assertEqual(observed["minimum_os_version"], "3.0")
 
+    def test_renderer_separates_differing_archive_files_from_identical_aliases(self):
+        archive_files = self.record["versions"][0]["archive_org"]["files"]
+        alias_name = archive_files[1]["ipa_filename"]
+        rendered = compatibility.markdown_for_records([(self.record_path, self.record)])
+        self.assertIn(f"- Byte-identical Archive filename aliases: `{alias_name}`", rendered)
+
+        record = copy.deepcopy(self.record)
+        record["versions"][0]["archive_org"]["files"][1]["sha256"] = "0" * 64
+        rendered = compatibility.markdown_for_records([(self.record_path, record)])
+        self.assertNotIn(f"- Byte-identical Archive filename aliases: `{alias_name}`", rendered)
+        self.assertIn(
+            "- Other Archive filenames with different content hashes "
+            f"(not the tested artifact): `{alias_name}`",
+            rendered,
+        )
+
+    def test_report_commits_must_exist_and_be_ancestors_of_head(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            for command in (
+                ["git", "init", "-q"],
+                ["git", "config", "user.name", "Compatibility Test"],
+                ["git", "config", "user.email", "test@example.invalid"],
+            ):
+                subprocess.run(command, cwd=root, check=True, capture_output=True)
+
+            marker = root / "marker.txt"
+            marker.write_text("base\n", encoding="utf-8")
+            subprocess.run(["git", "add", "marker.txt"], cwd=root, check=True, capture_output=True)
+            subprocess.run(
+                ["git", "commit", "-q", "-m", "base"], cwd=root, check=True, capture_output=True
+            )
+            base_commit = subprocess.run(
+                ["git", "rev-parse", "HEAD"],
+                cwd=root,
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout.strip()
+            main_branch = subprocess.run(
+                ["git", "branch", "--show-current"],
+                cwd=root,
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout.strip()
+
+            subprocess.run(
+                ["git", "checkout", "-q", "-b", "side"],
+                cwd=root,
+                check=True,
+                capture_output=True,
+            )
+            marker.write_text("side\n", encoding="utf-8")
+            subprocess.run(["git", "add", "marker.txt"], cwd=root, check=True, capture_output=True)
+            subprocess.run(
+                ["git", "commit", "-q", "-m", "side"], cwd=root, check=True, capture_output=True
+            )
+            side_commit = subprocess.run(
+                ["git", "rev-parse", "HEAD"],
+                cwd=root,
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout.strip()
+
+            subprocess.run(
+                ["git", "checkout", "-q", main_branch],
+                cwd=root,
+                check=True,
+                capture_output=True,
+            )
+            marker.write_text("head\n", encoding="utf-8")
+            subprocess.run(["git", "add", "marker.txt"], cwd=root, check=True, capture_output=True)
+            subprocess.run(
+                ["git", "commit", "-q", "-m", "head"], cwd=root, check=True, capture_output=True
+            )
+
+            def records_for(commit: str):
+                record = copy.deepcopy(self.record)
+                archive_file = record["versions"][0]["archive_org"]["files"][0]
+                record["versions"][0]["reports"] = [
+                    {
+                        "id": "2026-07-17-commit-check",
+                        "tested_at": "2026-07-17",
+                        "taphle_commit": commit,
+                        "host": {
+                            "os": "Windows",
+                            "os_version": "test",
+                            "architecture": "x86_64",
+                            "cpu": "test",
+                            "gpu": "test",
+                        },
+                        "artifact": {
+                            "archive_ipa_filename": archive_file["ipa_filename"],
+                            "sha1": archive_file["sha1"],
+                            "verification": "archive-content-hash",
+                        },
+                        "status": "launch-blocked",
+                        "booted": False,
+                        "summary": "Synthetic commit reachability test.",
+                        "milestones": [],
+                        "blocker": "Synthetic blocker.",
+                        "features": {
+                            name: "unknown" for name in compatibility.FEATURE_NAMES
+                        },
+                    }
+                ]
+                self.assertEqual(
+                    compatibility.validate_record(record, self.record_path),
+                    [],
+                )
+                return [(root / "compatibility" / "apps" / "ricky.json", record)]
+
+            compatibility.check_report_commits(root, records_for(base_commit))
+            with self.assertRaisesRegex(compatibility.CompatibilityError, "does not resolve"):
+                compatibility.check_report_commits(root, records_for("1" * 40))
+            with self.assertRaisesRegex(compatibility.CompatibilityError, "not an ancestor"):
+                compatibility.check_report_commits(root, records_for(side_commit))
+
     def test_git_baseline_makes_reports_append_only(self):
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = Path(temporary_directory)
