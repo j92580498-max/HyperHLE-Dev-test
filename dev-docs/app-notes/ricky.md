@@ -5,6 +5,7 @@ Last updated: 2026-07-17.
 ## Identity and branch
 
 - Work branch: `compat/ricky`.
+- Last documentation checkpoint pushed to the branch: `4f6337fc`.
 - Canonical item: `https://archive.org/details/ios-ipa-com.nabilchatbi.ricky`.
 - Exact local/canonical filename used for runs:
   `Ricky (v2.1) [Cracked].ipa`.
@@ -28,8 +29,10 @@ Intel i7-13700H with Intel Iris Xe driver 32.0.101.6881.
 
 ## Repeatable input recipe
 
-The tapHLE client area is 480 by 320. Use foreground mouse input and restore the
-previous cursor/window afterward:
+The tapHLE client area is 480 by 320. The coordinates below are client
+coordinates and are valid only for that client size. Use foreground mouse
+input, verify the window still belongs to the spawned tapHLE process before
+every event, and restore the previous cursor/window afterward:
 
 1. Story Mode at `(75, 295)`; tap twice when the first tap only activates the
    window.
@@ -56,7 +59,8 @@ strategies.
 
 ## Current audio frontier
 
-A bounded dirty-build trace reached level 2 with the canonical hash and proved:
+A bounded dirty-build trace based on `39e09d56` reached level 2 with the
+canonical hash and proved:
 
 - the AudioQueue format is genuine MPEG-1 Layer III, 44.1 kHz stereo, 1,152
   frames per packet (`.mp3`), not float PCM or mislabeled PCM;

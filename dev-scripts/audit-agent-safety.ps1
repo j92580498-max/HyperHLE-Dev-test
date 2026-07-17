@@ -34,6 +34,7 @@ try {
         "dev-docs/app-debugging-playbook.md",
         "dev-docs/app-notes",
         "dev-docs/agent-workflow.md",
+        "dev-docs/debugging.md",
         "dev-docs/upstream-sync.md",
         "dev-scripts/audit-agent-safety.sh",
         "dev-scripts/audit-agent-safety.ps1",

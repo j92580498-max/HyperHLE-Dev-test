@@ -36,16 +36,21 @@ note is a continuation aid, not a compatibility claim.
 For an Archive-backed target, follow `compatibility/README.md` exactly. Use the
 item URL supplied by the maintainer; never search for a substitute.
 
-Before every report-worthy run:
+At intake and again before a report-worthy clean run, use the full
+`compatibility.py verify-archive` protocol. Before every intervening runtime
+experiment, at minimum recalculate the local SHA-256:
 
 ```powershell
 Get-FileHash -Algorithm SHA256 -LiteralPath '<exact local IPA>'
 ```
 
-The local hash must match the canonical Archive metadata already recorded for
-that exact filename. If it does not, stop using that local copy. Confirm the
-embedded bundle identifier/version and `tapHLE --info` output once per artifact
-and record the result in the app note. A copied filename is not identity.
+The local SHA-256 must match the value calculated during full verification and
+recorded in the compatibility database for that exact filename. Archive
+metadata supplies the MD5/SHA-1 checks used by the full protocol; do not imply
+that it publishes the repository's SHA-256. If any hash does not match, stop
+using that local copy. Confirm the embedded bundle identifier/version and
+`tapHLE --info` output once per artifact and record the result in the app note.
+A copied filename is not identity.
 
 Do not duplicate IPAs between run directories. Keep them outside Git and pass
 their absolute path to tapHLE.
@@ -109,9 +114,9 @@ decoder, parser, or host library.
 ## Make Windows runs isolated and repeatable
 
 Use a uniquely named directory under `%TEMP%` as tapHLE's working directory.
-Link its `tapHLE_dylibs` and `tapHLE_fonts` to the checkout and hard-link the
-tracked default-options file rather than copying large trees. Do not add local
-options unless the experiment is specifically testing one.
+Link its `tapHLE_dylibs` and `tapHLE_fonts` to the checkout and copy the small
+tracked default-options file rather than copying large support trees. Do not
+add local options unless the experiment is specifically testing one.
 
 For each meaningful run, record:
 
@@ -123,8 +128,10 @@ For each meaningful run, record:
 - the narrow log lines supporting the conclusion.
 
 Use real foreground mouse input when Windows message injection does not reach
-SDL. Save and restore the previous cursor position and foreground window, and
-stop only the exact process launched by the run. Visual inspection of a
+SDL. Before every injected event, re-check that the foreground window belongs
+to the exact spawned tapHLE process; abort input if focus or process identity
+changed. Save and restore the previous cursor position and foreground window,
+and stop only the exact process launched by the run. Visual inspection of a
 screenshot can support a rendering observation, but the screenshot stays in
 the ignored temporary directory.
 
@@ -174,8 +181,8 @@ A dirty-worktree run is a useful experiment but never database evidence.
 4. If the milestone is reproducible, append a compatibility report referencing
    the tested implementation commit.
 5. Commit the generated compatibility view separately when practical.
-6. Push checkpoints so another agent can resume them; promote to `trunk` only
-   at the documented milestone boundary.
+6. When publishing is authorized, push checkpoints so another agent can resume
+   them; promote to `trunk` only at the documented milestone boundary.
 
 Keep implementation, agent-policy documentation, and compatibility reports in
 separable commits. This makes incomplete app experiments easy to continue or
