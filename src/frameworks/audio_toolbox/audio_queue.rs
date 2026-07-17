@@ -838,9 +838,48 @@ fn decode_mp3_packets(
     Ok((al_format, sample_rate as ALsizei, pcm))
 }
 
+fn audio_queue_buffer_frame_count(
+    format: &AudioStreamBasicDescription,
+    audio_data_byte_size: u32,
+    packet_descriptions: &[HostPacketDescription],
+) -> u32 {
+    let &AudioStreamBasicDescription {
+        format_id,
+        bytes_per_packet,
+        frames_per_packet,
+        bytes_per_frame,
+        ..
+    } = format;
+    if format_id == kAudioFormatMPEGLayer3 {
+        return packet_descriptions.iter().fold(0, |total, description| {
+            let frames = if description.variable_frames_in_packet == 0 {
+                frames_per_packet
+            } else {
+                description.variable_frames_in_packet
+            };
+            total.saturating_add(frames)
+        });
+    }
+
+    if bytes_per_packet != 0 {
+        return (audio_data_byte_size / bytes_per_packet).saturating_mul(frames_per_packet);
+    }
+    if bytes_per_frame != 0 {
+        return audio_data_byte_size / bytes_per_frame;
+    }
+    0
+}
+
 /// Ensure an audio queue has an OpenAL source and at least one queued OpenAL
 /// buffer.
-fn prime_audio_queue(env: &mut Environment, in_aq: AudioQueueRef) -> Result<(), ()> {
+///
+/// `frames_to_prepare` is `None` for normal streaming, `Some(0)` to prepare
+/// every enqueued buffer, or `Some(n)` to prepare at least `n` frames.
+fn prime_audio_queue(
+    env: &mut Environment,
+    in_aq: AudioQueueRef,
+    frames_to_prepare: Option<u32>,
+) -> Result<u32, ()> {
     let (state, context) =
         State::get_with_context(&mut env.framework_state, &mut env.openal_manager);
 
@@ -875,6 +914,7 @@ fn prime_audio_queue(env: &mut Environment, in_aq: AudioQueueRef) -> Result<(), 
         host_object.al_source = Some(al_source);
     }
     let al_source = host_object.al_source.unwrap();
+    let mut prepared_frames = 0u32;
 
     loop {
         let mut al_buffers_queued = 0;
@@ -894,7 +934,11 @@ fn prime_audio_queue(env: &mut Environment, in_aq: AudioQueueRef) -> Result<(), 
         assert!(al_buffers_queued <= host_object.buffer_queue.len());
         let unprocessed_buffers = al_buffers_queued - al_buffers_processed;
 
-        if unprocessed_buffers > 1 || al_buffers_queued == host_object.buffer_queue.len() {
+        let requested_frames_are_ready = matches!(frames_to_prepare, Some(frame_count) if frame_count != 0 && prepared_frames >= frame_count);
+        if al_buffers_queued == host_object.buffer_queue.len()
+            || requested_frames_are_ready
+            || (frames_to_prepare.is_none() && unprocessed_buffers > 1)
+        {
             break;
         }
 
@@ -947,8 +991,13 @@ fn prime_audio_queue(env: &mut Environment, in_aq: AudioQueueRef) -> Result<(), 
         };
         unsafe { context.SourceQueueBuffers(al_source, 1, &next_al_buffer) };
         assert!(unsafe { context.GetError() } == 0);
+        prepared_frames = prepared_frames.saturating_add(audio_queue_buffer_frame_count(
+            &host_object.format,
+            next_buffer.audio_data_byte_size,
+            &packet_descriptions,
+        ));
     }
-    Ok(())
+    Ok(prepared_frames)
 }
 
 fn unqueue_buffers<F: FnMut(ALuint)>(al_source: ALuint, context: &OpenAL<'_>, mut callback: F) {
@@ -1028,7 +1077,7 @@ pub fn handle_audio_queue(env: &mut Environment, in_aq: AudioQueueRef) {
 
     // Push new buffers etc.
 
-    _ = prime_audio_queue(env, in_aq);
+    _ = prime_audio_queue(env, in_aq, None);
 
     let context = env
         .framework_state
@@ -1081,14 +1130,17 @@ pub fn handle_audio_queue(env: &mut Environment, in_aq: AudioQueueRef) {
 fn AudioQueuePrime(
     env: &mut Environment,
     in_aq: AudioQueueRef,
-    _in_number_of_frames_to_prepare: u32,
+    in_number_of_frames_to_prepare: u32,
     out_number_of_frames_prepared: MutPtr<u32>,
 ) -> OSStatus {
     return_if_null!(in_aq);
 
-    match prime_audio_queue(env, in_aq) {
-        Ok(_) => {
-            assert!(out_number_of_frames_prepared.is_null()); // TODO
+    match prime_audio_queue(env, in_aq, Some(in_number_of_frames_to_prepare)) {
+        Ok(frames_prepared) => {
+            if !out_number_of_frames_prepared.is_null() {
+                env.mem
+                    .write(out_number_of_frames_prepared, frames_prepared);
+            }
             0 // success
         }
         Err(_) => {
@@ -1124,7 +1176,7 @@ pub fn AudioQueueStart(
 
     assert!(in_device_start_time.is_null()); // TODO
 
-    _ = prime_audio_queue(env, in_aq);
+    _ = prime_audio_queue(env, in_aq, None);
 
     let (state, context) =
         State::get_with_context(&mut env.framework_state, &mut env.openal_manager);
@@ -1374,8 +1426,8 @@ pub const FUNCTIONS: FunctionExports = &[
 #[cfg(test)]
 mod tests {
     use super::{
-        is_supported_audio_format, is_supported_audio_queue_format, validate_packet_descriptions,
-        HostPacketDescription,
+        audio_queue_buffer_frame_count, is_supported_audio_format, is_supported_audio_queue_format,
+        validate_packet_descriptions, HostPacketDescription,
     };
     use crate::frameworks::core_audio_types::{
         kAudioFormatMPEGLayer3, AudioStreamBasicDescription, AudioStreamPacketDescription,
@@ -1450,5 +1502,31 @@ mod tests {
         let mut fixed_packet_size = format;
         fixed_packet_size.bytes_per_packet = 418;
         assert!(!is_supported_audio_queue_format(&fixed_packet_size));
+    }
+
+    #[test]
+    fn mp3_frame_count_uses_packet_descriptions() {
+        let mut descriptions = vec![
+            HostPacketDescription {
+                start_offset: 0,
+                variable_frames_in_packet: 0,
+                data_byte_size: 417,
+            },
+            HostPacketDescription {
+                start_offset: 417,
+                variable_frames_in_packet: 0,
+                data_byte_size: 418,
+            },
+        ];
+        assert_eq!(
+            audio_queue_buffer_frame_count(&ricky_mp3_format(), 835, &descriptions),
+            2304
+        );
+
+        descriptions[1].variable_frames_in_packet = 576;
+        assert_eq!(
+            audio_queue_buffer_frame_count(&ricky_mp3_format(), 835, &descriptions),
+            1728
+        );
     }
 }
