@@ -20,6 +20,12 @@ Record these facts before diagnosing:
 Keep a baseline log. Sanitize usernames, local paths, tokens, and proprietary
 data before sharing it. Never add the game or its assets to the repository.
 
+For an app selected as an ongoing compatibility target, create or continue
+`compat/<app-slug>` (for example, `compat/ricky`). Checkpoint commits are
+allowed there. Follow `compatibility/README.md` for exact Archive.org source,
+content-hash, app metadata, availability, and database rules. Do not record a
+dirty-worktree observation as a compatibility result.
+
 If the game is not available to the agent, ask the maintainer for a log or a
 small observation that distinguishes competing hypotheses. Continue with
 source inspection or a synthetic TestApp case when that can answer part of the
@@ -76,6 +82,11 @@ The fifth level is the only proof that a game compatibility claim is true.
 Passing lower levels still provides useful confidence when game access is
 awaiting the maintainer.
 
+For database entry, level five must use an Archive content-hash-verified
+artifact against a committed tapHLE revision. Full playability is not required:
+a reproducible boot, menu, or in-game milestone can justify promoting the
+branch when its remaining blocker is recorded and regression checks pass.
+
 ## 5. Leave a continuation-quality handoff
 
 Summarize:
@@ -86,6 +97,10 @@ Summarize:
 - checks run and their results;
 - exact game/Windows validation performed; and
 - the next observation needed if the target still fails.
+
+Append the verified report under `compatibility/apps`, run
+`python dev-scripts/compatibility.py render`, and then run the offline
+`python dev-scripts/compatibility.py check`. Never edit an earlier report.
 
 Agent work should make the next iteration cheaper, even when one turn cannot
 reach the game menu.

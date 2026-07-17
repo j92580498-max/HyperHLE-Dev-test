@@ -72,6 +72,37 @@ bash dev-scripts/audit-agent-safety.sh
 The detailed workflow and intake checklist are in
 `dev-docs/agent-workflow.md`.
 
+## Compatibility database and unavailable builds
+
+`compatibility/README.md` is the canonical compatibility-record and
+Archive.org protocol. Read it before inspecting an archived app or changing
+`compatibility/apps/*.json`. The generated public view is `COMPATIBILITY.md`.
+
+The maintainer may authorize good-faith compatibility testing of a genuinely
+unavailable or abandoned build when it has no current App Store market
+alternative. This is project policy, not a blanket legal conclusion about
+"abandonware." Do not use archived files as substitutes for actively marketed
+apps. Respect DMCA notices and rightsholder requests, re-check availability
+before each new report, and alert the maintainer if an item becomes available,
+restricted, removed, or disputed.
+
+For an Archive.org-backed test, use the exact item URL supplied by the
+maintainer or reporter; do not search for or guess one. Verify the canonical
+item URL and exact IPA filename against
+`https://archive.org/metadata/<identifier>`, content-hash the local uncommitted
+IPA against that metadata, inspect its embedded `Info.plist`, and cross-check
+it with local `tapHLE --info` when available. Never commit the IPA, extracted
+files, assets, keys, save data, or raw log. A report may claim a result only
+for a content-hash-verified artifact and a committed tapHLE revision. Reports
+are immutable: append a new one instead of editing an old observation.
+
+Use `compat/<app-slug>` for app work, such as `compat/ricky`. Exploratory
+checkpoint commits are welcome on that branch. Promote or merge it after a
+hash-verified artifact reproduces a useful milestone on a committed revision,
+the database records the exact achieved and remaining state, and normal
+regression checks pass. Full playability is not required. Provisional dirty
+worktree results never enter the compatibility database.
+
 ## Code map
 
 - `src/bin.rs`, `src/lib.rs`: desktop entry point and main control flow.
@@ -109,6 +140,7 @@ cargo fmt --all -- --check
 cargo test --workspace --lib
 cargo test -- --skip test_app
 cargo build --release
+python dev-scripts/compatibility.py check
 ```
 
 The full `cargo test` needs the custom test SDK and LLVM described in
@@ -128,9 +160,11 @@ that exact game version.
 - Public documentation, clean behavioral experiments, and compatibly licensed
   open-source code are valid sources. Record non-obvious sources in the pull
   request or code comment.
-- A legally obtained target game may be inspected when the maintainer provides
-  or authorizes it for compatibility work. Do not commit or redistribute its
-  binary, assets, keys, personal data, or other proprietary material.
+- A target game provided or authorized by the maintainer under the
+  compatibility policy may be inspected for that task. Follow
+  `compatibility/README.md`; authorization to test is never authorization to
+  commit or redistribute its binary, assets, keys, personal data, or other
+  proprietary material.
 - Do not seek or use leaked Apple source, private SDK material, or decompiled
   proprietary operating-system implementations.
 - Do not copy code with an incompatible license. Preserve required notices for

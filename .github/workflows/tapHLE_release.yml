@@ -23,8 +23,25 @@ jobs:
     steps:
       - name: Checkout tapHLE
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - name: Validate agent policy
         run: bash dev-scripts/audit-agent-safety.sh
+      - name: Validate compatibility database
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PULL_REQUEST_BASE: ${{ github.event.pull_request.base.sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+        run: |
+          python dev-scripts/compatibility.py check
+          BASE="$PUSH_BEFORE"
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            BASE="$PULL_REQUEST_BASE"
+          fi
+          case "$BASE" in
+            ""|0000000000000000000000000000000000000000) ;;
+            *) python dev-scripts/compatibility.py check --baseline-ref "$BASE" ;;
+          esac
 
   build-macos-development:
     name: macOS development validation

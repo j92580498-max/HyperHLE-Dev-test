@@ -14,6 +14,21 @@ body:
       label: Exact version, build, and region
     validations:
       required: true
+  - type: input
+    id: bundle_identity
+    attributes:
+      label: Bundle identifier and CFBundleVersion
+      description: Copy these from the embedded Info.plist or local tapHLE --info output when available.
+  - type: input
+    id: archive_item
+    attributes:
+      label: Maintainer-supplied canonical Archive.org item URL
+      description: Optional. Do not search for or guess an item; use the exact https://archive.org/details/<identifier> URL.
+  - type: input
+    id: archive_filename
+    attributes:
+      label: Exact Archive.org IPA filename
+      description: Required when an Archive.org item is referenced.
   - type: textarea
     id: current_state
     attributes:
@@ -42,5 +57,7 @@ body:
     attributes:
       label: Artifact check
       options:
-        - label: I obtained the game legally and will not upload or link to an unauthorized copy.
+        - label: I will not upload an app, extracted assets, keys, save data, or other proprietary payloads.
+          required: true
+        - label: Any Archive.org reference above is exact, maintainer-supplied, and follows compatibility/README.md, including current-market and takedown rules.
           required: true

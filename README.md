@@ -33,8 +33,15 @@ of scope.
 
 tapHLE is experimental. Compatibility is specific to an exact game version,
 and many applications will not work yet. The project does not include games,
-Apple software, decryption keys, or other proprietary material. Only use apps
-you obtained legally.
+Apple software, decryption keys, or other proprietary material.
+
+Exact, hash-verified results are published in [the compatibility
+database](COMPATIBILITY.md). For unavailable historical builds, tapHLE follows
+a narrow maintainer-reviewed testing policy documented in
+`compatibility/README.md`. That policy permits canonical Archive.org provenance
+references in qualifying records; it is not a blanket legal conclusion about
+"abandonware," does not cover apps with a current market alternative, and
+requires respect for DMCA notices and rightsholder requests.
 
 The project is not affiliated with or endorsed by Apple Inc. iPhone, iOS,
 iPod, iPod touch, and iPad are Apple trademarks.
@@ -55,8 +62,8 @@ The executable is `target\release\tapHLE.exe`. A distributable directory also
 needs `tapHLE_dylibs`, `tapHLE_fonts`, and `tapHLE_default_options.txt`; the
 Windows bundle script assembles those files in CI.
 
-Put legally obtained `.ipa` files or `.app` bundles in `tapHLE_apps` to use the
-graphical app picker, or launch a path directly:
+Put locally authorized `.ipa` files or `.app` bundles in `tapHLE_apps` to use
+the graphical app picker, or launch a path directly:
 
 ```powershell
 .\target\release\tapHLE.exe "C:\path\to\Game.ipa"
@@ -74,7 +81,8 @@ Windows-first, evidence-driven workflow.
 
 Game compatibility reports are especially useful when they identify the exact
 game version, Windows environment, reproduction steps, and sanitized tapHLE
-log. Never attach or link to unauthorized copies of a game.
+log. Read `compatibility/README.md` before referencing Archive.org or updating
+the compatibility database. Never attach an app binary or raw log.
 
 ## Origin and license
 

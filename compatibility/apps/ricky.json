@@ -1,0 +1,48 @@
+{
+  "$schema": "../schema-v1.json",
+  "schema_version": 1,
+  "slug": "ricky",
+  "title": "Ricky",
+  "versions": [
+    {
+      "identity": {
+        "bundle_identifier": "com.nabilchatbi.Ricky",
+        "bundle_version": "2.1",
+        "minimum_os_version": "3.0"
+      },
+      "archive_org": {
+        "identifier": "ios-ipa-com.nabilchatbi.ricky",
+        "item_url": "https://archive.org/details/ios-ipa-com.nabilchatbi.ricky",
+        "bundle_identifier": "com.nabilchatbi.Ricky",
+        "bundle_version": "2.1",
+        "files": [
+          {
+            "ipa_filename": "Ricky (v2.1) [Cracked].ipa",
+            "md5": "40c78330cc0514344c33306a241494e7",
+            "sha1": "bfd083ab0533bc0c9fc2d3ec471456d41eceeac3",
+            "sha256": "74380d6f009a43d430fe3bceeccbb1c9d2b20f40a02088688b500b71eb937a5f",
+            "tested": true
+          },
+          {
+            "ipa_filename": "Ricky + Level Editor (v2.1) [Decrypted].ipa",
+            "md5": "40c78330cc0514344c33306a241494e7",
+            "sha1": "bfd083ab0533bc0c9fc2d3ec471456d41eceeac3",
+            "sha256": "74380d6f009a43d430fe3bceeccbb1c9d2b20f40a02088688b500b71eb937a5f",
+            "tested": false
+          }
+        ],
+        "verification": {
+          "state": "content-hash-verified",
+          "checked_at": "2026-07-17",
+          "notes": "Both Archive.org originals matched the item metadata checksums and are byte-identical. The exact embedded bundle identity was checked before recording this source."
+        },
+        "availability": {
+          "checked_at": "2026-07-17",
+          "status": "maintainer-designated-unavailable",
+          "notes": "The maintainer designated this build unavailable with no currently marketed App Store alternative. This records project test scope, not a legal conclusion."
+        }
+      },
+      "reports": []
+    }
+  ]
+}

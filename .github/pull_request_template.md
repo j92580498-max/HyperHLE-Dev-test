@@ -16,6 +16,7 @@ implementation or game-specific workaround.
 - [ ] `cargo test -- --skip test_app`
 - [ ] `cargo build --release`
 - [ ] Exact target game launched on Windows
+- [ ] `python dev-scripts/compatibility.py check`
 
 List the checks actually run, Windows/CPU/GPU details for game validation, and
 any skipped checks with their reason.
@@ -31,3 +32,6 @@ verified.
 - [ ] No leaked/private Apple implementation material or incompatible code was
       used.
 - [ ] Upstream changes were reviewed under `dev-docs/upstream-sync.md`.
+- [ ] Any compatibility result used an exact Archive content-hash-verified
+      artifact on a committed tapHLE revision; no dirty-worktree result was
+      entered in the database.

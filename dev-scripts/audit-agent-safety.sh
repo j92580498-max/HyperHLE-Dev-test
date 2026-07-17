@@ -10,8 +10,9 @@ POLICY_FILES='AGENTS.md CLAUDE.md .github/copilot-instructions.md'
 PROTECTED_FILES='AGENTS.md CLAUDE.md .github/copilot-instructions.md
 .github/CODEOWNERS .github/pull_request_template.md
 .github/ISSUE_TEMPLATE .github/workflows CONTRIBUTING.md CODE_OF_CONDUCT.md README.md
+COMPATIBILITY.md compatibility
 dev-docs/agent-workflow.md dev-docs/upstream-sync.md dev-scripts/audit-agent-safety.sh
-dev-scripts/audit-agent-safety.ps1'
+dev-scripts/audit-agent-safety.ps1 dev-scripts/compatibility.py'
 
 fail() {
     echo "$1" >&2

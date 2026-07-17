@@ -6,8 +6,9 @@ body:
     attributes:
       value: |
         Exact versions and clean reproduction steps make compatibility work
-        much faster. Do not attach the game, game assets, keys, or links to
-        unauthorized copies.
+        much faster. Do not attach the game, game assets, keys, or raw logs
+        containing personal data. Canonical Archive.org references are allowed
+        only under compatibility/README.md.
   - type: input
     id: game
     attributes:
@@ -23,6 +24,22 @@ body:
       placeholder: 1.0 (US)
     validations:
       required: true
+  - type: input
+    id: bundle_identity
+    attributes:
+      label: Bundle identifier and CFBundleVersion
+      description: Copy these from the embedded Info.plist or local tapHLE --info output.
+      placeholder: com.example.Game — CFBundleVersion 1.2
+  - type: input
+    id: archive_item
+    attributes:
+      label: Maintainer-supplied canonical Archive.org item URL
+      description: Optional. Do not search for or guess an item; use the exact https://archive.org/details/<identifier> URL.
+  - type: input
+    id: archive_filename
+    attributes:
+      label: Exact Archive.org IPA filename
+      description: Required when an Archive.org item is referenced; similar filenames are not interchangeable.
   - type: input
     id: taphle_version
     attributes:
@@ -63,7 +80,9 @@ body:
     attributes:
       label: Artifact check
       options:
-        - label: I obtained this game legally and have not attached or linked to an unauthorized copy.
+        - label: I have not attached an app, extracted assets, keys, save data, or other proprietary payloads.
           required: true
         - label: I removed personal data and proprietary game content from the report.
+          required: true
+        - label: Any Archive.org reference above is exact, maintainer-supplied, and follows compatibility/README.md, including current-market and takedown rules.
           required: true

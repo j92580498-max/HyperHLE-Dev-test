@@ -57,7 +57,9 @@ To run a game directly:
 .\target\release\tapHLE.exe "C:\path\to\Game.ipa"
 ```
 
-Only use legally obtained, decrypted apps. Do not add them to the repository.
+Only use decrypted apps authorized for the compatibility task under the source
+and artifact rules in `AGENTS.md`. Archived unavailable builds must also follow
+`compatibility/README.md`. Never add an app or its extracted assets to Git.
 
 ## Checks for contributors
 

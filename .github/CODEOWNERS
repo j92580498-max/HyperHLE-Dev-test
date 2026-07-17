@@ -11,6 +11,9 @@
 /CONTRIBUTING.md @ephun
 /CODE_OF_CONDUCT.md @ephun
 /README.md @ephun
+/COMPATIBILITY.md @ephun
+/compatibility/ @ephun
 /dev-docs/upstream-sync.md @ephun
 /dev-scripts/audit-agent-safety.sh @ephun
 /dev-scripts/audit-agent-safety.ps1 @ephun
+/dev-scripts/compatibility.py @ephun

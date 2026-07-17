@@ -37,19 +37,46 @@ For a game compatibility report, include:
 - expected and actual results; and
 - the tapHLE log, with personal paths or data removed.
 
-Do not upload the game, its assets, decryption keys, or links to unauthorized
-copies. The maintainer may arrange lawful access to a target privately when
-needed.
+Do not upload the game, its assets, decryption keys, or raw log. A canonical
+Archive.org item reference is accepted only under the exact unavailable-build
+and verification protocol in `compatibility/README.md`; do not post guessed
+items or use an archive as a substitute for an actively marketed game.
+
+## Compatibility records and app branches
+
+`compatibility/README.md` is the canonical protocol. The maintainer may accept
+good-faith testing of a genuinely unavailable or abandoned build when there
+is no current App Store market alternative. This is a project scope decision,
+not a blanket legal conclusion about "abandonware." Respect DMCA notices and
+rightsholder requests, and re-check current availability before every new
+report.
+
+Use the exact Archive.org item URL supplied by the maintainer or reporter; do
+not search for or guess one. Verify its canonical identifier, exact IPA
+filename, and published hashes through the Archive metadata endpoint. Keep the
+IPA outside Git, content-hash the local file, inspect its embedded
+`Info.plist`, and cross-check the same file with `tapHLE --info` when possible.
+Only a hash-verified artifact run on a committed tapHLE revision may become a
+compatibility report. Append reports; never overwrite an earlier result.
+
+App work belongs on `compat/<app-slug>` (for example, `compat/ricky`).
+Exploratory checkpoint commits are allowed there. Merge or promote the work
+once the exact hash-verified app reproduces a useful milestone, the database
+honestly records what works and what remains, and normal regression checks
+pass. Full playability is not required. Dirty-worktree observations are
+provisional and must not enter the database.
 
 ## Development workflow
 
-1. Create a focused branch from `trunk`.
+1. Create a focused branch from `trunk`; use `compat/<app-slug>` for app work.
 2. Initialize submodules with `git submodule update --init`.
 3. Reproduce the failure or create a small synthetic probe.
 4. Make the smallest complete change that advances the target game.
 5. Add or update a focused test when practical.
 6. Run the relevant checks from `AGENTS.md`.
-7. Open a GitHub pull request using the repository template.
+7. For verified app testing, append the exact result and regenerate
+   `COMPATIBILITY.md`.
+8. Open a GitHub pull request using the repository template.
 
 Pull requests should say which agent or AI tool materially assisted, what
 evidence guided the implementation, what was tested on Windows, and which
@@ -61,8 +88,9 @@ transparent validation makes the result easier to trust and continue.
 Compatibility work must not compromise the project legally.
 
 - Prefer public API documentation and clean behavioral experiments.
-- You may inspect a legally obtained target game for the compatibility task
-  when authorized, but do not commit or redistribute proprietary material.
+- You may inspect a target game for an authorized compatibility task under
+  `compatibility/README.md`, but do not commit or redistribute proprietary
+  material.
 - Do not consult leaked Apple source, private SDK material, or decompiled
   proprietary iPhone OS implementations.
 - Do not copy code merely because it is visible online. Check its license and

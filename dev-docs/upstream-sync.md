@@ -47,8 +47,8 @@ Before committing:
 2. Keep upstream changes out of `AGENTS.md`, `CLAUDE.md`,
    `.github/copilot-instructions.md`, `.github/CODEOWNERS`, contribution
    policy, the agent workflow, the safety-audit scripts, this sync guide,
-   issue templates, and workflows. Review any intentional policy change
-   separately with the tapHLE maintainer.
+   compatibility records and tooling, issue templates, and workflows. Review
+   any intentional policy change separately with the tapHLE maintainer.
 3. Translate active product branding to tapHLE while retaining accurate
    upstream copyright and dependency provenance.
 4. Reject Android-only work unless it is inseparable from a requested shared
