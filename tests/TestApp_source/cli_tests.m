@@ -15,6 +15,7 @@
 #include <CoreFoundation/CFURL.h>
 #include <arpa/inet.h>
 #include <dirent.h>
+#include <dlfcn.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <fenv.h>
@@ -60,6 +61,27 @@ int test_cpp_virtual_inheritance(void); // CppVirtualInheritance.cpp
 #endif
 
 // === Main code ===
+
+int tapHLE_test_dlsym_main_executable_target(void) { return 0x544150; }
+
+int test_dlsym_main_executable() {
+  void *handle = dlopen(NULL, RTLD_LAZY);
+  if (handle == NULL)
+    return -1;
+
+  int (*target)(void) =
+      dlsym(handle, "tapHLE_test_dlsym_main_executable_target");
+  if (target == NULL)
+    return -2;
+  if (target() != 0x544150)
+    return -3;
+  if (dlsym(handle, "tapHLE_test_dlsym_missing_symbol") != NULL)
+    return -4;
+  if (dlclose(handle) != 0)
+    return -5;
+
+  return 0;
+}
 
 int test_CGGeometry() {
   CGRect testRect;
@@ -6436,6 +6458,7 @@ struct {
     FUNC_DEF(test_CFMutableDictionary_NullCallbacks),
     FUNC_DEF(test_CFMutableDictionary_CustomCallbacks_PrimitiveTypes),
     FUNC_DEF(test_CFMutableDictionary_CustomCallbacks_CFTypes),
+    FUNC_DEF(test_dlsym_main_executable),
     FUNC_DEF(test_lrint),
     FUNC_DEF(test_fesetround),
     FUNC_DEF(test_ldexp),
