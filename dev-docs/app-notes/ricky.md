@@ -5,7 +5,7 @@ Last updated: 2026-07-17.
 ## Identity and branch
 
 - Work branch: `compat/ricky`.
-- Last documentation checkpoint pushed to the branch: `4f6337fc`.
+- Initial troubleshooting-playbook checkpoint: `4f6337fc`.
 - Canonical item: `https://archive.org/details/ios-ipa-com.nabilchatbi.ricky`.
 - Exact local/canonical filename used for runs:
   `Ricky (v2.1) [Cracked].ipa`.
