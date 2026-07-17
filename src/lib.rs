@@ -3,7 +3,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/.
  */
-//! touchHLE is a high-level emulator (HLE) for iPhone OS applications.
+//! tapHLE is a high-level emulator (HLE) for iPhone OS applications.
 //!
 //! In various places, the terms "guest" and "host" are used to distinguish
 //! between the emulated application (the "guest") and the emulator itself (the
@@ -16,7 +16,7 @@
 //! - A "guest function" is emulated Arm code, usually from the app binary.
 //! - A "host function" is a Rust function that is part of this emulator.
 
-// Allow the crate to have a non-snake-case name (touchHLE).
+// Allow the crate to have a non-snake-case name (tapHLE).
 // This also allows items in the crate to have non-snake-case names.
 #![allow(non_snake_case)]
 // The documentation for this crate is intended to include private items.
@@ -60,7 +60,7 @@ use environment::{Environment, MutexId, MutexType, ThreadId, PTHREAD_MUTEX_DEFAU
 
 use std::path::PathBuf;
 
-pub use touchHLE_version::*;
+pub use tapHLE_version::*;
 
 /// This is the true entry point on Android (SDLActivity calls it after
 /// initialization). On other platforms the true entry point is in src/bin.rs.
@@ -89,15 +89,15 @@ pub extern "C" fn SDL_main(
 
     // Empty args: brings up app picker.
     match main([String::new()].into_iter()) {
-        Ok(_) => echo!("touchHLE finished"),
-        Err(e) => echo!("touchHLE errored: {e:?}"),
+        Ok(_) => echo!("tapHLE finished"),
+        Err(e) => echo!("tapHLE errored: {e:?}"),
     }
     0
 }
 
 const USAGE: &str = "\
 Usage:
-    touchHLE [PATH] [OPTIONS]
+    tapHLE [PATH] [OPTIONS]
 
 PATH should be a path to a .app bundle or .ipa file.
 
@@ -116,7 +116,7 @@ Special options:
 
 pub fn main<T: Iterator<Item = String>>(mut args: T) -> Result<(), String> {
     echo!(
-        "touchHLE {}{}{} — https://touchhle.org/",
+        "tapHLE {}{}{} — https://github.com/ephun/tapHLE",
         branding(),
         if branding().is_empty() { "" } else { " " },
         VERSION,
@@ -135,7 +135,7 @@ pub fn main<T: Iterator<Item = String>>(mut args: T) -> Result<(), String> {
 
     {
         let base_path = paths::user_data_base_path();
-        log!("Base path for touchHLE files: {}", base_path.display());
+        log!("Base path for tapHLE files: {}", base_path.display());
         paths::prepopulate_user_data_dir();
     }
 

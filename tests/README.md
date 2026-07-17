@@ -8,7 +8,7 @@ This directory contains integration tests written in Objective-C. They're compil
 - When launched normally, it is a UIKit app that allows us to do manual testing of various UI-related things.
 - When launched with the `--cli-tests` command-line argument, it is a command-line app that runs a suite of automated tests.
 
-The code in `integration.rs` builds `TestApp.app` and runs the CLI tests in touchHLE. Running `cargo test` will run both these CLI tests and the unit tests written in Rust.
+The code in `integration.rs` builds `TestApp.app` and runs the CLI tests in tapHLE. Running `cargo test` will run both these CLI tests and the unit tests written in Rust.
 
 The resulting `TestApp.app` binary can also be run on a real iOS device, if it is jailbroken (to bypass the normal signature checks). The `./make-ipa.sh` script can turn the app into an IPA file to simplify installation. The app doesn't fully work on iOS yet: when tested 2025-10-05 on a 3rd-gen iPod touch running iOS 5.1.1, the CLI tests segfaulted after around a dozen tests had been executed.
 
@@ -27,7 +27,12 @@ Extract LLVM to `tests/llvm`, so that `tests/llvm/bin/clang` (with `.exe` suffix
 
 ### Linker setup
 
-A [custom SDK](https://github.com/touchHLE/common-3.0-sdk) with headers and a multiplatform version of Apple's `ld` is required to build the TestApp binary. To install it, download the latest release (or follow the instructions inside the repository to compile it), then extract/place/symlink the resultant directories as shown below. (On Windows, you may find it easier to use the precompiled binaries, since compiling requires mingw).
+A [custom SDK](https://github.com/touchHLE/common-3.0-sdk) from the upstream project, with headers and a multiplatform version of Apple's `ld`, is required to build the TestApp binary. CI uses the reviewed `v0.3.7` release. Download that exact release (or follow its instructions to compile it), verify the checksum below, then extract/place/symlink the resultant directories as shown below. On Windows, the precompiled archive avoids a mingw build dependency.
+
+| Archive | SHA-256 |
+| --- | --- |
+| `common-3.0.sdk-macOS-universal.tar.gz` | `16cedbc008841b8367037e36826385947d8a9aa4125b825707f7923bad834498` |
+| `common-3.0.sdk-windows-x86_64.tar.gz` | `c616f77aa309cca34813f5f5a3207fc27e830d235dd3d45f352fe0db01fafc8e` |
 
 The overall structure of the tests directory should look like the following:
 ```

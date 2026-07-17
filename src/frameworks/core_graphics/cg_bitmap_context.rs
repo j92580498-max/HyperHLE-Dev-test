@@ -93,9 +93,7 @@ pub fn CGBitmapContextCreate(
         text_transform: None,
         state_stack: Vec::new(),
     };
-    let isa = env
-        .objc
-        .get_known_class("_touchHLE_CGContext", &mut env.mem);
+    let isa = env.objc.get_known_class("_tapHLE_CGContext", &mut env.mem);
     env.objc
         .alloc_object(isa, Box::new(host_object), &mut env.mem)
 }

@@ -1,16 +1,26 @@
-name: Request a feature or report a general bug
-description: This is for emulator features, not for supporting a specific app.
+name: Report a general Windows bug or propose a feature
+description: Use this for tapHLE itself when one specific game is not the focus.
 body:
   - type: textarea
+    id: outcome
     attributes:
-      label: Describe the feature or issue.
+      label: Desired outcome
+      description: Explain the Windows use case and why it helps game compatibility.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Current behavior and evidence
+      description: Include reproduction steps, tapHLE revision, and relevant logs.
     validations:
       required: true
   - type: checkboxes
+    id: scope
     attributes:
-      label: By submitting this issue, I certify that…
+      label: Scope check
       options:
-        - label: I understand that linking to, discussing or asking for pirated content is not permitted, and will lead to an immediate ban.
+        - label: This request concerns Windows game emulation or development needed to support it.
           required: true
-        - label: I understand that “Abandonware” and illegal copies of free games are also pirated content.
+        - label: I have not attached proprietary game material or unauthorized links.
           required: true

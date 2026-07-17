@@ -122,7 +122,7 @@ pub const CLASSES: ClassExports = objc_classes! {
         return nil;
     };
     // TODO: Real error handling. For now, most errors are likely to be caused
-    //       by a functionality gap in touchHLE, not the app actually trying to
+    //       by a functionality gap in tapHLE, not the app actually trying to
     //       load a broken file, so panicking is most useful.
     let image = Image::from_bytes(&bytes).unwrap();
     let cg_image = cg_image::from_image(env, image);

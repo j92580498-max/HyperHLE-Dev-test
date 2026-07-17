@@ -1,0 +1,46 @@
+name: Propose a game compatibility target
+description: Propose an early iPhone OS game to make playable on Windows.
+labels: ["game target"]
+body:
+  - type: input
+    id: game
+    attributes:
+      label: Game title
+    validations:
+      required: true
+  - type: input
+    id: game_version
+    attributes:
+      label: Exact version, build, and region
+    validations:
+      required: true
+  - type: textarea
+    id: current_state
+    attributes:
+      label: What currently happens in tapHLE?
+      description: Include how far the game gets and any visible or logged failure.
+    validations:
+      required: true
+  - type: textarea
+    id: milestone
+    attributes:
+      label: Smallest useful next milestone
+      placeholder: Reach the main menu with working audio and input.
+    validations:
+      required: true
+  - type: dropdown
+    id: evidence
+    attributes:
+      label: Can you help test the exact game version on Windows?
+      options:
+        - "Yes"
+        - "No"
+    validations:
+      required: true
+  - type: checkboxes
+    id: legal
+    attributes:
+      label: Artifact check
+      options:
+        - label: I obtained the game legally and will not upload or link to an unauthorized copy.
+          required: true

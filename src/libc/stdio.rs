@@ -92,7 +92,7 @@ impl State {
     }
 }
 
-fn _touchHLE_check_file_object_lock(env: &mut Environment, file_ptr: MutPtr<FILE>) {
+fn _tapHLE_check_file_object_lock(env: &mut Environment, file_ptr: MutPtr<FILE>) {
     let FILEHostObject {
         lock_count,
         owning_thread,
@@ -179,7 +179,7 @@ fn fread(
     // TODO: handle errno properly
     set_errno(env, 0);
 
-    _touchHLE_check_file_object_lock(env, file_ptr);
+    _tapHLE_check_file_object_lock(env, file_ptr);
 
     if item_size == 0 {
         return 0;
@@ -231,7 +231,7 @@ fn fgetc(env: &mut Environment, file_ptr: MutPtr<FILE>) -> i32 {
     // TODO: handle errno properly
     set_errno(env, 0);
 
-    _touchHLE_check_file_object_lock(env, file_ptr);
+    _tapHLE_check_file_object_lock(env, file_ptr);
     let FILE { fd } = env.mem.read(file_ptr);
     let FILEHostObject {
         ref mut pushbacks, ..
@@ -275,7 +275,7 @@ fn __srget(env: &mut Environment, file_ptr: MutPtr<FILE>) -> i32 {
 
 fn ungetc(env: &mut Environment, c: i32, file_ptr: MutPtr<FILE>) -> i32 {
     assert!(c != EOF); // TODO
-    _touchHLE_check_file_object_lock(env, file_ptr);
+    _tapHLE_check_file_object_lock(env, file_ptr);
     let FILE { fd } = env.mem.read(file_ptr);
     let curr_offset = posix_io::lseek(env, fd, 0, SEEK_CUR);
     assert!(curr_offset > 0);
@@ -361,7 +361,7 @@ fn fwrite(
         return 0;
     }
 
-    _touchHLE_check_file_object_lock(env, file_ptr);
+    _tapHLE_check_file_object_lock(env, file_ptr);
     let FILE { fd } = env.mem.read(file_ptr);
 
     let total_size = item_size.checked_mul(n_items).unwrap();
@@ -407,7 +407,7 @@ fn fseeko(env: &mut Environment, file_ptr: MutPtr<FILE>, offset: off_t, whence: 
     // TODO: handle errno properly
     set_errno(env, 0);
 
-    _touchHLE_check_file_object_lock(env, file_ptr);
+    _tapHLE_check_file_object_lock(env, file_ptr);
     let FILE { fd } = env.mem.read(file_ptr);
 
     assert!([SEEK_SET, SEEK_CUR, SEEK_END].contains(&whence));
@@ -434,7 +434,7 @@ fn ftello(env: &mut Environment, file_ptr: MutPtr<FILE>) -> off_t {
     // TODO: handle errno properly
     set_errno(env, 0);
 
-    _touchHLE_check_file_object_lock(env, file_ptr);
+    _tapHLE_check_file_object_lock(env, file_ptr);
     let FILE { fd } = env.mem.read(file_ptr);
     posix_io::lseek(env, fd, 0, posix_io::SEEK_CUR)
 }
@@ -458,7 +458,7 @@ fn fclose(env: &mut Environment, file_ptr: MutPtr<FILE>) -> i32 {
         return EOF;
     }
 
-    _touchHLE_check_file_object_lock(env, file_ptr);
+    _tapHLE_check_file_object_lock(env, file_ptr);
 
     // This is needed in order to force lazy instantiation
     // of stdin-like host object.
@@ -492,7 +492,7 @@ fn ferror(env: &mut Environment, file_ptr: MutPtr<FILE>) -> i32 {
     // TODO: handle errno properly
     set_errno(env, 0);
 
-    _touchHLE_check_file_object_lock(env, file_ptr);
+    _tapHLE_check_file_object_lock(env, file_ptr);
 
     log!("TODO: ferror() support.");
     0
@@ -502,7 +502,7 @@ fn fsetpos(env: &mut Environment, file_ptr: MutPtr<FILE>, pos: ConstPtr<fpos_t>)
     // TODO: handle errno properly
     set_errno(env, 0);
 
-    _touchHLE_check_file_object_lock(env, file_ptr);
+    _tapHLE_check_file_object_lock(env, file_ptr);
     let FILE { fd } = env.mem.read(file_ptr);
 
     let res = posix_io::lseek(env, fd, env.mem.read(pos), SEEK_SET);
@@ -524,7 +524,7 @@ fn fgetpos(env: &mut Environment, file_ptr: MutPtr<FILE>, pos: MutPtr<fpos_t>) -
     // TODO: handle errno properly
     set_errno(env, 0);
 
-    _touchHLE_check_file_object_lock(env, file_ptr);
+    _tapHLE_check_file_object_lock(env, file_ptr);
     let FILE { fd } = env.mem.read(file_ptr);
 
     let res = posix_io::lseek(env, fd, 0, posix_io::SEEK_CUR);
@@ -539,7 +539,7 @@ fn feof(env: &mut Environment, file_ptr: MutPtr<FILE>) -> i32 {
     // TODO: handle errno properly
     set_errno(env, 0);
 
-    _touchHLE_check_file_object_lock(env, file_ptr);
+    _tapHLE_check_file_object_lock(env, file_ptr);
     let FILE { fd } = env.mem.read(file_ptr);
     posix_io::eof(env, fd)
 }
@@ -548,7 +548,7 @@ fn clearerr(env: &mut Environment, file_ptr: MutPtr<FILE>) {
     // TODO: handle errno properly
     set_errno(env, 0);
 
-    _touchHLE_check_file_object_lock(env, file_ptr);
+    _tapHLE_check_file_object_lock(env, file_ptr);
     let FILE { fd } = env.mem.read(file_ptr);
     posix_io::clearerr(env, fd)
 }
@@ -557,7 +557,7 @@ fn fflush(env: &mut Environment, file_ptr: MutPtr<FILE>) -> i32 {
     // TODO: handle errno properly
     set_errno(env, 0);
 
-    _touchHLE_check_file_object_lock(env, file_ptr);
+    _tapHLE_check_file_object_lock(env, file_ptr);
     let FILE { fd } = env.mem.read(file_ptr);
     posix_io::fflush(env, fd)
 }
@@ -611,7 +611,7 @@ fn setbuf(env: &mut Environment, file_ptr: MutPtr<FILE>, buf: ConstPtr<u8>) {
     // TODO: handle errno properly
     set_errno(env, 0);
 
-    _touchHLE_check_file_object_lock(env, file_ptr);
+    _tapHLE_check_file_object_lock(env, file_ptr);
 
     assert!(buf.is_null());
     log!(
@@ -623,7 +623,7 @@ fn setbuf(env: &mut Environment, file_ptr: MutPtr<FILE>, buf: ConstPtr<u8>) {
 // POSIX-specific functions
 
 fn fileno(env: &mut Environment, file_ptr: MutPtr<FILE>) -> posix_io::FileDescriptor {
-    _touchHLE_check_file_object_lock(env, file_ptr);
+    _tapHLE_check_file_object_lock(env, file_ptr);
     let FILE { fd } = env.mem.read(file_ptr);
     fd
 }

@@ -1,0 +1,69 @@
+name: Report a game compatibility problem
+description: Report a crash, hang, or incorrect behavior in a game on Windows.
+labels: ["game compatibility"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Exact versions and clean reproduction steps make compatibility work
+        much faster. Do not attach the game, game assets, keys, or links to
+        unauthorized copies.
+  - type: input
+    id: game
+    attributes:
+      label: Game title
+      placeholder: Super Monkey Ball
+    validations:
+      required: true
+  - type: input
+    id: game_version
+    attributes:
+      label: Game version and build
+      description: Include the region or build identifier when known.
+      placeholder: 1.0 (US)
+    validations:
+      required: true
+  - type: input
+    id: taphle_version
+    attributes:
+      label: tapHLE version
+      description: Give a release number or Git commit.
+      placeholder: v0.2.3 or commit abc1234
+    validations:
+      required: true
+  - type: input
+    id: windows
+    attributes:
+      label: Windows, CPU, and GPU
+      placeholder: Windows 11 24H2, Ryzen 7 5800X, NVIDIA RTX 3070
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction steps and options
+      description: Include the exact tapHLE options needed to reproduce it.
+    validations:
+      required: true
+  - type: textarea
+    id: behavior
+    attributes:
+      label: Expected and actual behavior
+      description: State the last thing that works before the problem occurs.
+    validations:
+      required: true
+  - type: textarea
+    id: log
+    attributes:
+      label: Sanitized tapHLE log
+      description: Remove usernames, personal paths, tokens, and proprietary data.
+      render: text
+  - type: checkboxes
+    id: legal
+    attributes:
+      label: Artifact check
+      options:
+        - label: I obtained this game legally and have not attached or linked to an unauthorized copy.
+          required: true
+        - label: I removed personal data and proprietary game content from the report.
+          required: true

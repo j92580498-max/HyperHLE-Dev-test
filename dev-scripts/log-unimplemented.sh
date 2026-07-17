@@ -1,10 +1,10 @@
 #!/bin/sh
 
-# No set -e, since touchHLE can exit with an error
+# No set -e, since tapHLE can exit with an error
 
 if [[ -z "$1" ]]
 then
-    echo 'Usage: ./log_unimplemented.sh [name of app to check]'
+    echo 'Usage: ./log-unimplemented.sh [name of app to check]'
     exit 1
 else
     cargo run -- --dump=linking-info "$1"

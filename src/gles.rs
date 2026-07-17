@@ -5,18 +5,18 @@
  */
 //! OpenGL ES abstraction and implementations.
 //!
-//! touchHLE uses OpenGL ES for several things. OpenGL ES is part of iPhone OS's
+//! tapHLE uses OpenGL ES for several things. OpenGL ES is part of iPhone OS's
 //! API surface and can be used by apps for rendering, so there must be an
 //! implementation of it to expose to the app. Beyond that, there are various
 //! internal uses for which any graphics API would work, but using the same one
 //! makes things simpler:
 //! - Presenting frames rendered by the app to the screen, with appropriate
 //!   rotation and scaling.
-//! - Drawing touchHLE's virtual cursor.
+//! - Drawing tapHLE's virtual cursor.
 //! - Drawing the app's splash screen.
 //! - Compositing the app's Core Animation layers (usually for UIKit views).
 //!
-//! touchHLE's OpenGL ES implementation consists of a series of layers. This
+//! tapHLE's OpenGL ES implementation consists of a series of layers. This
 //! module contains the layers that aren't specific to a particular use:
 //!
 //! - [gles_generic] provides an abstraction over OpenGL ES implementations.
@@ -69,8 +69,8 @@ mod gles_generic;
 pub mod present;
 mod util;
 
-use touchHLE_gl_bindings::gl21compat as gl21compat_raw;
-pub use touchHLE_gl_bindings::gles11 as gles11_raw;
+use tapHLE_gl_bindings::gl21compat as gl21compat_raw;
+pub use tapHLE_gl_bindings::gles11 as gles11_raw;
 
 use gles1_native::GLES1NativeContext;
 use gles1_on_gl2::GLES1OnGL2Context;

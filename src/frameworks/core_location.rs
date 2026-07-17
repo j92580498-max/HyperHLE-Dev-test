@@ -10,7 +10,7 @@
 //! ~~spy on~~ track users without actual location-based gameplay.
 //!
 //! Some apps (e.g. maps) would _require_ location support to work properly,
-//! but it is not the current focus of the touchHLE. The current focus is,
+//! but it is not the current focus of the tapHLE. The current focus is,
 //! you know, **GAMES**.
 
 use crate::dyld::{ConstantExports, HostConstant, HostDylib};

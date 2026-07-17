@@ -1,5 +1,12 @@
 /target
 /vendor/boost
+/tapHLE_sandbox
+/tapHLE_apps/*
+!/tapHLE_apps/README.txt
+tapHLE_log.txt
+tapHLE_wallpaper.*
+
+# Legacy runtime data from pre-fork builds must never be committed.
 /touchHLE_sandbox
 /touchHLE_apps
 touchHLE_log.txt

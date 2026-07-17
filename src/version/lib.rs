@@ -1,4 +1,4 @@
-// Allow the crate to have a non-snake-case name (touchHLE).
+// Allow the crate to have a non-snake-case name (tapHLE).
 // This also allows items in the crate to have non-snake-case names.
 #![allow(non_snake_case)]
 
@@ -16,7 +16,7 @@ pub fn branding() -> &'static str {
     if GITHUB_RUN_ID.is_none() {
         return "";
     }
-    if GITHUB_EVENT_NAME == Some("create")
+    if matches!(GITHUB_EVENT_NAME, Some("create") | Some("push"))
         && VERSION
             .strip_prefix('v')
             .is_some_and(|v| v == env!("CARGO_PKG_VERSION"))
@@ -24,7 +24,7 @@ pub fn branding() -> &'static str {
     {
         return "";
     }
-    if (GITHUB_REPOSITORY, GITHUB_REF_NAME) == (Some("touchHLE/touchHLE"), Some("trunk")) {
+    if (GITHUB_REPOSITORY, GITHUB_REF_NAME) == (Some("ephun/tapHLE"), Some("trunk")) {
         "PREVIEW"
     } else {
         "UNOFFICIAL"

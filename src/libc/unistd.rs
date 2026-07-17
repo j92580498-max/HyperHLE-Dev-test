@@ -30,7 +30,7 @@ fn sleep(env: &mut Environment, seconds: u32) -> u32 {
     env.sleep(Duration::from_secs(seconds.into()));
     // sleep() returns the amount of time remaining that should have been slept,
     // but wasn't, if the thread was woken up early by a signal.
-    // touchHLE never does that currently, so 0 is always correct here.
+    // tapHLE never does that currently, so 0 is always correct here.
     0
 }
 
@@ -48,7 +48,7 @@ pub type pid_t = i32;
 type gid_t = u32;
 
 pub fn getpid(_env: &mut Environment) -> pid_t {
-    // Not a real value, since touchHLE only simulates a single process.
+    // Not a real value, since tapHLE only simulates a single process.
     // PID 0 would be init, which is a bit unrealistic, so let's go with 1.
     1
 }
@@ -141,7 +141,7 @@ fn unlink(env: &mut Environment, path: ConstPtr<u8>) -> i32 {
 
 fn gethostname(env: &mut Environment, name: MutPtr<u8>, namelen: GuestUSize) -> i32 {
     // TODO: define unique hostname once networking is supported
-    let hostname = "touchHLE";
+    let hostname = "tapHLE";
     let len: GuestUSize = hostname.len().try_into().unwrap();
     // TODO: check against HOST_NAME_MAX
     assert!(namelen > len);

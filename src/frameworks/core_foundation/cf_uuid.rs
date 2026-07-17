@@ -21,7 +21,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 // CFUUID doesn't have a corresponding NS type (at least, not up until iOS 6+
 // and even that one is _not_ toll-free bridged, see NSUUID docs),
 // but the callers of CFUUIDCreate() are expected to call CFRelease() on them.
-@implementation _touchHLE_CFUUID: NSObject
+@implementation _tapHLE_CFUUID: NSObject
 @end
 
 };
@@ -40,7 +40,7 @@ fn CFUUIDCreate(env: &mut Environment, allocator: CFAllocatorRef) -> CFUUIDRef {
     let host_obj = Box::new(CFUUIDHostObject {
         uuid: Uuid::new_v4(),
     });
-    let class = env.objc.get_known_class("_touchHLE_CFUUID", &mut env.mem);
+    let class = env.objc.get_known_class("_tapHLE_CFUUID", &mut env.mem);
     env.objc.alloc_object(class, host_obj, &mut env.mem)
 }
 

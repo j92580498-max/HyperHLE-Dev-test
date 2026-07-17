@@ -123,7 +123,7 @@ NSUInteger blendTestNum;
                 action:@selector(prevTest)
       forControlEvents:UIControlEventTouchUpInside];
   [self addSubview:button1];
-  [button1 layoutSubviews]; // FIXME: workaround for touchHLE not calling this
+  [button1 layoutSubviews]; // FIXME: workaround for tapHLE not calling this
 
   UIButton *button2 = [UIButton buttonWithType:UIButtonTypeRoundedRect];
   [button2 setTitle:[NSString stringWithUTF8String:"→"]
@@ -133,7 +133,7 @@ NSUInteger blendTestNum;
                 action:@selector(nextTest)
       forControlEvents:UIControlEventTouchUpInside];
   [self addSubview:button2];
-  [button2 layoutSubviews]; // FIXME: workaround for touchHLE not calling this
+  [button2 layoutSubviews]; // FIXME: workaround for tapHLE not calling this
 
   blendTestNum = 0;
 

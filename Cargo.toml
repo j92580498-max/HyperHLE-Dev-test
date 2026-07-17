@@ -7,28 +7,31 @@
 version = "0.2.3"
 edition = "2021"
 license = "MPL-2.0"
-authors = ["touchHLE project contributors"]
-homepage = "https://touchhle.org/"
+authors = ["tapHLE project contributors", "touchHLE project contributors"]
+homepage = "https://github.com/ephun/tapHLE"
+repository = "https://github.com/ephun/tapHLE"
 
 [package]
-name = "touchHLE"
+name = "tapHLE"
+description = "A Windows-focused high-level emulator for early iPhone OS games"
 version = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }
 authors = { workspace = true }
 homepage = { workspace = true }
+repository = { workspace = true }
 
 [lib]
 # https://users.rust-lang.org/t/making-both-binary-and-cdylib-from-one-package/29105
 crate-type = ["cdylib", "rlib"]
 
 [[bin]]
-name = "touchHLE"
+name = "tapHLE"
 path = "src/bin.rs"
 
 [features]
 default = ["static"]
-static = ["sdl2/bundled", "sdl2/static-link", "touchHLE_openal_soft_wrapper/static"]
+static = ["sdl2/bundled", "sdl2/static-link", "tapHLE_openal_soft_wrapper/static"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -62,20 +65,18 @@ digest = "0.10.7"
 md-5 = "0.10.6"
 sha1 = "0.10.6"
 encoding_rs = "0.8.35"
-# We currently use a fork of rust-sdl2 because we need a fix for Android builds
-# that's not upstream yet.
+# This upstream-owned fork and tag are inherited, reviewed dependency pins.
+# Their URL is provenance, not product branding.
 # The HIDAPI feature is enabled because rust-sdl2 hides the SDL2 sensor features
-# behind this, but the actual HIDAPI is not used by touchHLE (see window.rs).
-# Note that the submodule in vendor/SDL2/ must use exactly the same revision of
-# SDL2 that rust-sdl2 uses, so that the Android JNI interface matches.
+# behind this, but the actual HIDAPI is not used by tapHLE (see window.rs).
 sdl2 = { git = "https://github.com/touchHLE/rust-sdl2", tag = "touchHLE-3", features = ["hidapi"] }
 sdl2-sys = { git = "https://github.com/touchHLE/rust-sdl2", tag = "touchHLE-3" }
-touchHLE_dynarmic_wrapper = { path = "src/cpu/dynarmic_wrapper" }
-touchHLE_gl_bindings = { path = "src/gles/gl_bindings" }
-touchHLE_openal_soft_wrapper = { path = "src/audio/openal_soft_wrapper" }
-touchHLE_pvrt_decompress_wrapper = { path = "src/image/pvrt_decompress_wrapper" }
-touchHLE_stb_image_wrapper = { path = "src/image/stb_image_wrapper" }
-touchHLE_version = { path = "src/version" }
+tapHLE_dynarmic_wrapper = { path = "src/cpu/dynarmic_wrapper" }
+tapHLE_gl_bindings = { path = "src/gles/gl_bindings" }
+tapHLE_openal_soft_wrapper = { path = "src/audio/openal_soft_wrapper" }
+tapHLE_pvrt_decompress_wrapper = { path = "src/image/pvrt_decompress_wrapper" }
+tapHLE_stb_image_wrapper = { path = "src/image/stb_image_wrapper" }
+tapHLE_version = { path = "src/version" }
 windows-sys = { version = "0.61.0", features = ["Win32_System_Memory"] }
 nibarchive = "0.1.0"
 libc = "0.2.180"

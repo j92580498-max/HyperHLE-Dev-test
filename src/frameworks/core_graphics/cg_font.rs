@@ -33,7 +33,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 (env, this, _cmd);
 
-@implementation _touchHLE_CGFont: NSObject
+@implementation _tapHLE_CGFont: NSObject
 @end
 
 };
@@ -42,7 +42,7 @@ fn CGFontCreateWithDataProvider(env: &mut Environment, provider: CGDataProviderR
     let bytes = cg_data_provider::borrow_bytes(env, provider);
     let font = Font::from_vec(bytes.to_vec());
     let host_obj = Box::new(CGFontHostObject { font });
-    let class = env.objc.get_known_class("_touchHLE_CGFont", &mut env.mem);
+    let class = env.objc.get_known_class("_tapHLE_CGFont", &mut env.mem);
     env.objc.alloc_object(class, host_obj, &mut env.mem)
 }
 

@@ -831,7 +831,7 @@ pub fn handle_audio_queue(env: &mut Environment, in_aq: AudioQueueRef) {
             context.GetSourcei(al_source, al::AL_SOURCE_STATE, &mut al_source_state);
             assert!(context.GetError() == 0);
             // Source probably ran out data and needs restarting
-            // TODO: We currently have to do this even when touchHLE is not
+            // TODO: We currently have to do this even when tapHLE is not
             // lagging, because we're not ensuring OpenAL always has at least
             // one buffer it hasn't processed yet. We need to change our queue
             // handling.

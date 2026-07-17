@@ -34,7 +34,7 @@ struct ObjectEnumeratorHostObject {
 }
 impl HostObject for ObjectEnumeratorHostObject {}
 
-/// Belongs to _touchHLE_NSArray
+/// Belongs to _tapHLE_NSArray
 #[derive(Debug, Default)]
 pub(super) struct ArrayHostObject {
     pub(super) array: Vec<id>,
@@ -49,14 +49,14 @@ pub const CLASSES: ClassExports = objc_classes! {
 // - (NSUInteger)count;
 // - (id)objectAtIndex:(NSUInteger)index;
 // We can pick whichever subclass we want for the various alloc methods.
-// For the time being, that will always be _touchHLE_NSArray.
+// For the time being, that will always be _tapHLE_NSArray.
 @implementation NSArray: NSObject
 
 + (id)allocWithZone:(NSZonePtr)zone {
     // NSArray might be subclassed by something which needs allocWithZone:
     // to have the normal behaviour. Unimplemented: call superclass alloc then.
     assert!(this == env.objc.get_known_class("NSArray", &mut env.mem));
-    msg_class![env; _touchHLE_NSArray allocWithZone:zone]
+    msg_class![env; _tapHLE_NSArray allocWithZone:zone]
 }
 
 + (id)array {
@@ -265,7 +265,7 @@ pub const CLASSES: ClassExports = objc_classes! {
     // NSArray might be subclassed by something which needs allocWithZone:
     // to have the normal behaviour. Unimplemented: call superclass alloc then.
     assert!(this == env.objc.get_known_class("NSMutableArray", &mut env.mem));
-    msg_class![env; _touchHLE_NSMutableArray allocWithZone:zone]
+    msg_class![env; _tapHLE_NSMutableArray allocWithZone:zone]
 }
 
 + (id)arrayWithCapacity:(NSUInteger)capacity {
@@ -350,7 +350,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 // Our private subclass that is the single implementation of NSArray for the
 // time being.
-@implementation _touchHLE_NSArray: NSArray
+@implementation _tapHLE_NSArray: NSArray
 
 + (id)allocWithZone:(NSZonePtr)_zone {
     let host_object = Box::new(ArrayHostObject {
@@ -482,7 +482,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 // Special variant for use by CFArray with NULL callbacks: objects aren't
 // necessarily Objective-C objects and won't be retained/released.
-@implementation _touchHLE_NSArray_non_retaining: _touchHLE_NSArray
+@implementation _tapHLE_NSArray_non_retaining: _tapHLE_NSArray
 
 - (())dealloc {
     env.objc.dealloc_object(this, &mut env.mem)
@@ -490,7 +490,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 @end
 
-@implementation _touchHLE_NSArray_ObjectEnumerator: NSEnumerator
+@implementation _tapHLE_NSArray_ObjectEnumerator: NSEnumerator
 
 - (id)nextObject {
     let host_obj = env.objc.borrow_mut::<ObjectEnumeratorHostObject>(this);
@@ -507,7 +507,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 // Our private subclass that is the single implementation of NSMutableArray for
 // the time being.
-@implementation _touchHLE_NSMutableArray: NSMutableArray
+@implementation _tapHLE_NSMutableArray: NSMutableArray
 
 + (id)allocWithZone:(NSZonePtr)_zone {
     let host_object = Box::new(ArrayHostObject {
@@ -717,7 +717,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 // Special variant for use by CFArray with NULL callbacks: objects aren't
 // necessarily Objective-C objects and won't be retained/released.
-@implementation _touchHLE_NSMutableArray_non_retaining: _touchHLE_NSMutableArray
+@implementation _tapHLE_NSMutableArray_non_retaining: _tapHLE_NSMutableArray
 
 - (())dealloc {
     env.objc.dealloc_object(this, &mut env.mem)
@@ -811,7 +811,7 @@ fn object_enumerator_inner_helper(env: &mut Environment, arr: id, vec: Vec<id>) 
     retain(env, arr);
     let class = env
         .objc
-        .get_known_class("_touchHLE_NSArray_ObjectEnumerator", &mut env.mem);
+        .get_known_class("_tapHLE_NSArray_ObjectEnumerator", &mut env.mem);
     let enumerator = env.objc.alloc_object(class, host_object, &mut env.mem);
     autorelease(env, enumerator)
 }
@@ -829,7 +829,7 @@ fn mutable_copy_inner(env: &mut Environment, arr: id) -> id {
 fn init_with_coder_inner(env: &mut Environment, arr: id, coder: id) -> id {
     let class: Class = msg![env; coder class];
     let keyed_unarch_class: Class = msg_class![env; NSKeyedUnarchiver class];
-    let nib_archive_class: Class = msg_class![env; _touchHLE_NIBArchiveDecoder class];
+    let nib_archive_class: Class = msg_class![env; _tapHLE_NIBArchiveDecoder class];
     // It seems that every NSArray item in an NSKeyedArchiver plist looks like:
     // {
     //   "$class" => (uid of NSArray class goes here),

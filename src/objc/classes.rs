@@ -442,7 +442,7 @@ impl ClassHostObject {
 ///
 /// This function is called when registering classes from the guest app. It
 /// detects certain problematic classes that are, for example, too complex for
-/// touchHLE to currently support, but which can be easily replaced with simple
+/// tapHLE to currently support, but which can be easily replaced with simple
 /// fakes.
 fn substitute_classes(
     mem: &Mem,

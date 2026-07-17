@@ -13,16 +13,16 @@ if [[ "$PHASE" = "--prepare-files" ]]; then
     rm -rf new_release
     mkdir new_release
 
-    cp -r ../touchHLE_dylibs new_release/
-    pandoc -s new_release/touchHLE_dylibs/README.md -o new_release/touchHLE_dylibs/README.html
-    rm new_release/touchHLE_dylibs/README.md
+    cp -r ../tapHLE_dylibs new_release/
+    pandoc -s new_release/tapHLE_dylibs/README.md -o new_release/tapHLE_dylibs/README.html
+    rm new_release/tapHLE_dylibs/README.md
 
-    cp -r ../touchHLE_fonts new_release/
-    pandoc -s new_release/touchHLE_fonts/README.md -o new_release/touchHLE_fonts/README.html
-    rm new_release/touchHLE_fonts/README.md
+    cp -r ../tapHLE_fonts new_release/
+    pandoc -s new_release/tapHLE_fonts/README.md -o new_release/tapHLE_fonts/README.html
+    rm new_release/tapHLE_fonts/README.md
 
-    mkdir new_release/touchHLE_apps/
-    cp ../touchHLE_apps/README.txt new_release/touchHLE_apps/
+    mkdir new_release/tapHLE_apps/
+    cp ../tapHLE_apps/README.txt new_release/tapHLE_apps/
 
     pandoc -s ../README.md -o new_release/README.html
 
@@ -31,9 +31,9 @@ if [[ "$PHASE" = "--prepare-files" ]]; then
     cp -r gpl-3.0.txt new_release/COPYING.txt
 
     cp ../OPTIONS_HELP.txt new_release/
-    cp ../touchHLE_default_options.txt new_release/
-    cp ../touchHLE_options.txt new_release/
-elif [[ "$PHASE" = "--create-zip-windows" || "$PHASE" = "--create-zip-macos" || "$PHASE" = "--create-zip-android" ]]; then
+    cp ../tapHLE_default_options.txt new_release/
+    cp ../tapHLE_options.txt new_release/
+elif [[ "$PHASE" = "--create-zip-windows" ]]; then
     shift
 
     PATH_TO_BINARY="$1"
@@ -70,11 +70,7 @@ elif [[ "$PHASE" = "--create-zip-windows" || "$PHASE" = "--create-zip-macos" || 
     zip -j "$OUTPUT_PATH" "$PATH_TO_BINARY"
 
     cd new_release/
-    if [[ "$PHASE" = "--create-zip-windows" ]]; then
-        zip -r "$OUTPUT_PATH" *
-    else
-        zip "$OUTPUT_PATH" CHANGELOG.html COPYING.txt README.html
-    fi
+    zip -r "$OUTPUT_PATH" *
 else
     echo "Unknown or missing phase."
     echo
@@ -84,8 +80,6 @@ else
     echo
     echo "Usage, phase 2:"
     echo
-    echo "  ./prepare-release.sh --create-zip-macos path/to/touchHLE.dmg -o touchHLE_vX.Y.Z_macOS_x86_x64.zip"
-    echo "  ./prepare-release.sh --create-zip-windows path/to/touchHLE.exe -o touchHLE_vX.Y.Z_Windows_x86_64.zip"
-    echo "  ./prepare-release.sh --create-zip-android path/to/touchHLE.apk -o touchHLE_vX.Y.Z_Android_AArch64.zip"
+    echo "  ./prepare-release.sh --create-zip-windows path/to/tapHLE.exe -o tapHLE_vX.Y.Z_Windows_x86_64.zip"
     exit 1
 fi

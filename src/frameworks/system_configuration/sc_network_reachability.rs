@@ -26,7 +26,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 // SCNetworkReachabilityRef is not explicitly stated to be CFType-based type,
 // but the result of "Create" or "Copy" functions here is expected to be
 // released with CFRelease().
-@implementation _touchHLE_SCNetworkReachability: NSObject
+@implementation _tapHLE_SCNetworkReachability: NSObject
 @end
 
 };
@@ -36,7 +36,7 @@ struct SCNetworkReachabilityHostObject {
 }
 impl HostObject for SCNetworkReachabilityHostObject {}
 
-// See comment for `_touchHLE_SCNetworkReachability` class
+// See comment for `_tapHLE_SCNetworkReachability` class
 type SCNetworkReachabilityRef = CFTypeRef;
 
 fn SCNetworkReachabilityCreateWithName(
@@ -56,7 +56,7 @@ fn SCNetworkReachabilityCreateWithName(
     }
     let isa = env
         .objc
-        .get_known_class("_touchHLE_SCNetworkReachability", &mut env.mem);
+        .get_known_class("_tapHLE_SCNetworkReachability", &mut env.mem);
     let res = env.objc.alloc_object(
         isa,
         Box::new(SCNetworkReachabilityHostObject { address: None }), // TODO
@@ -80,7 +80,7 @@ fn SCNetworkReachabilityCreateWithAddress(
     assert!(allocator == kCFAllocatorDefault || env.mem.read(allocator).is_system_default()); // unimplemented
     let isa = env
         .objc
-        .get_known_class("_touchHLE_SCNetworkReachability", &mut env.mem);
+        .get_known_class("_tapHLE_SCNetworkReachability", &mut env.mem);
     let address_val = env.mem.read(address);
     let res = env.objc.alloc_object(
         isa,
@@ -117,7 +117,7 @@ fn SCNetworkReachabilityGetFlags(
     assert_eq!(
         target_class,
         env.objc
-            .get_known_class("_touchHLE_SCNetworkReachability", &mut env.mem)
+            .get_known_class("_tapHLE_SCNetworkReachability", &mut env.mem)
     );
     let host_object = env.objc.borrow::<SCNetworkReachabilityHostObject>(target);
     if let Some(addr) = host_object.address {
@@ -154,7 +154,7 @@ fn SCNetworkReachabilitySetCallback(
     assert_eq!(
         target_class,
         env.objc
-            .get_known_class("_touchHLE_SCNetworkReachability", &mut env.mem)
+            .get_known_class("_tapHLE_SCNetworkReachability", &mut env.mem)
     );
     log!(
         "TODO: SCNetworkReachabilitySetCallback({:?}, {:?}, {:?}) -> FALSE",

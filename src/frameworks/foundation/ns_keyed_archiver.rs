@@ -204,12 +204,12 @@ pub fn encode_object(env: &mut Environment, archiver: id, object: id) -> Uid {
                 // We don't want to encode classes of our private
                 // implementations! Instead, we only encode `public`
                 // classes. We also assume following general inheritance chain:
-                // Class1 -> ... -> ClassN -> _touchHLE_ClassA ->
-                // ... -> _touchHLE_ClassZ
-                // In that case an instance of _touchHLE_ClassZ would be
+                // Class1 -> ... -> ClassN -> _tapHLE_ClassA ->
+                // ... -> _tapHLE_ClassZ
+                // In that case an instance of _tapHLE_ClassZ would be
                 // encoded as instance of ClassN. And classes Class1 to
                 // ClassN would be encoded as well.
-                if !class_name.starts_with("_touchHLE") {
+                if !class_name.starts_with("_tapHLE") {
                     if classname.is_none() {
                         classname = Some(Value::String(class_name.into()));
                     }

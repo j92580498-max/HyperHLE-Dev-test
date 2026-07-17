@@ -400,7 +400,7 @@ pub struct GLES1OnGL2Context {
 }
 impl GLESContext for GLES1OnGL2Context {
     fn description() -> &'static str {
-        "OpenGL ES 1.1 via touchHLE GLES1-on-GL2 layer"
+        "OpenGL ES 1.1 via tapHLE GLES1-on-GL2 layer"
     }
 
     fn new(window: &mut Window) -> Result<Self, String> {

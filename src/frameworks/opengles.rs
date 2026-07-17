@@ -12,7 +12,7 @@
 mod eagl;
 mod gles_guest;
 
-use touchHLE_gl_bindings::gles11::types::GLenum;
+use tapHLE_gl_bindings::gles11::types::GLenum;
 
 use crate::mem::ConstPtr;
 

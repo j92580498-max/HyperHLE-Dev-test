@@ -37,7 +37,7 @@ fn CFDictionaryCreateMutable(
     assert!(allocator == kCFAllocatorDefault || env.mem.read(allocator).is_system_default()); // unimplemented
     assert_eq!(capacity, 0); // TODO: fixed capacity support
 
-    let new = msg_class![env; _touchHLE_NSMutableDictionary_non_retaining alloc];
+    let new = msg_class![env; _tapHLE_NSMutableDictionary_non_retaining alloc];
     msg![env; new initWithKeyCallbacks:key_callbacks andValueCallbacks:value_callbacks]
 }
 
@@ -147,7 +147,7 @@ fn CFDictionaryGetKeysAndValues(
 }
 
 // Default CFDictionary callbacks
-fn _touchHLE_CFDictionary_retain(
+fn _tapHLE_CFDictionary_retain(
     env: &mut Environment,
     allocator: CFAllocatorRef,
     value: ConstVoidPtr,
@@ -155,7 +155,7 @@ fn _touchHLE_CFDictionary_retain(
     assert!(allocator == kCFAllocatorDefault || env.mem.read(allocator).is_system_default()); // unimplemented
     CFRetain(env, value.cast_mut().cast()).cast_const().cast()
 }
-fn _touchHLE_CFDictionary_release(
+fn _tapHLE_CFDictionary_release(
     env: &mut Environment,
     allocator: CFAllocatorRef,
     value: ConstVoidPtr,
@@ -163,20 +163,20 @@ fn _touchHLE_CFDictionary_release(
     assert!(allocator == kCFAllocatorDefault || env.mem.read(allocator).is_system_default()); // unimplemented
     CFRelease(env, value.cast_mut().cast());
 }
-fn _touchHLE_CFDictionary_copyDescription(
+fn _tapHLE_CFDictionary_copyDescription(
     _env: &mut Environment,
     _value: ConstVoidPtr,
 ) -> CFStringRef {
     todo!()
 }
-fn _touchHLE_CFDictionary_equal(
+fn _tapHLE_CFDictionary_equal(
     env: &mut Environment,
     value1: ConstVoidPtr,
     value2: ConstVoidPtr,
 ) -> bool {
     CFEqual(env, value1.cast_mut().cast(), value2.cast_mut().cast())
 }
-fn _touchHLE_CFDictionary_hash(env: &mut Environment, value: ConstVoidPtr) -> CFHashCode {
+fn _tapHLE_CFDictionary_hash(env: &mut Environment, value: ConstVoidPtr) -> CFHashCode {
     CFHash(env, value.cast_mut().cast())
 }
 
@@ -188,26 +188,25 @@ struct DefaultCallbackFunctions {
     hash: GuestFunction,
 }
 fn create_default_callback_functions(mem: &mut Mem, dyld: &mut Dyld) -> DefaultCallbackFunctions {
-    let retain_sym = "__touchHLE_CFDictionary_retain";
-    let retain_hf: HostFunction =
-        &(_touchHLE_CFDictionary_retain as fn(&mut Environment, _, _) -> _);
+    let retain_sym = "__tapHLE_CFDictionary_retain";
+    let retain_hf: HostFunction = &(_tapHLE_CFDictionary_retain as fn(&mut Environment, _, _) -> _);
     let retain_gf = dyld.create_guest_function(mem, retain_sym, retain_hf);
 
-    let release_sym = "__touchHLE_CFDictionary_release";
-    let release_hf: HostFunction = &(_touchHLE_CFDictionary_release as fn(&mut Environment, _, _));
+    let release_sym = "__tapHLE_CFDictionary_release";
+    let release_hf: HostFunction = &(_tapHLE_CFDictionary_release as fn(&mut Environment, _, _));
     let release_gf = dyld.create_guest_function(mem, release_sym, release_hf);
 
-    let copy_desc_sym = "__touchHLE_CFDictionary_copyDescription";
+    let copy_desc_sym = "__tapHLE_CFDictionary_copyDescription";
     let copy_desc_hf: HostFunction =
-        &(_touchHLE_CFDictionary_copyDescription as fn(&mut Environment, _) -> _);
+        &(_tapHLE_CFDictionary_copyDescription as fn(&mut Environment, _) -> _);
     let copy_desc_gf = dyld.create_guest_function(mem, copy_desc_sym, copy_desc_hf);
 
-    let equal_sym = "__touchHLE_CFDictionary_equal";
-    let equal_hf: HostFunction = &(_touchHLE_CFDictionary_equal as fn(&mut Environment, _, _) -> _);
+    let equal_sym = "__tapHLE_CFDictionary_equal";
+    let equal_hf: HostFunction = &(_tapHLE_CFDictionary_equal as fn(&mut Environment, _, _) -> _);
     let equal_gf = dyld.create_guest_function(mem, equal_sym, equal_hf);
 
-    let hash_sym = "__touchHLE_CFDictionary_hash";
-    let hash_hf: HostFunction = &(_touchHLE_CFDictionary_hash as fn(&mut Environment, _) -> _);
+    let hash_sym = "__tapHLE_CFDictionary_hash";
+    let hash_hf: HostFunction = &(_tapHLE_CFDictionary_hash as fn(&mut Environment, _) -> _);
     let hash_gf = dyld.create_guest_function(mem, hash_sym, hash_hf);
 
     DefaultCallbackFunctions {

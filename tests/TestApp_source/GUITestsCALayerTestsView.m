@@ -38,7 +38,7 @@ CALayer *sublayer;
                 action:@selector(prevTest)
       forControlEvents:UIControlEventTouchUpInside];
   [self addSubview:button1];
-  [button1 layoutSubviews]; // FIXME: workaround for touchHLE not calling this
+  [button1 layoutSubviews]; // FIXME: workaround for tapHLE not calling this
 
   UIButton *button2 = [UIButton buttonWithType:UIButtonTypeRoundedRect];
   [button2 setTitle:[NSString stringWithUTF8String:"→"]
@@ -48,7 +48,7 @@ CALayer *sublayer;
                 action:@selector(nextTest)
       forControlEvents:UIControlEventTouchUpInside];
   [self addSubview:button2];
-  [button2 layoutSubviews]; // FIXME: workaround for touchHLE not calling this
+  [button2 layoutSubviews]; // FIXME: workaround for tapHLE not calling this
 
   lastTappedLocalFrameLabel =
       [[UILabel alloc] initWithFrame:CGRectMake(10, 340, 300, 20)];
@@ -477,7 +477,7 @@ CALayer *sublayer;
                 action:@selector(test19ButtonClicked)
       forControlEvents:UIControlEventTouchUpInside];
   [self addSubview:button];
-  [button layoutSubviews]; // FIXME: workaround for touchHLE not calling this
+  [button layoutSubviews]; // FIXME: workaround for tapHLE not calling this
 }
 - (void)test19ButtonClicked {
   CAMediaTimingFunction *easeInEaseOut = [CAMediaTimingFunction
@@ -510,7 +510,7 @@ CALayer *sublayer;
                 action:@selector(test20ButtonClicked)
       forControlEvents:UIControlEventTouchUpInside];
   [self addSubview:button];
-  [button layoutSubviews]; // FIXME: workaround for touchHLE not calling this
+  [button layoutSubviews]; // FIXME: workaround for tapHLE not calling this
 }
 - (void)test20ButtonClicked {
   [sublayer setBounds:CGRectMake(10, 10, 50, 10)];

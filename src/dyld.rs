@@ -12,7 +12,7 @@
 //! iPhone OS's system frameworks and other dynamically-linked libraries, but
 //! instead of actually loading and linking the original framework binaries,
 //! this "dynamic linker" will generate appropriate stubs for calling into
-//! touchHLE's own implementations of the frameworks, which are "host code"
+//! tapHLE's own implementations of the frameworks, which are "host code"
 //! (i.e. not themselves running under emulation).
 //!
 //! This also does normal dynamic linking for libgcc, libstdc++, etc.
@@ -360,7 +360,7 @@ impl Dyld {
         writeln!(file, "    ]\n}}")
     }
 
-    /// Dumps all non-objc symbols provided by touchHLE.
+    /// Dumps all non-objc symbols provided by tapHLE.
     ///
     /// The dump format is Objective-C code (with meaningless types) that can be
     /// compiled to generate stub libraries that can be linked against, with

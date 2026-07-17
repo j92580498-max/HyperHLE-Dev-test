@@ -414,7 +414,7 @@ pub(super) fn exit(env: &mut Environment) {
         let pool: id = msg_class![env; NSAutoreleasePool new];
 
         // Skip NSUserDefaults code while in the app picker, otherwise we get
-        // a strange error when existing touchHLE due to the fake bundle.
+        // a strange error when existing tapHLE due to the fake bundle.
         if !env.is_app_picker {
             // Apple's docs (used to) vaguely mention that `synchronize` is
             // invoked on periodic intervals.

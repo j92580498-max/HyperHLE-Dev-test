@@ -1,0 +1,16 @@
+# Require the tapHLE maintainer to review changes to agent and project policy.
+**/AGENTS.md @ephun
+**/CLAUDE.md @ephun
+**/GEMINI.md @ephun
+/.github/copilot-instructions.md @ephun
+/.github/instructions/ @ephun
+/.cursor/ @ephun
+/.github/CODEOWNERS @ephun
+/.github/pull_request_template.md @ephun
+/.github/workflows/ @ephun
+/CONTRIBUTING.md @ephun
+/CODE_OF_CONDUCT.md @ephun
+/README.md @ephun
+/dev-docs/upstream-sync.md @ephun
+/dev-scripts/audit-agent-safety.sh @ephun
+/dev-scripts/audit-agent-safety.ps1 @ephun

@@ -84,7 +84,7 @@ fn host_statistics(
     let out_size_expected = guest_size_of::<vm_statistics>() / guest_size_of::<natural_t>();
     assert_eq!(out_size_expected, out_size_available);
     // Below values corresponds to a run of an iPod Touch 4 running iOS 6.1.
-    // As touchHLE doesn't have a paging system (yet? never?),
+    // As tapHLE doesn't have a paging system (yet? never?),
     // those numbers are (mostly) meaningless.
     // In reality, this function is commonly used by apps to get
     // the amount of current free memory available.

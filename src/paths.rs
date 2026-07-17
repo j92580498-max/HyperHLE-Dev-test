@@ -3,18 +3,18 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/.
  */
-//! Paths for host files used by touchHLE: settings, fonts, etc.
+//! Paths for host files used by tapHLE: settings, fonts, etc.
 //!
 //! There are three categories of files:
 //!
-//! * Resources bundled with touchHLE that neither touchHLE nor the user should
+//! * Resources bundled with tapHLE that neither tapHLE nor the user should
 //!   modify: [DYLIBS_DIR], [FONTS_DIR], [DEFAULT_OPTIONS_FILE]. Depending on
 //!   the platform these may or may not be ordinary files, and must be accessed
 //!   through [ResourceFile].
-//! * Files the user is expected to modify, but not touchHLE: [APPS_DIR],
+//! * Files the user is expected to modify, but not tapHLE: [APPS_DIR],
 //!   [USER_OPTIONS_FILE], [WALLPAPER_FILES]. These are ordinary files and are
 //!   found in [user_data_base_path].
-//! * Files that touchHLE will create and modify, and the user may modify if
+//! * Files that tapHLE will create and modify, and the user may modify if
 //!   they want to: [SANDBOX_DIR]. These are ordinary files and are found in
 //!   [user_data_base_path].
 //!
@@ -26,17 +26,17 @@ use std::io::{Read, Seek};
 use std::path::{Path, PathBuf};
 
 /// Name of the directory containing ARMv6 dynamic libraries bundled with
-/// touchHLE.
-pub const DYLIBS_DIR: &str = "touchHLE_dylibs";
+/// tapHLE.
+pub const DYLIBS_DIR: &str = "tapHLE_dylibs";
 
-/// Name of the directory containing fonts bundled with touchHLE.
-pub const FONTS_DIR: &str = "touchHLE_fonts";
+/// Name of the directory containing fonts bundled with tapHLE.
+pub const FONTS_DIR: &str = "tapHLE_fonts";
 
-/// Name of the file containing touchHLE's default options for various apps.
-pub const DEFAULT_OPTIONS_FILE: &str = "touchHLE_default_options.txt";
+/// Name of the file containing tapHLE's default options for various apps.
+pub const DEFAULT_OPTIONS_FILE: &str = "tapHLE_default_options.txt";
 
-/// macOS-only: If touchHLE is located in a .app bundle, return the path of the
-/// Resources directory. If touchHLE is not located in a .app bundle, return
+/// macOS-only: If tapHLE is located in a .app bundle, return the path of the
+/// Resources directory. If tapHLE is not located in a .app bundle, return
 /// [None].
 #[allow(dead_code)]
 fn get_macos_bundled_resources_path() -> Option<PathBuf> {
@@ -52,7 +52,7 @@ fn get_macos_bundled_resources_path() -> Option<PathBuf> {
 }
 
 /// Abstraction over a platform-specific type for accessing a resource bundled
-/// with touchHLE.
+/// with tapHLE.
 pub struct ResourceFile {
     #[cfg(target_os = "android")]
     file: sdl2::rwops::RWops<'static>,
@@ -88,29 +88,29 @@ impl std::fmt::Debug for ResourceFile {
 }
 
 /// Whether various resources are in user-accessible files. If they aren't,
-/// touchHLE has to be able to display their license terms.
+/// tapHLE has to be able to display their license terms.
 pub const RESOURCES_ARE_EXTERNAL_FILES: bool = cfg!(not(target_os = "android"));
 
 /// Name of the directory where the user can put apps if they want them to
 /// appear in the app picker.
-pub const APPS_DIR: &str = "touchHLE_apps";
+pub const APPS_DIR: &str = "tapHLE_apps";
 
 /// Name of the file intended for the user's own options.
-pub const USER_OPTIONS_FILE: &str = "touchHLE_options.txt";
+pub const USER_OPTIONS_FILE: &str = "tapHLE_options.txt";
 
 /// Names of files the user can put a wallpaper image (for the app picker) in.
 #[allow(unused)]
 pub const WALLPAPER_FILES: &[&str] = &[
-    "touchHLE_wallpaper.png",
-    "touchHLE_wallpaper.jpg",
-    "touchHLE_wallpaper.jpeg",
+    "tapHLE_wallpaper.png",
+    "tapHLE_wallpaper.jpg",
+    "tapHLE_wallpaper.jpeg",
 ];
 
-/// Name of the directory where touchHLE will store sandboxed app data, e.g.
+/// Name of the directory where tapHLE will store sandboxed app data, e.g.
 /// the `Documents` directory.
-pub const SANDBOX_DIR: &str = "touchHLE_sandbox";
+pub const SANDBOX_DIR: &str = "tapHLE_sandbox";
 
-/// Get a platform-specific base path needed for accessing touchHLE's
+/// Get a platform-specific base path needed for accessing tapHLE's
 /// user-modifiable files. This is empty on platforms other than Android.
 pub fn user_data_base_path() -> Cow<'static, Path> {
     #[cfg(target_os = "android")]
@@ -136,12 +136,12 @@ pub fn user_data_base_path() -> Cow<'static, Path> {
     }
     #[cfg(not(target_os = "android"))]
     {
-        // When touchHLE is run from a .app bundle on macOS, the user might not
+        // When tapHLE is run from a .app bundle on macOS, the user might not
         // be able to control the current directory, so user data needs to go in
         // a standard location.
         if get_macos_bundled_resources_path().is_some() {
             return Cow::from(PathBuf::from(
-                sdl2::filesystem::pref_path("touchhle.org", "touchHLE").unwrap(),
+                sdl2::filesystem::pref_path("org.taphle", "tapHLE").unwrap(),
             ));
         }
         Cow::from(Path::new("."))
@@ -155,7 +155,7 @@ pub fn url_for_opening_user_data_dir() -> Result<String, String> {
         // See DocumentsProvider.kt, app/build.gradle and AndroidManifest.xml
         let brand = crate::branding();
         Ok(format!(
-            "content://org.touchhle.android{}{}.provider/root/root",
+            "content://org.taphle.android{}{}.provider/root/root",
             if brand.is_empty() { "" } else { "." },
             brand.to_lowercase()
         ))
@@ -180,7 +180,7 @@ pub fn url_for_opening_user_data_dir() -> Result<String, String> {
 
 /// Only meaningful on certain OSes: create the user data directory if it
 /// doesn't exist, and populate it with templates or README files. (On other
-/// platforms these are simply bundled with touchHLE in a ZIP file.)
+/// platforms these are simply bundled with tapHLE in a ZIP file.)
 pub fn prepopulate_user_data_dir() {
     if std::env::consts::OS != "android" && std::env::consts::OS != "macos" {
         return;
@@ -217,14 +217,14 @@ pub fn prepopulate_user_data_dir() {
     if !apps_dir_readme.is_file() {
         let content = include_str!(concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/touchHLE_apps/README.txt"
+            "/tapHLE_apps/README.txt"
         ));
         create_file(&apps_dir_readme, content);
     }
 
     let user_options = base_path.join(USER_OPTIONS_FILE);
     if !user_options.is_file() {
-        let content = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/touchHLE_options.txt"));
+        let content = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/tapHLE_options.txt"));
         create_file(&user_options, content);
     }
 

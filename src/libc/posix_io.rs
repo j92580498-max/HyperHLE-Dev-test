@@ -762,7 +762,7 @@ fn fcntl(
         F_SETFD => {
             // SET/GETFD are responsible for managing the CLOEXEC flag on an FD.
             // When set, exec* calls automatically close open FDs to prevent
-            // them from leaking. Since touchHLE only runs a single process and
+            // them from leaking. Since tapHLE only runs a single process and
             // non-jailbroken apps can not call exec* functions, it's safe to
             // ignore the flag being set.
 
@@ -814,7 +814,7 @@ fn fcntl(
             // For example, setting a lock that conflicts with another lock set
             // by a thread in the same process results in the lock being either:
             // upgraded, extended, split, etc., but it will not conflict.
-            // Practically, since touchHLE supports only one process, POSIX
+            // Practically, since tapHLE supports only one process, POSIX
             // locks don't do anything, so they can temporarily be ignored.
             // TODO: Actually set locks when multiproccess support is added and
             // the file system supports it.

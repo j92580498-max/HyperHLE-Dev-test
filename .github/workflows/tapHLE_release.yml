@@ -1,0 +1,193 @@
+name: Build tapHLE
+
+permissions:
+  contents: read
+
+on:
+  push:
+    branches: [ "trunk" ]
+    tags: [ "v*" ]
+  pull_request:
+    branches: [ "trunk" ]
+
+env:
+  CARGO_TERM_COLOR: always
+  COMMON_SDK_VERSION: v0.3.7
+  COMMON_SDK_MACOS_SHA256: 16cedbc008841b8367037e36826385947d8a9aa4125b825707f7923bad834498
+  COMMON_SDK_WINDOWS_SHA256: c616f77aa309cca34813f5f5a3207fc27e830d235dd3d45f352fe0db01fafc8e
+
+jobs:
+  repository-policy:
+    name: Agent policy safety
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout tapHLE
+        uses: actions/checkout@v4
+      - name: Validate agent policy
+        run: bash dev-scripts/audit-agent-safety.sh
+
+  build-macos-development:
+    name: macOS development validation
+
+    runs-on: macos-15
+    needs: repository-policy
+    continue-on-error: true
+
+    steps:
+      - name: Checkout tapHLE
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Install clang-format
+        run: brew install clang-format
+      - name: Check formatting
+        run: dev-scripts/format.sh --check
+      - name: Get Submodules
+        run: git submodule update --init
+      - name: Install Boost
+        run: brew install boost
+      - name: Try to get cached copy of cmake
+        id: cache-cmake
+        uses: actions/cache@v3
+        with:
+          path: vendor/cmake
+          key: cmake_3_31_6_macos
+      - if: ${{ steps.cache-cmake.outputs.cache-hit != 'true' }}
+        name: Download Cmake
+        run: curl -L -O "https://github.com/Kitware/CMake/releases/download/v3.31.6/cmake-3.31.6-macos-universal.tar.gz"
+      - if: ${{ steps.cache-cmake.outputs.cache-hit != 'true' }}
+        name: Extract Cmake
+        run: tar xzvf "cmake-3.31.6-macos-universal.tar.gz" -C vendor && mv "vendor/cmake-3.31.6-macos-universal/CMake.app/Contents/" vendor/cmake && rm -rf vendor/cmake-3.31.6-macos-universal
+      # This is the earliest point at which we can do linting: clippy will end up
+      # building dynarmic, which needs Boost, but we don't need LLVM until
+      # building tests.
+      - name: Lint
+        run: dev-scripts/lint.sh
+        env:
+          CMAKE: ${{ github.workspace }}/vendor/cmake/bin/cmake
+      - name: Try to get cached copy of LLVM
+        id: cache-llvm
+        uses: actions/cache@v3
+        with:
+          path: tests/llvm
+          key: llvm_12_0_0_macOS_x64
+      - if: ${{ steps.cache-llvm.outputs.cache-hit != 'true' }}
+        name: Download LLVM
+        run: curl -L -O "https://github.com/llvm/llvm-project/releases/download/llvmorg-12.0.0/clang+llvm-12.0.0-x86_64-apple-darwin.tar.xz"
+      - if: ${{ steps.cache-llvm.outputs.cache-hit != 'true' }}
+        name: Extract LLVM
+        run: tar -xf clang+llvm-12.0.0-x86_64-apple-darwin.tar.xz && mkdir tests/llvm && mv clang+llvm-12.0.0-x86_64-apple-darwin/* tests/llvm
+      - name: Get copy of common-3.0-sdk
+        run: |
+          cd "${{ github.workspace }}/tests"
+          curl -L --fail -o common-sdk.tar.gz \
+            "https://github.com/touchHLE/common-3.0-sdk/releases/download/${COMMON_SDK_VERSION}/common-3.0.sdk-macOS-universal.tar.gz"
+          echo "${COMMON_SDK_MACOS_SHA256}  common-sdk.tar.gz" | shasum -a 256 -c -
+          tar xzf common-sdk.tar.gz
+      - name: Install x86_64 toolchain
+        run: rustup target add x86_64-apple-darwin
+      - name: Test
+        run: cargo test --target x86_64-apple-darwin
+        env:
+          CMAKE: ${{ github.workspace }}/vendor/cmake/bin/cmake
+      # This step ensures that our non-iOS-specific tests are passing on macOS itself!
+      - name: Sanity check tests
+        run: cc tests/TestApp_source/cli_tests.m tests/TestApp_source/CGAffineTransform.c tests/TestApp_source/SyncTester.m tests/TestApp_source/RespondsToSelector.m tests/TestApp_source/AutoReleasePoolTest.m tests/TestApp_source/Initialize.m -framework CoreFoundation -framework Foundation -framework CoreGraphics -DDEFINE_ME_WHEN_BUILDING_ON_MACOS -DTestApp_cli_tests_main=main -ObjC && ./a.out
+      - name: Build
+        run: cargo build --target x86_64-apple-darwin --release
+        env:
+          CMAKE: ${{ github.workspace }}/vendor/cmake/bin/cmake
+      - uses: actions/upload-artifact@v4
+        with:
+          name: TestApp_built_on_macOS_development
+          path: tests/TestApp.app
+
+  build-windows:
+    name: Windows build and tests
+
+    runs-on: windows-2022
+    needs: repository-policy
+
+    steps:
+    - name: Checkout tapHLE
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    # Apparently the Windows runner already has clang-format? That's nice.
+    - name: Check formatting
+      shell: bash # no command output without this
+      run: dev-scripts/format.sh --check
+    - name: Get Submodules
+      run: git submodule update --init
+    - name: Try to get cached copy of Boost
+      id: cache-boost
+      uses: actions/cache@v3
+      with:
+        path: vendor\boost
+        key: boost_1_81_0
+    - if: ${{ steps.cache-boost.outputs.cache-hit != 'true' }}
+      name: Download Boost
+      run: curl -L -o boost_1_81_0.7z "https://archives.boost.io/release/1.81.0/source/boost_1_81_0.7z"
+    - if: ${{ steps.cache-boost.outputs.cache-hit != 'true' }}
+      name: Extract Boost
+      run: 7z -ovendor x boost_1_81_0.7z && ren vendor\boost_1_81_0 boost
+    - name: Try to get cached copy of cmake
+      id: cache-cmake
+      uses: actions/cache@v3
+      with:
+        path: vendor/cmake
+        key: cmake_3_31_6_windows
+    - if: ${{ steps.cache-cmake.outputs.cache-hit != 'true' }}
+      name: Download Cmake
+      run: curl -L -O "https://github.com/Kitware/CMake/releases/download/v3.31.6/cmake-3.31.6-windows-x86_64.zip"
+    - if: ${{ steps.cache-cmake.outputs.cache-hit != 'true' }}
+      name: Extract Cmake
+      run: 7z -ovendor x "cmake-3.31.6-windows-x86_64.zip" && ren vendor\cmake-3.31.6-windows-x86_64 cmake
+    # This is the earliest point at which we can do linting: clippy will end up
+    # building dynarmic, which needs Boost, but we don't need LLVM until
+    # building tests.
+    - name: Lint
+      shell: bash # no command output without this
+      run: dev-scripts/lint.sh
+      env:
+        CMAKE: ${{ github.workspace }}\vendor\cmake\bin\cmake
+    - name: Try to get cached copy of LLVM
+      id: cache-llvm
+      uses: actions/cache@v3
+      with:
+        path: tests/llvm
+        key: llvm_12_0_1_Windows_x64
+    - if: ${{ steps.cache-llvm.outputs.cache-hit != 'true' }}
+      name: Download LLVM
+      run: curl -L -O "https://github.com/llvm/llvm-project/releases/download/llvmorg-12.0.1/LLVM-12.0.1-win64.exe"
+    - if: ${{ steps.cache-llvm.outputs.cache-hit != 'true' }}
+      name: Extract LLVM
+      run: 7z -otests/llvm x LLVM-12.0.1-win64.exe
+    # Windows seems to break the stdout pipe for some reason
+    - name: Get copy of common-3.0-sdk
+      run: |
+        $archive = "${{ runner.temp }}\common-sdk.tar.gz"
+        curl.exe -L --fail --output $archive "https://github.com/touchHLE/common-3.0-sdk/releases/download/${env:COMMON_SDK_VERSION}/common-3.0.sdk-windows-x86_64.tar.gz"
+        if ((Get-FileHash -Algorithm SHA256 $archive).Hash.ToLowerInvariant() -ne $env:COMMON_SDK_WINDOWS_SHA256) {
+          throw "common-3.0-sdk checksum mismatch"
+        }
+        tar xzf $archive -C "${{ github.workspace }}\tests"
+    - name: Test
+      run: cargo test
+      env:
+        CMAKE: ${{ github.workspace }}\vendor\cmake\bin\cmake
+    - name: Build
+      run: cargo build --release
+      env:
+        CMAKE: ${{ github.workspace }}\vendor\cmake\bin\cmake
+    - name: Create bundle
+      shell: bash
+      run: cd dev-scripts && ./make-windows-bundle.sh ../target/release/tapHLE.exe && mv tapHLE_windows_bundle/ ..
+    - uses: actions/upload-artifact@v4
+      with:
+        name: tapHLE_Windows_x86_64
+        path: tapHLE_windows_bundle/
+    - uses: actions/upload-artifact@v4
+      with:
+        name: TestApp_built_on_Windows
+        path: tests/TestApp.app

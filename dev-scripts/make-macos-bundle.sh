@@ -1,8 +1,8 @@
 #!/bin/sh
 set -e
 
-# Creates the .app bundle containing the basic set of files needed for touchHLE
-# to run. Also adds an icon and metadata similar to the Android APK.
+# Creates the .app bundle containing the basic set of files needed for tapHLE
+# to run. Also adds an icon and standard application metadata.
 
 if [[ $# == 3 ]]; then
     PATH_TO_BINARY="$1"
@@ -11,10 +11,10 @@ if [[ $# == 3 ]]; then
     shift 3
 
     if [[ "x$BRANDING" == "x" ]]; then
-        APP_NAME=touchHLE
+        APP_NAME=tapHLE
         ICON_NAME=icon
     else
-        APP_NAME="touchHLE $BRANDING"
+        APP_NAME="tapHLE $BRANDING"
         ICON_NAME="icon_$(echo "$BRANDING" | tr 'A-Z' 'a-z')"
         VERSION="$VERSION $BRANDING"
     fi
@@ -25,17 +25,17 @@ if [[ $# == 3 ]]; then
 
     rm -rf "$APP_NAME.app"
     mkdir -p "$APP_NAME.app"/Contents/MacOS "$APP_NAME.app"/Contents/Resources
-    cp $PATH_TO_BINARY "$APP_NAME.app"/Contents/MacOS/touchHLE
-    cp -r ../touchHLE_dylibs "$APP_NAME.app"/Contents/Resources/
-    cp -r ../touchHLE_fonts "$APP_NAME.app"/Contents/Resources/
-    cp -r ../touchHLE_default_options.txt "$APP_NAME.app"/Contents/Resources/
+    cp $PATH_TO_BINARY "$APP_NAME.app"/Contents/MacOS/tapHLE
+    cp -r ../tapHLE_dylibs "$APP_NAME.app"/Contents/Resources/
+    cp -r ../tapHLE_fonts "$APP_NAME.app"/Contents/Resources/
+    cp -r ../tapHLE_default_options.txt "$APP_NAME.app"/Contents/Resources/
     cp "$ICON_NAME.icns" "$APP_NAME.app"/Contents/Resources/
 
     plutil -create xml1 "$APP_NAME.app"/Contents/Info.plist
     plutil -insert CFBundleName -string "$APP_NAME" "$APP_NAME.app"/Contents/Info.plist
     plutil -insert CFBundleDisplayName -string "$APP_NAME" "$APP_NAME.app"/Contents/Info.plist
     plutil -insert CFBundleShortVersionString -string "$VERSION" "$APP_NAME.app"/Contents/Info.plist
-    plutil -insert CFBundleExecutable -string touchHLE "$APP_NAME.app"/Contents/Info.plist
+    plutil -insert CFBundleExecutable -string tapHLE "$APP_NAME.app"/Contents/Info.plist
     plutil -insert CFBundleIconFile -string "$ICON_NAME" "$APP_NAME.app"/Contents/Info.plist
 else
     echo "Incorrect usage."

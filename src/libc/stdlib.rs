@@ -28,7 +28,7 @@ pub struct State {
 
 // Sizes of zero are implementation-defined. macOS will happily give you back
 // an allocation for any of these, so presumably iPhone OS does too.
-// (touchHLE's allocator will round up allocations to at least 16 bytes.)
+// (tapHLE's allocator will round up allocations to at least 16 bytes.)
 
 fn malloc(env: &mut Environment, size: GuestUSize) -> MutVoidPtr {
     // TODO: handle errno properly

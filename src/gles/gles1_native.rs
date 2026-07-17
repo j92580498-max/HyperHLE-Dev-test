@@ -10,7 +10,7 @@
 //! correctly. The exception is where we expect an extension could be used that
 //! the driver might not support (e.g. vendor-specific texture compression).
 //! In such cases, we should reject vendor-specific things unless we've made
-//! sure we can emulate them on all host platforms for touchHLE.
+//! sure we can emulate them on all host platforms for tapHLE.
 
 use super::gles11_raw as gles11;
 use super::gles11_raw::types::*;

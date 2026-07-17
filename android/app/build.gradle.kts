@@ -14,9 +14,9 @@ plugins {
     id("org.jetbrains.kotlin.android") version("2.0.21")
 }
 
-fun runTouchHLEVersionTool(wantBranding: Boolean): String {
+fun runTapHLEVersionTool(wantBranding: Boolean): String {
     val output = providers.exec {
-        commandLine("cargo", "run", "--package", "touchHLE_version")
+        commandLine("cargo", "run", "--package", "tapHLE_version")
         if (wantBranding) {
             args("--", "--branding")
         }
@@ -25,12 +25,12 @@ fun runTouchHLEVersionTool(wantBranding: Boolean): String {
     return output
 }
 
-fun getTouchHLEBranding(): String {
-    return runTouchHLEVersionTool(/* wantBranding: */ true)
+fun getTapHLEBranding(): String {
+    return runTapHLEVersionTool(/* wantBranding: */ true)
 }
 
-fun getTouchHLEVersionName(): String {
-    return runTouchHLEVersionTool(/* wantBranding: */ false)
+fun getTapHLEVersionName(): String {
+    return runTapHLEVersionTool(/* wantBranding: */ false)
 }
 
 fun join(prefix: String, separator: String, branding: String): String {
@@ -44,16 +44,16 @@ android {
         buildConfig = true
     }
     defaultConfig {
-        val branding = getTouchHLEBranding()
-        applicationId = "org.touchhle.android"
+        val branding = getTapHLEBranding()
+        applicationId = "org.taphle.android"
         if (!branding.isEmpty()) {
             applicationIdSuffix = branding.lowercase()
         }
-        resValue("string", "app_name", join("touchHLE", " ", branding))
-        buildConfigField("String", "APP_NAME", "\"${join("touchHLE", " ", branding)}\"")
+        resValue("string", "app_name", join("tapHLE", " ", branding))
+        buildConfigField("String", "APP_NAME", "\"${join("tapHLE", " ", branding)}\"")
         manifestPlaceholders["icon"] = join("@drawable/icon", "_", branding.lowercase())
         buildConfigField("int", "APP_ICON", join("R.drawable.icon", "_", branding.lowercase()))
-        versionName = join(getTouchHLEVersionName(), " ", branding)
+        versionName = join(getTapHLEVersionName(), " ", branding)
 
         minSdk = 21 // first version with AArch64
         targetSdk = 31
@@ -62,10 +62,10 @@ android {
                 arguments("APP_PLATFORM=android-21")
                 // abiFilters 'armeabi-v7a', 'arm64-v8a', 'x86', 'x86_64'
                 // Only 'arm64-v8a' and 'x86_64' are supported by dynarmic
-                // and hence touchHLE. The 'x86_64' build works, but the main
+                // and hence tapHLE. The 'x86_64' build works, but the main
                 // use for that would be the emulator in Android Studio, and
                 // its OpenGL ES implementations don't seem to work properly
-                // with touchHLE, so we disable it to reduce build time and
+                // with tapHLE, so we disable it to reduce build time and
                 // avoid shipping stuff we haven't meaningfully tested.
                 // Make sure this matches the cargoNdk targets below.
                 abiFilters("arm64-v8a")
@@ -127,14 +127,14 @@ android {
     lint {
         abortOnError = false
     }
-    namespace = "org.touchhle.android"
+    namespace = "org.taphle.android"
 }
 
 cargoNdk {
     // Make sure this matches the android abiFilters above.
     targets = arrayListOf("arm64")
     module = ".."
-    librariesNames = arrayListOf("libtouchHLE.so", "libSDL2.so", "libc++_shared.so")
+    librariesNames = arrayListOf("libtapHLE.so", "libSDL2.so", "libc++_shared.so")
     extraCargoEnv = mapOf(
         "ANDROID_NDK" to android.ndkDirectory.toString(),
         "ANDROID_NDK_HOME" to android.ndkDirectory.toString(),
@@ -170,7 +170,7 @@ cargoNdk {
         "--lib",
         "--no-default-features",
         "--features",
-        "touchHLE_openal_soft_wrapper/static,sdl2/bundled"
+        "tapHLE_openal_soft_wrapper/static,sdl2/bundled"
     )
 }
 

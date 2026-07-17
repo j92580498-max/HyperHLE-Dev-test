@@ -7,7 +7,7 @@
 //!
 //! Atomic operations.
 //!
-//! Right now touchHLE is a single host thread application.
+//! Right now tapHLE is a single host thread application.
 //! Thus, the execution of host functions couldn't be interrupted
 //! by other threads. So we consider host functions to be atomic!
 

@@ -30,7 +30,7 @@ fn CFArrayCreateMutable(
     assert!(capacity == 0); // TODO: fixed capacity support
     assert!(callbacks.is_null()); // TODO: support retaining etc
 
-    msg_class![env; _touchHLE_NSMutableArray_non_retaining new]
+    msg_class![env; _tapHLE_NSMutableArray_non_retaining new]
 }
 
 fn CFArrayGetCount(env: &mut Environment, array: CFArrayRef) -> CFIndex {

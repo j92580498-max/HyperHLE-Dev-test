@@ -927,6 +927,81 @@ dependencies = [
 ]
 
 [[package]]
+name = "tapHLE"
+version = "0.2.3"
+dependencies = [
+ "cargo-license",
+ "cc",
+ "cmake",
+ "corosensei",
+ "digest",
+ "encoding_rs",
+ "gl_generator",
+ "hound",
+ "libc",
+ "mach_object",
+ "md-5",
+ "nibarchive",
+ "owned_ttf_parser",
+ "plist",
+ "quick-xml",
+ "rusttype",
+ "sdl2",
+ "sdl2-sys",
+ "sha1",
+ "symphonia",
+ "tapHLE_dynarmic_wrapper",
+ "tapHLE_gl_bindings",
+ "tapHLE_openal_soft_wrapper",
+ "tapHLE_pvrt_decompress_wrapper",
+ "tapHLE_stb_image_wrapper",
+ "tapHLE_version",
+ "uuid",
+ "windows-sys 0.61.0",
+ "zip",
+]
+
+[[package]]
+name = "tapHLE_dynarmic_wrapper"
+version = "0.2.3"
+dependencies = [
+ "cc",
+ "cmake",
+]
+
+[[package]]
+name = "tapHLE_gl_bindings"
+version = "0.2.3"
+dependencies = [
+ "gl_generator",
+]
+
+[[package]]
+name = "tapHLE_openal_soft_wrapper"
+version = "0.2.3"
+dependencies = [
+ "cmake",
+]
+
+[[package]]
+name = "tapHLE_pvrt_decompress_wrapper"
+version = "0.2.3"
+dependencies = [
+ "cc",
+]
+
+[[package]]
+name = "tapHLE_stb_image_wrapper"
+version = "0.2.3"
+dependencies = [
+ "cc",
+]
+
+[[package]]
+name = "tapHLE_version"
+version = "0.2.3"
+
+[[package]]
 name = "termcolor"
 version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1000,81 +1075,6 @@ checksum = "f4f7f0dd8d50a853a531c426359045b1998f04219d88799810762cd4ad314234"
 dependencies = [
  "serde",
 ]
-
-[[package]]
-name = "touchHLE"
-version = "0.2.3"
-dependencies = [
- "cargo-license",
- "cc",
- "cmake",
- "corosensei",
- "digest",
- "encoding_rs",
- "gl_generator",
- "hound",
- "libc",
- "mach_object",
- "md-5",
- "nibarchive",
- "owned_ttf_parser",
- "plist",
- "quick-xml",
- "rusttype",
- "sdl2",
- "sdl2-sys",
- "sha1",
- "symphonia",
- "touchHLE_dynarmic_wrapper",
- "touchHLE_gl_bindings",
- "touchHLE_openal_soft_wrapper",
- "touchHLE_pvrt_decompress_wrapper",
- "touchHLE_stb_image_wrapper",
- "touchHLE_version",
- "uuid",
- "windows-sys 0.61.0",
- "zip",
-]
-
-[[package]]
-name = "touchHLE_dynarmic_wrapper"
-version = "0.2.3"
-dependencies = [
- "cc",
- "cmake",
-]
-
-[[package]]
-name = "touchHLE_gl_bindings"
-version = "0.2.3"
-dependencies = [
- "gl_generator",
-]
-
-[[package]]
-name = "touchHLE_openal_soft_wrapper"
-version = "0.2.3"
-dependencies = [
- "cmake",
-]
-
-[[package]]
-name = "touchHLE_pvrt_decompress_wrapper"
-version = "0.2.3"
-dependencies = [
- "cc",
-]
-
-[[package]]
-name = "touchHLE_stb_image_wrapper"
-version = "0.2.3"
-dependencies = [
- "cc",
-]
-
-[[package]]
-name = "touchHLE_version"
-version = "0.2.3"
 
 [[package]]
 name = "ttf-parser"
