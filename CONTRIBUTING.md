@@ -8,6 +8,10 @@ accountable for deciding what enters the project.
 Read `AGENTS.md` first. It defines the project priorities, trust boundary,
 artifact rules, and validation expectations.
 
+For selected-game diagnosis, follow `dev-docs/app-debugging-playbook.md` and
+read any sanitized continuation note under `dev-docs/app-notes/` before
+repeating runtime or static-analysis work.
+
 ## What the project wants
 
 The sole product goal is running selected early iPhone OS games well on

@@ -94,8 +94,10 @@ python .\dev-scripts\compatibility.py verify-archive ricky `
 
 If a local file was renamed, add
 `--archive-filename 'the exact Archive.org filename.ipa'`. Hash matching is
-still mandatory. A failed check means the artifact cannot support a verified
-report.
+still mandatory. A failed check means agents must not inspect, execute, or use
+that local copy, even for a provisional diagnosis. Find the exact canonical
+copy through the maintainer rather than treating the mismatch as “close
+enough.” Re-run verification before each report-worthy clean run.
 
 For a manual `tapHLE --info` cross-check, use:
 
@@ -108,6 +110,9 @@ For a manual `tapHLE --info` cross-check, use:
 Work on an app in `compat/<app-slug>`; for example, Ricky work belongs on
 `compat/ricky`. Exploratory checkpoint commits are allowed on that branch so
 investigations are reproducible and do not depend on a dirty worktree.
+When publishing is authorized, push useful checkpoints to the matching remote
+branch so another agent can resume them. Never force-push or otherwise rewrite
+a commit referenced by a compatibility report.
 
 Merge or otherwise promote the branch only after:
 

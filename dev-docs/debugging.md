@@ -2,6 +2,10 @@
 
 See also `building.md`.
 
+For selected-game work, begin with `app-debugging-playbook.md` and any existing
+`app-notes/<app-slug>.md`. They define the hash gate, evidence ladder, bounded
+instrumentation, isolated Windows run protocol, and continuation handoff.
+
 ## Logging
 
 `src/log.rs` provides two logging macros, `log!()` and `log_dbg!()`. The former always prints a log message, whereas the latter only prints a message if the containing module is listed in `ENABLED_MODULES` in the same file.

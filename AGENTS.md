@@ -58,6 +58,9 @@ bash dev-scripts/audit-agent-safety.sh
 
 1. Establish the exact target: game name and version, Windows environment,
    tapHLE revision, launch steps, expected behavior, actual behavior, and log.
+   For an Archive-backed target, run the verification protocol before any app
+   inspection or execution. If the local file does not match the recorded
+   canonical hashes, do not use that copy for any purpose.
 2. Reproduce before editing when the required app is available. If it is not,
    identify the missing evidence and still make progress with source-level or
    synthetic tests where possible.
@@ -70,7 +73,10 @@ bash dev-scripts/audit-agent-safety.sh
    validation with the target game.
 
 The detailed workflow and intake checklist are in
-`dev-docs/agent-workflow.md`.
+`dev-docs/agent-workflow.md`. For app work, also read
+`dev-docs/app-debugging-playbook.md` and the target's sanitized continuation
+note under `dev-docs/app-notes/` when one exists. Resume from its last proven
+milestone and next discriminator instead of repeating settled investigation.
 
 ## Compatibility database and unavailable builds
 
@@ -119,6 +125,8 @@ worktree results never enter the compatibility database.
 - `src/fs.rs`, `src/environment.rs`: guest filesystem and process state.
 - `tests/integration.rs`, `tests/TestApp_source/`: emulator integration probes.
 - `dev-docs/`: building, debugging, style, agent workflow, and upstream sync.
+- `dev-docs/app-notes/`: sanitized, provisional cross-agent compatibility
+  handoffs; these are not compatibility database claims.
 
 Guest-visible API names and ABI constants may intentionally use Apple's naming
 instead of Rust naming. Check nearby export tables and tests before renaming

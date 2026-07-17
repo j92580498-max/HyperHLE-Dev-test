@@ -3,6 +3,10 @@
 This guide expands the contribution loop in `AGENTS.md`. It is optimized for a
 maintainer who names a Windows game and wants useful iteration quickly.
 
+Use `app-debugging-playbook.md` for the efficient runtime/static-analysis
+protocol. If `app-notes/<app-slug>.md` exists, read it first and continue from
+its highest proven milestone rather than rediscovering the same facts.
+
 ## 1. Capture a reproducible case
 
 Record these facts before diagnosing:
@@ -104,3 +108,7 @@ Append the verified report under `compatibility/apps`, run
 
 Agent work should make the next iteration cheaper, even when one turn cannot
 reach the game menu.
+
+When work remains in progress, update the sanitized app note with proven facts,
+rejected hypotheses, dirty diagnostics, and the single next discriminator.
+Never copy raw logs, app code/data, screenshots, or personal paths into it.
