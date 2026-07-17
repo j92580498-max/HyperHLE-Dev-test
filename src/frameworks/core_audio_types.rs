@@ -55,6 +55,16 @@ impl PartialEq<AudioStreamBasicDescription> for AudioStreamBasicDescription {
 }
 
 unsafe impl SafeRead for AudioStreamBasicDescription {}
+
+#[derive(Copy, Clone)]
+#[repr(C, packed)]
+pub struct AudioStreamPacketDescription {
+    pub start_offset: i64,
+    pub variable_frames_in_packet: u32,
+    pub data_byte_size: u32,
+}
+unsafe impl SafeRead for AudioStreamPacketDescription {}
+
 impl std::fmt::Debug for AudioStreamBasicDescription {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let &AudioStreamBasicDescription {
@@ -164,6 +174,7 @@ unsafe impl SafeRead for AudioTimeStamp {}
 pub type AudioFormatID = u32;
 pub const kAudioFormatLinearPCM: AudioFormatID = fourcc(b"lpcm");
 pub const kAudioFormatAppleIMA4: AudioFormatID = fourcc(b"ima4");
+pub const kAudioFormatMPEGLayer3: AudioFormatID = fourcc(b".mp3");
 
 pub type AudioFormatFlags = u32;
 pub const kAudioFormatFlagIsFloat: AudioFormatFlags = 1 << 0;

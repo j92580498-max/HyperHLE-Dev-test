@@ -17,6 +17,7 @@ pub mod openal;
 mod symphonia_formats;
 
 pub use ima4::decode_ima4;
+pub use symphonia_formats::StreamingMp3Decoder;
 
 use crate::fs::{Fs, GuestPath};
 use std::io::Cursor;
