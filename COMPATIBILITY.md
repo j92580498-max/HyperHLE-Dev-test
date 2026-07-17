@@ -9,7 +9,7 @@ or changing a report.
 
 | Game | Exact build | Latest Windows result | tapHLE commit | Tested |
 | --- | --- | --- | --- | --- |
-| [Ricky](#ricky) | 2.1 (`com.nabilchatbi.Ricky`) | Not yet tested | — | — |
+| [Ricky](#ricky) | 2.1 (`com.nabilchatbi.Ricky`) | Reaches menu | `46dce243` | 2026-07-17 |
 
 <a id="ricky"></a>
 ## Ricky
@@ -24,7 +24,13 @@ or changing a report.
 - Availability review: 2026-07-17 (maintainer designated unavailable)
 - Byte-identical Archive filename aliases: `Ricky + Level Editor (v2.1) [Decrypted].ipa`
 
-No verified Windows test report has been recorded yet.
+Latest verified report: **Reaches menu** on 2026-07-17 with tapHLE `46dce243448bd88c8d23a80b38feba749633d7e9`.
+
+Launches on Windows and renders a stable main menu without reproducing the two startup red-black-tree crashes.
+
+Blocker: Gameplay, touch input, audio, saving, and network behavior have not yet been validated.
+
+Feature state: graphics=partial, audio=unknown, input=unknown, saving=unknown, network=unknown.
 
 ## Scope of these records
 

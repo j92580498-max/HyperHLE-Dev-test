@@ -42,7 +42,42 @@
           "notes": "The maintainer designated this build unavailable with no currently marketed App Store alternative. This records project test scope, not a legal conclusion."
         }
       },
-      "reports": []
+      "reports": [
+        {
+          "id": "2026-07-17-windows-menu",
+          "tested_at": "2026-07-17",
+          "taphle_commit": "46dce243448bd88c8d23a80b38feba749633d7e9",
+          "host": {
+            "os": "Windows",
+            "os_version": "Windows 11 Pro 10.0.22631",
+            "architecture": "x86_64",
+            "cpu": "13th Gen Intel Core i7-13700H",
+            "gpu": "Intel Iris Xe Graphics, driver 32.0.101.6881"
+          },
+          "artifact": {
+            "archive_ipa_filename": "Ricky (v2.1) [Cracked].ipa",
+            "sha1": "bfd083ab0533bc0c9fc2d3ec471456d41eceeac3",
+            "verification": "archive-content-hash"
+          },
+          "status": "menu",
+          "booted": true,
+          "summary": "Launches on Windows and renders a stable main menu without reproducing the two startup red-black-tree crashes.",
+          "milestones": [
+            "Completed applicationDidFinishLaunching and applicationDidBecomeActive.",
+            "Rendered the Ricky main menu with Story Mode, Custom Levels, and Setting options.",
+            "Remained alive at the menu for a controlled 30-second observation."
+          ],
+          "blocker": "Gameplay, touch input, audio, saving, and network behavior have not yet been validated.",
+          "features": {
+            "graphics": "partial",
+            "audio": "unknown",
+            "input": "unknown",
+            "saving": "unknown",
+            "network": "unknown"
+          },
+          "notes": "Tested from a clean committed tree using bundled default options only. The window was captured for visual verification and the tester then stopped the process. Automated Windows message injection did not produce an SDL touch event and is not treated as evidence that input is broken."
+        }
+      ]
     }
   ]
 }
