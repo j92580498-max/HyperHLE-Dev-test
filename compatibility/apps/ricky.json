@@ -39,7 +39,7 @@
         "availability": {
           "checked_at": "2026-07-17",
           "status": "maintainer-designated-unavailable",
-          "notes": "The maintainer designated this build unavailable with no currently marketed App Store alternative. This records project test scope, not a legal conclusion."
+          "notes": "The maintainer designated this build unavailable with no currently marketed App Store alternative. Apple's US lookup for the exact com.nabilchatbi.Ricky bundle identifier returned zero results on 2026-07-17. This records project test scope, not a legal conclusion."
         }
       },
       "reports": [
@@ -111,6 +111,41 @@
           },
           "supersedes": "2026-07-17-windows-menu",
           "notes": "Tested from a clean exact-commit release build after a full Archive.org verification of the IPA immediately before the run, using bundled default options and a 480x320 client. Every input event revalidated that the foreground window belonged to the spawned tapHLE process. A System.Drawing Graphics.CopyFromScreen capture of the OpenGL window returned a black bitmap and was excluded from evidence; it is not evidence of a rendering regression. Audio remains partial because this automated run proved queue decode/prime progress and process survival, not audible output."
+        },
+        {
+          "id": "2026-07-17-windows-story-in-game-clean-exit",
+          "tested_at": "2026-07-17",
+          "taphle_commit": "e2d51c6c3f892275cdcfad8e43235d54d34eac11",
+          "host": {
+            "os": "Windows",
+            "os_version": "Windows 11 Pro 10.0.22631",
+            "architecture": "x86_64",
+            "cpu": "13th Gen Intel Core i7-13700H",
+            "gpu": "Intel Iris Xe Graphics, driver 32.0.101.6881"
+          },
+          "artifact": {
+            "archive_ipa_filename": "Ricky (v2.1) [Cracked].ipa",
+            "sha1": "bfd083ab0533bc0c9fc2d3ec471456d41eceeac3",
+            "verification": "archive-content-hash"
+          },
+          "status": "in-game",
+          "booted": true,
+          "summary": "Reproduces the first playable Story level and movement-input milestone on Windows, then closes naturally through Ricky's secondary Mono pthread exit path.",
+          "milestones": [
+            "Navigated Story Mode, New Game, PLAY, and both story advances with process-scoped foreground input in a fresh sandbox.",
+            "Reached the first playable Story level, sent a two-second hold to the established on-screen right movement control, and remained alive for a further ten-second observation.",
+            "Processed applicationDidResignActive and applicationWillTerminate after a PID-verified WM_CLOSE, then exited with code 0 inside five seconds without forced termination, panic output, or a new Windows Application Error event."
+          ],
+          "blocker": "Default Windows-device audibility, action buttons, level completion, hazards/death/restart, saving, network behavior, and long-session behavior of the 0x40-byte allocation quarantine have not been validated.",
+          "features": {
+            "graphics": "partial",
+            "audio": "partial",
+            "input": "partial",
+            "saving": "unknown",
+            "network": "unknown"
+          },
+          "supersedes": "2026-07-17-windows-story-in-game",
+          "notes": "The full Archive.org content-hash, embedded identity, and tapHLE --info verification was repeated immediately before recording this report. The exact release binary identified itself as e2d51c6c. Every input reacquired and verified the spawned process's 480x320 foreground window. A separate failed-focus attempt was discarded before its first tap. The successful Wave File Writer output was a valid 39.46-second 44.1 kHz stereo signed 16-bit PCM capture containing non-silent signal, but audio remains partial because the default device was not heard and the multi-context wave-backend attribution caveat still applies."
         }
       ]
     }

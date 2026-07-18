@@ -151,14 +151,25 @@ secondary pthread's top-level start routine, which is the path used by Ricky's
 Mono wrapper. Main-thread exit, exit from nested host-to-guest callbacks,
 pthread cleanup handlers, and thread-specific-data destructors remain
 unsupported. The clean-exit run observed the menu rather than replaying the
-full Story route, so it does not replace the existing in-game compatibility
-report.
+full Story route, so it did not by itself replace the existing in-game
+compatibility report.
+
+A later fresh-sandbox run of the same exact build and artifact used the proven
+foreground input recipe to replay Story Mode through the first playable level,
+sent the two-second right-control hold, remained alive for another ten seconds,
+and reached the harness's final stage. Its PID-verified close also exited with
+code 0 without forced termination, panic/crash output, or a new Windows
+Application Error event. The full Archive verification was repeated before
+recording compatibility report
+`2026-07-17-windows-story-in-game-clean-exit`. The run's valid 39.46-second
+stereo 44.1 kHz signed 16-bit wave output contained non-silent signal, but the
+default Windows device was not heard and the known multi-context attribution
+caveat still applies.
 
 ## Next compatibility frontier
 
 Confirm sound through the default Windows backend by listening before promoting
 audio to `working`. Then exercise action buttons, hazards, death/restart, level
-completion, and saving, and repeat the bounded close after a full gameplay
-route. Run a longer gameplay session while monitoring memory because the
-`0x40`-byte allocation quarantine deliberately retains matching chunks for the
-process lifetime.
+completion, and saving. Run a longer gameplay session while monitoring memory
+because the `0x40`-byte allocation quarantine deliberately retains matching
+chunks for the process lifetime.

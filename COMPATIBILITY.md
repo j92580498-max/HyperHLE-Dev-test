@@ -9,7 +9,7 @@ or changing a report.
 
 | Game | Exact build | Latest Windows result | tapHLE commit | Tested |
 | --- | --- | --- | --- | --- |
-| [Ricky](#ricky) | 2.1 (`com.nabilchatbi.Ricky`) | In game | `d9bc6a5d` | 2026-07-17 |
+| [Ricky](#ricky) | 2.1 (`com.nabilchatbi.Ricky`) | In game | `e2d51c6c` | 2026-07-17 |
 
 <a id="ricky"></a>
 ## Ricky
@@ -24,11 +24,11 @@ or changing a report.
 - Availability review: 2026-07-17 (maintainer designated unavailable)
 - Byte-identical Archive filename aliases: `Ricky + Level Editor (v2.1) [Decrypted].ipa`
 
-Latest verified report: **In game** on 2026-07-17 with tapHLE `d9bc6a5d02322f1902e14ba4a451e8b3a4ade2ee`.
+Latest verified report: **In game** on 2026-07-17 with tapHLE `e2d51c6c3f892275cdcfad8e43235d54d34eac11`.
 
-Reaches the first playable Story level on Windows through controlled process-scoped foreground input and primes Ricky's packetized MP3 AudioQueue without the prior format error or output-pointer panic.
+Reproduces the first playable Story level and movement-input milestone on Windows, then closes naturally through Ricky's secondary Mono pthread exit path.
 
-Blocker: Audible audio output and continuity, action buttons, level completion, hazards/death/restart, saving, and long-session behavior of the 0x40-byte allocation quarantine have not been validated.
+Blocker: Default Windows-device audibility, action buttons, level completion, hazards/death/restart, saving, network behavior, and long-session behavior of the 0x40-byte allocation quarantine have not been validated.
 
 Feature state: graphics=partial, audio=partial, input=partial, saving=unknown, network=unknown.
 

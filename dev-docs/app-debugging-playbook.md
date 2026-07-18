@@ -135,6 +135,15 @@ and stop only the exact process launched by the run. Visual inspection of a
 screenshot can support a rendering observation, but the screenshot stays in
 the ignored temporary directory.
 
+If Windows foreground locking rejects `SetForegroundWindow`, temporarily
+attach the harness thread's input queue to both the thread that currently owns
+the foreground and the verified tapHLE window thread. Re-read both handles and
+thread IDs on every bounded retry, detach in reverse order before sleeping, and
+verify the exact target handle again after positioning the cursor and before
+injecting input. Do not send a synthetic Alt key while an unrelated app owns
+the foreground; it can alter that app's state. Abort safely if dual attachment
+cannot establish ownership.
+
 Reuse a proven input recipe. Change one step at the frontier rather than
 inventing a new route on every launch. A successful click path is evidence and
 belongs in the app note.
