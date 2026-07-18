@@ -237,6 +237,24 @@ fn pthread_equal(env: &mut Environment, thread1: pthread_t, thread2: pthread_t) 
     }
 }
 
+fn pthread_exit(env: &mut Environment, return_value: MutVoidPtr) {
+    assert_ne!(
+        env.current_thread, 0,
+        "pthread_exit on the main guest thread is not implemented"
+    );
+    assert_eq!(env.cpu.regs()[0], return_value.to_bits());
+
+    // Preserve r0 and leave the top-level host call around this secondary
+    // thread's start routine. Set LR as well as PC because a four-byte lazy
+    // symbol stub branches to LR after the host implementation returns.
+    // Ricky's Mono wrapper calls pthread_exit from this supported top-level
+    // path. Cleanup handlers and thread-specific-data destructors are not yet
+    // implemented.
+    let thread_exit_routine = env.dyld.thread_exit_routine();
+    env.cpu.regs_mut()[crate::cpu::Cpu::LR] = thread_exit_routine.addr_with_thumb_bit();
+    env.cpu.branch(thread_exit_routine);
+}
+
 pub fn pthread_self(env: &mut Environment) -> pthread_t {
     let current_thread = env.current_thread;
 
@@ -421,6 +439,7 @@ pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(pthread_attr_destroy(_)),
     export_c_func!(pthread_create(_, _, _, _)),
     export_c_func!(pthread_equal(_, _)),
+    export_c_func!(pthread_exit(_)),
     export_c_func!(pthread_self()),
     export_c_func!(pthread_join(_, _)),
     export_c_func!(pthread_detach(_)),

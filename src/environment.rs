@@ -115,6 +115,7 @@ pub struct Environment {
     /// Set to [true] when created using [Environment::new_without_app].
     pub dump_file: Option<std::fs::File>,
     pub is_app_picker: bool,
+    shutdown_requested_by: Option<ThreadId>,
     yielder: *const Yielder<Environment, Environment>,
     // The amount of ticks to run for Some(value), or single-stepping for None.
     // Sadly, setting ticks to 1 does not step properly, so Option is required.
@@ -646,6 +647,7 @@ impl Environment {
             env_vars: Default::default(),
             dump_file: None,
             is_app_picker: false,
+            shutdown_requested_by: None,
             yielder: std::ptr::null(),
             remaining_ticks: None,
             panic_cell: Rc::new(Cell::new(None)),
@@ -781,6 +783,7 @@ impl Environment {
             env_vars: Default::default(),
             dump_file: None,
             is_app_picker: true,
+            shutdown_requested_by: None,
             yielder: std::ptr::null(),
             remaining_ticks: None,
             panic_cell: Rc::new(Cell::new(None)),
@@ -840,6 +843,7 @@ impl Environment {
             env_vars: HashMap::new(),
             dump_file: None,
             is_app_picker: true,
+            shutdown_requested_by: None,
             yielder: std::ptr::null(),
             remaining_ticks: None,
             panic_cell: Rc::new(Cell::new(None)),
@@ -1381,6 +1385,17 @@ impl Environment {
                 w.on_main_stack = true;
             }
 
+            // A lifecycle callback can legitimately terminate its current
+            // pthread before UIKit reaches its final process::exit call. The
+            // quit event has already been consumed, so complete the persisted
+            // host shutdown here instead of resuming unrelated guest threads.
+            // Match UIKit's existing process-exit behavior rather than trying
+            // to unwind every remaining suspended coroutine during shutdown.
+            if kill_current_thread && self.shutdown_requested_by == Some(self.current_thread) {
+                log_dbg!("Exited callback thread completed the requested host shutdown");
+                std::process::exit(0);
+            }
+
             let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 // To maintain responsiveness when moving the window and so on,
                 // we need to poll for events occasionally, even if the app
@@ -1625,7 +1640,21 @@ impl Environment {
                         }
                     }
                     dyld::Dyld::SVC_THREAD_EXIT => {
-                        unimplemented!("TODO: implement exit routines for threads!")
+                        assert_eq!(
+                            svc_pc,
+                            self.dyld.thread_exit_routine().addr_without_thumb_bit()
+                        );
+                        assert_ne!(
+                            self.current_thread, 0,
+                            "pthread_exit on the main guest thread is not implemented"
+                        );
+                        // This supports pthread_exit from a secondary thread's
+                        // top-level start routine. It returns from that routine's
+                        // host call, which records r0, marks the thread inactive,
+                        // and lets the coroutine finish without forced unwinding.
+                        // Nested host-to-guest calls and pthread cleanup/TSD
+                        // destructors are not implemented by this path.
+                        ThreadNextAction::ReturnToHost
                     }
                 }
             }
@@ -1698,6 +1727,11 @@ impl Environment {
             }
         }
         assert!(!self.threads[self.current_thread].is_blocked());
+    }
+
+    /// Persist a host close request across guest lifecycle callbacks.
+    pub fn request_shutdown(&mut self) {
+        self.shutdown_requested_by = Some(self.current_thread);
     }
 
     /// Find the next thread to execute, and set it up to be switched to.

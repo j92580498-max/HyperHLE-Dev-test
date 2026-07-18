@@ -1473,6 +1473,51 @@ int test_thread_suspend_resume() {
   return 0;
 }
 
+static int pthread_exit_returned = 0;
+static int pthread_exit_sentinel;
+static int pthread_return_sentinel;
+
+static void *pthread_exit_thread_func(void *arg) {
+  // Calling through a volatile function pointer prevents the compiler from
+  // using pthread_exit's noreturn declaration to remove the check below.
+  void (*volatile exit_func)(void *) = pthread_exit;
+  exit_func(&pthread_exit_sentinel);
+  pthread_exit_returned = 1;
+  return arg;
+}
+
+static void *pthread_return_thread_func(void *arg) { return arg; }
+
+int test_pthread_exit_from_start_routine() {
+  pthread_exit_returned = 0;
+
+  pthread_t exit_thread;
+  if (pthread_create(&exit_thread, NULL, pthread_exit_thread_func,
+                     &pthread_return_sentinel) != 0)
+    return -1;
+
+  void *exit_result = NULL;
+  if (pthread_join(exit_thread, &exit_result) != 0)
+    return -2;
+  if (exit_result != &pthread_exit_sentinel)
+    return -3;
+  if (pthread_exit_returned != 0)
+    return -4;
+
+  pthread_t return_thread;
+  if (pthread_create(&return_thread, NULL, pthread_return_thread_func,
+                     &pthread_return_sentinel) != 0)
+    return -5;
+
+  void *return_result = NULL;
+  if (pthread_join(return_thread, &return_result) != 0)
+    return -6;
+  if (return_result != &pthread_return_sentinel)
+    return -7;
+
+  return 0;
+}
+
 int done = 0, done2 = 0;
 pthread_mutex_t m;
 pthread_cond_t c, c2;
@@ -6411,6 +6456,7 @@ struct {
     FUNC_DEF(test_sem),
     FUNC_DEF(test_mtsem),
     FUNC_DEF(test_thread_suspend_resume),
+    FUNC_DEF(test_pthread_exit_from_start_routine),
     FUNC_DEF(test_CGAffineTransform),
     FUNC_DEF(test_strncpy),
     FUNC_DEF(test_strncat),

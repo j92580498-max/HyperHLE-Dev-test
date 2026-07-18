@@ -406,6 +406,10 @@ pub(super) fn UIApplicationMain(
 
 /// Tell the app it's about to quit and then exit.
 pub(super) fn exit(env: &mut Environment) {
+    // A delegate may terminate the pthread carrying this callback. Preserve
+    // the close request so the executor can still finish shutting down.
+    env.request_shutdown();
+
     let ui_application: id = msg_class![env; UIApplication sharedApplication];
 
     let center: id = msg_class![env; NSNotificationCenter defaultCenter];
