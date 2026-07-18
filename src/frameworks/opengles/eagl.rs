@@ -399,11 +399,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 /// slop is not desirable, because if the game is running slowly for a long time
 /// and suddenly speeds back up, it will then run too fast for a long time.
 fn limit_framerate(next_frame_due: &mut Option<Instant>, options: &Options) -> Option<Duration> {
-    let interval = if let Some(fps) = options.fps_limit {
-        1.0 / fps
-    } else {
-        return None;
-    };
+    let interval = 1.0 / options.fps_limit?;
     let interval_rust = Duration::from_secs_f64(interval);
 
     let &mut Some(current_frame_due) = next_frame_due else {

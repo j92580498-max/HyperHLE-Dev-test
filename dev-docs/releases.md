@@ -43,6 +43,12 @@ tapHLE-v0.3.0-alpha.1-Windows-x86_64.zip
 Windows x86_64 is the only release artifact. macOS remains a best-effort
 development validation target, and Android is not a release target.
 
+The repository pins its Rust compiler, Clippy, and Rustfmt version in
+`rust-toolchain.toml`. Update that file deliberately, run the full lint and
+test suite with the new toolchain, and record any required source changes in a
+normal reviewed commit. Release builds must not depend on whichever stable
+toolchain happened to be installed on a runner that day.
+
 ## Release requirements
 
 A numbered release must:
