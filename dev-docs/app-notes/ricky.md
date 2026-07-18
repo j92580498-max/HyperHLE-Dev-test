@@ -15,7 +15,7 @@ Last updated: 2026-07-17.
 - Never use the older local `Ricky (v2.1) [Decrypted].ipa`; it does not match
   the canonical artifact hash.
 
-## Highest clean milestone
+## Highest gameplay milestone
 
 Commit `d9bc6a5d02322f1902e14ba4a451e8b3a4ade2ee` launches the exact artifact,
 navigates Story Mode, enters the first playable level, is sent a two-second hold
@@ -75,6 +75,10 @@ strategies.
 - `d9bc6a5d`: `AudioQueuePrime` accepts Ricky's non-null prepared-frame output
   pointer, implements zero/requested-frame preparation semantics, and reports
   the number of frames prepared.
+- `e2d51c6c`: `_pthread_exit` terminates Ricky's top-level secondary Mono
+  pthread through the existing guest thread-exit trampoline. A UIKit close
+  request is persisted for the exact callback-carrying thread so that thread
+  completion finishes host shutdown without forced coroutine unwinding.
 - A Mono signal/exception recovery implementation would not fix the observed
   native bundled-libstdc++ tree fault; that path was investigated and rejected.
 
@@ -127,21 +131,34 @@ MP3 streaming. It does not establish default Windows audio-device routing or
 that a person heard artifact-free sound, so the compatibility feature remains
 `partial`.
 
-## Clean-exit frontier
+## Clean-exit result
 
-A process-scoped `WM_CLOSE` reaches `applicationWillResignActive`,
-`applicationWillTerminate`, immediate AudioQueue stop/reset, and queue disposal.
-Shutdown then panics while lazily resolving the unimplemented `_pthread_exit`
-symbol, and the harness must terminate the exact process after its five-second
-grace period. Treat this as the next concrete API/scheduler boundary; do not
-misdiagnose it as an MP3 or OpenAL failure.
+The exact canonical IPA passed two fresh-sandbox, process-scoped `WM_CLOSE`
+runs using the committed `e2d51c6c3f892275cdcfad8e43235d54d34eac11`
+release build. The second run recorded all of the following after a ten-second
+menu observation:
+
+- the local IPA SHA-256 exactly matched the canonical value above;
+- the launched binary identified itself as `e2d51c6c`;
+- `applicationDidResignActive` and `applicationWillTerminate` ran;
+- the process exited with code 0 inside the five-second grace period;
+- the harness did not force-terminate the process;
+- captured output contained no Rust panic or crash signature; and
+- Windows recorded no new tapHLE Application Error event during the run.
+
+The implementation is deliberately bounded to `_pthread_exit` reached from a
+secondary pthread's top-level start routine, which is the path used by Ricky's
+Mono wrapper. Main-thread exit, exit from nested host-to-guest callbacks,
+pthread cleanup handlers, and thread-specific-data destructors remain
+unsupported. The clean-exit run observed the menu rather than replaying the
+full Story route, so it does not replace the existing in-game compatibility
+report.
 
 ## Next compatibility frontier
 
-Identify and implement the smallest correct `_pthread_exit`/thread-termination
-behavior, then confirm a clean bounded quit. Separately confirm sound through
-the default Windows backend by listening before promoting audio to `working`.
-Then exercise action buttons, hazards, death/restart, level completion, and
-saving. Run a longer gameplay session while monitoring memory because the
+Confirm sound through the default Windows backend by listening before promoting
+audio to `working`. Then exercise action buttons, hazards, death/restart, level
+completion, and saving, and repeat the bounded close after a full gameplay
+route. Run a longer gameplay session while monitoring memory because the
 `0x40`-byte allocation quarantine deliberately retains matching chunks for the
 process lifetime.

@@ -139,6 +139,43 @@ Reuse a proven input recipe. Change one step at the frontier rather than
 inventing a new route on every launch. A successful click path is evidence and
 belongs in the app note.
 
+## Treat shutdown as an observable boundary
+
+Test process shutdown separately after reaching a meaningful milestone. Post
+`WM_CLOSE` only to the verified window owned by the spawned tapHLE PID, allow a
+short fixed grace period, and record both the process exit code and whether the
+harness had to kill it. A lifecycle callback or the absence of a Rust panic is
+not sufficient evidence of a clean exit.
+
+On Windows, take an Application event-log baseline before posting the close and
+then query new event ID 1000 entries for `tapHLE.exe`. Native structured
+exception handling or coroutine forced unwinding can produce an access
+violation after guest shutdown logs appear normal. A clean result requires a
+natural zero exit, no forced termination, and no new matching crash event. Use
+a fresh run directory when confirming a fix so persisted app state cannot mask
+the path.
+
+PowerShell scripts that launch the emulator through
+`System.Diagnostics.Process` may leave `$LASTEXITCODE` unset even after a
+successful run. Validate the script with `$?` and its explicit `EXIT_CODE` and
+`FORCED_TERMINATION` fields instead of turning an unset value into a false
+failure.
+
+When shutdown reaches a missing thread-termination API, first establish the
+guest thread ID and whether the call comes from the pthread's top-level start
+routine or from a nested host-to-guest callback. These paths cannot be assumed
+to unwind the same host coroutine. Prefer a normal return from the coroutine
+for the proven path; forced unwinding suspended Windows coroutines can fault in
+the host runtime.
+
+Also account for dynamic-link stub shape. A four-byte lazy symbol stub branches
+to the guest LR after its host implementation returns, while larger stubs may
+continue at the PC set by that implementation. A non-returning HLE function
+must redirect all control-flow state required by each supported stub shape.
+State the boundary explicitly: supporting top-level secondary-thread exit does
+not imply support for main-thread exit, nested callbacks, pthread cleanup
+handlers, or thread-specific-data destructors.
+
 ## Verify streaming audio in layers
 
 Separate four questions: did the decoder produce PCM, did buffers recycle, did
