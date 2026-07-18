@@ -71,8 +71,9 @@ class CompatibilityError(Exception):
 
 
 def rating_label(status: str) -> str:
-    stars, label = STATUS_RATINGS[status]
-    return f"{'⭐' * stars} {label}"
+    rating, label = STATUS_RATINGS[status]
+    star_bar = "★" * rating + "☆" * (5 - rating)
+    return f"{star_bar} ({rating}/5) {label}"
 
 
 def plain_rating_label(status: str) -> str:
@@ -715,15 +716,16 @@ def markdown_for_records(records: list[tuple[Path, dict[str, object]]]) -> str:
         "",
         "## Rating scale",
         "",
-        "- ⭐ Broken — The game does not reach usable content.",
-        "- ⭐⭐ Starts — An intro or menu works, but gameplay does not.",
-        "- ⭐⭐⭐ In game — Some gameplay works, but major problems remain.",
-        "- ⭐⭐⭐⭐ Playable — The whole game can be played, with small problems.",
-        "- ⭐⭐⭐⭐⭐ Fully working — Everything important works.",
+        f"- {rating_label('launch-blocked')} — The game does not reach usable content.",
+        f"- {rating_label('boots')} — An intro or menu works, but gameplay does not.",
+        f"- {rating_label('in-game')} — Some gameplay works, but major problems remain.",
+        f"- {rating_label('playable-with-issues')} — The whole game can be played, with small problems.",
+        f"- {rating_label('playable')} — Everything important works.",
         "- — Not tested — There is no verified tapHLE Windows result.",
         "",
-        "Stars are a short summary. The exact milestone and feature states below",
-        "show what was really tested. The scale is adapted from the",
+        "Filled and empty stars plus the numeric score are a short summary. The",
+        "exact milestone and feature states below show what was really tested.",
+        "The scale is adapted from the",
         "[touchHLE app database](https://appdb.touchhle.org/) under CC BY 4.0.",
         "",
         "| Game | Exact build | Latest Windows result | tapHLE commit | Tested |",

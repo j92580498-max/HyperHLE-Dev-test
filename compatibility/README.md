@@ -10,16 +10,17 @@ Archive.org IPA filenames, and an append-only sequence of reports. The root
 
 The public list uses five simple levels:
 
-- ⭐ Broken — The game does not reach usable content.
-- ⭐⭐ Starts — An intro or menu works, but gameplay does not.
-- ⭐⭐⭐ In game — Some gameplay works, but major problems remain.
-- ⭐⭐⭐⭐ Playable — The whole game can be played, with small problems.
-- ⭐⭐⭐⭐⭐ Fully working — Everything important works.
+- ★☆☆☆☆ (1/5) Broken — The game does not reach usable content.
+- ★★☆☆☆ (2/5) Starts — An intro or menu works, but gameplay does not.
+- ★★★☆☆ (3/5) In game — Some gameplay works, but major problems remain.
+- ★★★★☆ (4/5) Playable — The whole game can be played, with small problems.
+- ★★★★★ (5/5) Fully working — Everything important works.
 - — Not tested — There is no verified tapHLE Windows result.
 
-The stars are only a short summary. The exact report, feature states, app file,
-tapHLE commit, and Windows host say what was really tested. `boots` and `menu`
-both display as two stars, while the stored status keeps the difference.
+The filled and empty stars and numeric score are only a short summary. The
+exact report, feature states, app file, tapHLE commit, and Windows host say what
+was really tested. `boots` and `menu` both display as two stars, while the
+stored status keeps the difference.
 
 The scale is adapted from the [touchHLE app database](https://appdb.touchhle.org/),
 whose database content is published under the Creative Commons Attribution 4.0

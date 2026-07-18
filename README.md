@@ -53,11 +53,11 @@ Windows x86_64 releases, while green `trunk` builds are commit-identified
 previews. The versioning and packaging policy is documented in
 `dev-docs/releases.md`.
 
-Exact, hash-checked results are published in [the compatibility
-database](COMPATIBILITY.md). For an old game that is no longer sold, a record
-may link to the exact Archive.org file that was tested. The file name, hashes,
-and app version must all match. Read `compatibility/README.md` for the full
-rules. These rules do not cover a game that is still sold, and the project
+**[See the compatibility ratings (1–5 stars)](COMPATIBILITY.md).** Results are
+hash-checked for exact app builds. For an old game that is no longer sold, a
+record may link to the exact Archive.org file that was tested. The file name,
+hashes, and app version must all match. Read `compatibility/README.md` for the
+full rules. These rules do not cover a game that is still sold, and the project
 respects DMCA notices and rightsholder requests.
 
 The project is not affiliated with or endorsed by Apple Inc. iPhone, iOS,
