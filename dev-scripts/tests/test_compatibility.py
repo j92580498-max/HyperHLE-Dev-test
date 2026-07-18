@@ -50,11 +50,15 @@ class CompatibilityTests(unittest.TestCase):
         self.assertIn("## Rating scale", rendered)
         self.assertIn("⭐⭐⭐ In game", rendered)
         self.assertIn("audio=partial", rendered)
+        self.assertIn("- Exact tested IPA filename:", rendered)
+        self.assertNotIn("- Exact target IPA filename:", rendered)
 
         record = copy.deepcopy(self.record)
         record["versions"][0]["reports"] = []
         rendered = compatibility.markdown_for_records([(self.record_path, record)])
         self.assertIn("— Not tested", rendered)
+        self.assertIn("- Exact target IPA filename:", rendered)
+        self.assertNotIn("- Exact tested IPA filename:", rendered)
 
     def test_noncanonical_archive_url_is_rejected(self):
         record = copy.deepcopy(self.record)

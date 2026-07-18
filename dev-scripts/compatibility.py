@@ -772,6 +772,7 @@ def markdown_for_records(records: list[tuple[Path, dict[str, object]]]) -> str:
                 for file_record in archive["files"]
                 if isinstance(file_record, dict) and file_record.get("tested") is True
             )
+            filename_role = "tested" if reports else "target"
             lines.extend(
                 [
                     "",
@@ -780,7 +781,7 @@ def markdown_for_records(records: list[tuple[Path, dict[str, object]]]) -> str:
                     f"- Bundle identifier: `{identity['bundle_identifier']}`",
                     f"- Minimum OS version: {identity['minimum_os_version']}",
                     f"- Archive source: [{archive['identifier']}]({archive['item_url']})",
-                    f"- Exact tested IPA filename: `{tested_file['ipa_filename']}`",
+                    f"- Exact {filename_role} IPA filename: `{tested_file['ipa_filename']}`",
                     f"- Source verification: {str(archive['verification']['state']).replace('-', ' ')}",
                     f"- Availability review: {archive['availability']['checked_at']} ({str(archive['availability']['status']).replace('-', ' ')})",
                 ]
