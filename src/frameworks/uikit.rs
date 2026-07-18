@@ -82,6 +82,57 @@ pub const DYLIB: crate::dyld::HostDylib = crate::dyld::HostDylib {
     ],
 };
 
+#[cfg(test)]
+mod tests {
+    use super::{ui_view, ui_view_controller::ui_navigation_controller, DYLIB};
+
+    #[test]
+    fn navigation_nib_classes_are_exported_with_coder_paths() {
+        let exported_names: Vec<_> = DYLIB
+            .class_exports
+            .iter()
+            .flat_map(|classes| classes.iter().map(|(name, _)| *name))
+            .collect();
+
+        assert!(exported_names.contains(&"UINavigationBar"));
+        assert!(exported_names.contains(&"UINavigationItem"));
+
+        let navigation_bar = &ui_navigation_controller::CLASSES
+            .iter()
+            .find(|(name, _)| *name == "UINavigationBar")
+            .expect("UINavigationBar is missing from its class module")
+            .1;
+        assert_eq!(navigation_bar.superclass, Some("UIView"));
+
+        let ui_view = &ui_view::CLASSES
+            .iter()
+            .find(|(name, _)| *name == "UIView")
+            .expect("UIView is missing from its class module")
+            .1;
+        assert!(
+            ui_view
+                .instance_methods
+                .iter()
+                .any(|(selector, _)| *selector == "initWithCoder:"),
+            "UINavigationBar's UIView superclass cannot restore keyed NIB state",
+        );
+
+        let navigation_item = &ui_navigation_controller::CLASSES
+            .iter()
+            .find(|(name, _)| *name == "UINavigationItem")
+            .expect("UINavigationItem is missing from its class module")
+            .1;
+        assert_eq!(navigation_item.superclass, Some("NSObject"));
+        assert!(
+            navigation_item
+                .instance_methods
+                .iter()
+                .any(|(selector, _)| *selector == "initWithCoder:"),
+            "UINavigationItem cannot be restored from a keyed NIB",
+        );
+    }
+}
+
 #[derive(Default)]
 pub struct State {
     ui_accelerometer: ui_accelerometer::State,

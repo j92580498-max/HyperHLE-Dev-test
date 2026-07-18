@@ -152,4 +152,20 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 @end
 
+// Early Interface Builder archives may instantiate these objects even when
+// the app keeps its navigation bar hidden. UINavigationBar inherits UIView's
+// allocation and keyed-unarchiving behavior. UINavigationItem needs its own
+// placeholder initializer because NSObject does not implement initWithCoder:.
+
+@implementation UINavigationBar: UIView
+@end
+
+@implementation UINavigationItem: NSObject
+
+- (id)initWithCoder:(id)_coder {
+    this
+}
+
+@end
+
 };
