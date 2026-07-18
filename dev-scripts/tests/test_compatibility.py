@@ -32,12 +32,12 @@ class CompatibilityTests(unittest.TestCase):
 
     def test_public_rating_scale_covers_every_stored_status(self):
         expected = {
-            "launch-blocked": "⭐ Broken",
-            "boots": "⭐⭐ Starts",
-            "menu": "⭐⭐ Starts",
-            "in-game": "⭐⭐⭐ In game",
-            "playable-with-issues": "⭐⭐⭐⭐ Playable",
-            "playable": "⭐⭐⭐⭐⭐ Fully working",
+            "launch-blocked": "★☆☆☆☆ (1/5) Broken",
+            "boots": "★★☆☆☆ (2/5) Starts",
+            "menu": "★★☆☆☆ (2/5) Starts",
+            "in-game": "★★★☆☆ (3/5) In game",
+            "playable-with-issues": "★★★★☆ (4/5) Playable",
+            "playable": "★★★★★ (5/5) Fully working",
         }
         self.assertEqual(set(compatibility.STATUS_LABELS), set(expected))
         for status, label in expected.items():
@@ -48,7 +48,7 @@ class CompatibilityTests(unittest.TestCase):
     def test_renderer_shows_rating_legend_and_keeps_feature_detail(self):
         rendered = compatibility.markdown_for_records([(self.record_path, self.record)])
         self.assertIn("## Rating scale", rendered)
-        self.assertIn("⭐⭐⭐ In game", rendered)
+        self.assertIn("★★★☆☆ (3/5) In game", rendered)
         self.assertIn("audio=partial", rendered)
         self.assertIn("- Exact tested IPA filename:", rendered)
         self.assertNotIn("- Exact target IPA filename:", rendered)

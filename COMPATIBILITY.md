@@ -9,20 +9,21 @@ or changing a report.
 
 ## Rating scale
 
-- ⭐ Broken — The game does not reach usable content.
-- ⭐⭐ Starts — An intro or menu works, but gameplay does not.
-- ⭐⭐⭐ In game — Some gameplay works, but major problems remain.
-- ⭐⭐⭐⭐ Playable — The whole game can be played, with small problems.
-- ⭐⭐⭐⭐⭐ Fully working — Everything important works.
+- ★☆☆☆☆ (1/5) Broken — The game does not reach usable content.
+- ★★☆☆☆ (2/5) Starts — An intro or menu works, but gameplay does not.
+- ★★★☆☆ (3/5) In game — Some gameplay works, but major problems remain.
+- ★★★★☆ (4/5) Playable — The whole game can be played, with small problems.
+- ★★★★★ (5/5) Fully working — Everything important works.
 - — Not tested — There is no verified tapHLE Windows result.
 
-Stars are a short summary. The exact milestone and feature states below
-show what was really tested. The scale is adapted from the
+Filled and empty stars plus the numeric score are a short summary. The
+exact milestone and feature states below show what was really tested.
+The scale is adapted from the
 [touchHLE app database](https://appdb.touchhle.org/) under CC BY 4.0.
 
 | Game | Exact build | Latest Windows result | tapHLE commit | Tested |
 | --- | --- | --- | --- | --- |
-| [Ricky](#ricky) | 2.1 (`com.nabilchatbi.Ricky`) | ⭐⭐⭐ In game | `e2d51c6c` | 2026-07-17 |
+| [Ricky](#ricky) | 2.1 (`com.nabilchatbi.Ricky`) | ★★★☆☆ (3/5) In game | `e2d51c6c` | 2026-07-17 |
 
 <a id="ricky"></a>
 ## Ricky
@@ -37,7 +38,7 @@ show what was really tested. The scale is adapted from the
 - Availability review: 2026-07-17 (maintainer designated unavailable)
 - Byte-identical Archive filename aliases: `Ricky + Level Editor (v2.1) [Decrypted].ipa`
 
-Latest verified report: **⭐⭐⭐ In game** on 2026-07-17 with tapHLE `e2d51c6c3f892275cdcfad8e43235d54d34eac11`.
+Latest verified report: **★★★☆☆ (3/5) In game** on 2026-07-17 with tapHLE `e2d51c6c3f892275cdcfad8e43235d54d34eac11`.
 
 Reproduces the first playable Story level and movement-input milestone on Windows, then closes naturally through Ricky's secondary Mono pthread exit path.
 
