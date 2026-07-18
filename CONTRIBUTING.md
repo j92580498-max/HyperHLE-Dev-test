@@ -8,15 +8,19 @@ accountable for deciding what enters the project.
 Read `AGENTS.md` first. It defines the project priorities, trust boundary,
 artifact rules, and validation expectations.
 
+If you are new to programming and want to use a coding agent for one game,
+start with `HELP_A_GAME.md`. It includes a prompt you can copy.
+
 For selected-game diagnosis, follow `dev-docs/app-debugging-playbook.md` and
 read any sanitized continuation note under `dev-docs/app-notes/` before
 repeating runtime or static-analysis work.
 
 ## What the project wants
 
-The sole product goal is running selected early iPhone OS games well on
-Windows. The most useful contributions address a reproducible blocker in a
-specific game or prevent a regression in behavior that already works.
+The product goal is broad compatibility with early iPhone OS games on Windows.
+The fastest way to move toward it is often to fix a real blocker in one game.
+Contributors may choose games they care about. Nobody is required to take a
+game request from someone else.
 
 macOS changes are welcome when they enable compilation, debugging, behavioral
 comparison, or shared code needed by Windows. Android development is not in

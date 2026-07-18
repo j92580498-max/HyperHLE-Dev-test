@@ -3,6 +3,7 @@
 /tapHLE_sandbox
 /tapHLE_apps/*
 !/tapHLE_apps/README.txt
+*.ipa
 tapHLE_log.txt
 tapHLE_wallpaper.*
 

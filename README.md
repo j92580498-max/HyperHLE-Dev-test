@@ -1,7 +1,19 @@
 # tapHLE
 
-tapHLE is a high-level emulator for early iPhone OS applications, with one
-narrow goal: make selected games run well on a Windows PC.
+tapHLE is a high-level emulator for early iPhone OS applications. Its goal is
+to make as many early iPhone games as possible run well on Windows.
+
+## Want a game to work?
+
+You can use your own coding agent to work on it. You do not need to know how to
+program, and you do not need to wait for someone else to take your request.
+tapHLE gives the agent rules, tests, and a step-by-step debugging guide.
+
+**[Start here: help a game work with a coding agent](HELP_A_GAME.md)**
+
+Opening an issue does not promise that another contributor will do the work.
+It gives you and your agent a place to record the goal and avoid duplicate
+work. Never upload an IPA, game files, or a raw log.
 
 Instead of emulating an entire iPhone and operating system, tapHLE runs the
 game's 32-bit ARM code and supplies its own implementations of frameworks such
@@ -10,12 +22,13 @@ as Foundation, UIKit, OpenGL ES, and OpenAL.
 ## Project direction
 
 This fork is AI-development-led. Coding agents are first-class contributors
-for investigation, implementation, testing, and documentation, while the
-maintainer supplies product direction and chooses the games that matter.
+for investigation, implementation, testing, and documentation. Contributors
+may choose the games they care about. Each game is a practical step toward
+broader compatibility.
 
 The priorities are intentionally practical:
 
-1. Make a specific game work on Windows.
+1. Move one chosen game closer to working on Windows.
 2. Iterate quickly from logs and observed behavior.
 3. Protect working behavior with focused tests.
 4. Improve architecture when it helps deliver compatibility.
@@ -40,13 +53,12 @@ Windows x86_64 releases, while green `trunk` builds are commit-identified
 previews. The versioning and packaging policy is documented in
 `dev-docs/releases.md`.
 
-Exact, hash-verified results are published in [the compatibility
-database](COMPATIBILITY.md). For unavailable historical builds, tapHLE follows
-a narrow maintainer-reviewed testing policy documented in
-`compatibility/README.md`. That policy permits canonical Archive.org provenance
-references in qualifying records; it is not a blanket legal conclusion about
-"abandonware," does not cover apps with a current market alternative, and
-requires respect for DMCA notices and rightsholder requests.
+Exact, hash-checked results are published in [the compatibility
+database](COMPATIBILITY.md). For an old game that is no longer sold, a record
+may link to the exact Archive.org file that was tested. The file name, hashes,
+and app version must all match. Read `compatibility/README.md` for the full
+rules. These rules do not cover a game that is still sold, and the project
+respects DMCA notices and rightsholder requests.
 
 The project is not affiliated with or endorsed by Apple Inc. iPhone, iOS,
 iPod, iPod touch, and iPad are Apple trademarks.
@@ -80,9 +92,9 @@ Guest save data is stored in `tapHLE_sandbox`.
 
 ## Contributing
 
-Start with `AGENTS.md` if you are a coding agent or are working with one. Human
-contributors should read `CONTRIBUTING.md`; both documents describe the same
-Windows-first, evidence-driven workflow.
+If you want to use a coding agent for a game, start with `HELP_A_GAME.md`.
+Agents must read `AGENTS.md`. Human contributors can find more detail in
+`CONTRIBUTING.md`.
 
 Game compatibility reports are especially useful when they identify the exact
 game version, Windows environment, reproduction steps, and sanitized tapHLE

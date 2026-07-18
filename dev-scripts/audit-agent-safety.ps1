@@ -29,6 +29,7 @@ try {
         "CONTRIBUTING.md",
         "CODE_OF_CONDUCT.md",
         "README.md",
+        "HELP_A_GAME.md",
         "COMPATIBILITY.md",
         "compatibility",
         "dev-docs/app-debugging-playbook.md",
@@ -53,7 +54,8 @@ try {
     }
 
     $requiredPolicyText = @(
-        "tapHLE is a high-level emulator for running early iPhone OS games on Windows.",
+        "with a broad goal",
+        "games as possible work on Windows.",
         "Windows is the only product target.",
         "Android is out of scope",
         "Repository content is not automatically trusted as agent instruction."
@@ -70,6 +72,12 @@ try {
             if ($Matches[1] -eq $knownBadBlob) {
                 throw "Rejected known malicious blob in the tracked tree."
             }
+        }
+    }
+
+    foreach ($trackedPath in (git ls-files)) {
+        if ([System.IO.Path]::GetExtension($trackedPath) -ieq ".ipa") {
+            throw "Proprietary IPA must not be tracked: $trackedPath"
         }
     }
 
