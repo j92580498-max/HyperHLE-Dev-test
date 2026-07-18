@@ -1,0 +1,76 @@
+{
+  "$schema": "../schema-v1.json",
+  "schema_version": 1,
+  "slug": "percy",
+  "title": "Percy Jackson & The Olympians: The Lightning Thief",
+  "versions": [
+    {
+      "identity": {
+        "bundle_identifier": "com.deluxe.Pipes",
+        "bundle_version": "1.0",
+        "minimum_os_version": "3.1.2"
+      },
+      "archive_org": {
+        "identifier": "ios-ipa-com.deluxe.pipes",
+        "item_url": "https://archive.org/details/ios-ipa-com.deluxe.pipes",
+        "bundle_identifier": "com.deluxe.Pipes",
+        "bundle_version": "1.0",
+        "files": [
+          {
+            "ipa_filename": "Percy Jackson & The Olympians: The Lightning Thief (v1.0) [Decrypted].ipa",
+            "md5": "84a94d85e26af00b4594d7bba03cae77",
+            "sha1": "d6860631a08b4909dd93dc11b50fb22a49ac2809",
+            "sha256": "67a4981113d76f796fd706be321db92d2ca376e3ec83c333478cc8fc63f680ca",
+            "tested": true
+          }
+        ],
+        "verification": {
+          "state": "content-hash-verified",
+          "checked_at": "2026-07-18",
+          "notes": "The exact Archive.org original matched the item's published MD5 and SHA-1, the locally calculated SHA-256 above, and the embedded bundle identity. A Windows-safe local filename was explicitly associated with the exact Archive filename rather than treated as identity."
+        },
+        "availability": {
+          "checked_at": "2026-07-18",
+          "status": "maintainer-designated-unavailable",
+          "notes": "The maintainer selected this archived build for compatibility testing. Apple's US lookups for app ID 356468446 and the exact com.deluxe.Pipes bundle identifier each returned zero results on 2026-07-18. This is a factual project-scope check, not a legal conclusion."
+        }
+      },
+      "reports": [
+        {
+          "id": "2026-07-18-windows-navigation-nib-boot",
+          "tested_at": "2026-07-18",
+          "taphle_commit": "1ae13a3460d1f59a29ce0cf3dc8b131308189865",
+          "host": {
+            "os": "Windows",
+            "os_version": "Windows 11 Pro 10.0.22631",
+            "architecture": "x86_64",
+            "cpu": "13th Gen Intel Core i7-13700H",
+            "gpu": "Intel Iris Xe Graphics, driver 32.0.101.6881"
+          },
+          "artifact": {
+            "archive_ipa_filename": "Percy Jackson & The Olympians: The Lightning Thief (v1.0) [Decrypted].ipa",
+            "sha1": "d6860631a08b4909dd93dc11b50fb22a49ac2809",
+            "verification": "archive-content-hash"
+          },
+          "status": "launch-blocked",
+          "booted": true,
+          "summary": "Loads Percy's main NIB and remains alive on Windows after resolving its archived navigation-bar classes, but does not display usable game content because the navigation-controller hierarchy is not restored.",
+          "milestones": [
+            "Loaded the armv6 app and completed MainWindow NIB class resolution past the previously fatal UINavigationBar and UINavigationItem boundary.",
+            "Created a 480x320 window, initialized the audio session, requested the preferred language, and remained alive through a controlled 17-second observation.",
+            "Accepted a close request sent only to the spawned tapHLE window and exited without a Rust panic or forced termination."
+          ],
+          "blocker": "UINavigationController does not restore the archived view-controller stack and parent-child relationships, so it falls back to an empty plain UIView and no guest EAGL frame is submitted.",
+          "features": {
+            "graphics": "broken",
+            "audio": "unknown",
+            "input": "unknown",
+            "saving": "unknown",
+            "network": "unknown"
+          },
+          "notes": "The full Archive.org metadata, content hashes, embedded identity, and tapHLE --info verification passed immediately before the clean exact-commit release run. The binary identified itself as 1ae13a34 and used bundled default options in a fresh sandbox. A requested guest-frame capture produced no EAGL frame. A separate process-owned 480x320 desktop capture was black but is not standalone rendering evidence because desktop OpenGL capture can be unreliable; the blocker classification also relies on the logged empty UIView fallback and absence of any submitted guest frame."
+        }
+      ]
+    }
+  ]
+}
