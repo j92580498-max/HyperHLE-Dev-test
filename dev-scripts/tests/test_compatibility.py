@@ -30,6 +30,32 @@ class CompatibilityTests(unittest.TestCase):
             [],
         )
 
+    def test_public_rating_scale_covers_every_stored_status(self):
+        expected = {
+            "launch-blocked": "⭐ Broken",
+            "boots": "⭐⭐ Starts",
+            "menu": "⭐⭐ Starts",
+            "in-game": "⭐⭐⭐ In game",
+            "playable-with-issues": "⭐⭐⭐⭐ Playable",
+            "playable": "⭐⭐⭐⭐⭐ Fully working",
+        }
+        self.assertEqual(set(compatibility.STATUS_LABELS), set(expected))
+        for status, label in expected.items():
+            with self.subTest(status=status):
+                self.assertEqual(compatibility.rating_label(status), label)
+        self.assertEqual(compatibility.plain_rating_label("in-game"), "3/5 In game")
+
+    def test_renderer_shows_rating_legend_and_keeps_feature_detail(self):
+        rendered = compatibility.markdown_for_records([(self.record_path, self.record)])
+        self.assertIn("## Rating scale", rendered)
+        self.assertIn("⭐⭐⭐ In game", rendered)
+        self.assertIn("audio=partial", rendered)
+
+        record = copy.deepcopy(self.record)
+        record["versions"][0]["reports"] = []
+        rendered = compatibility.markdown_for_records([(self.record_path, record)])
+        self.assertIn("— Not tested", rendered)
+
     def test_noncanonical_archive_url_is_rejected(self):
         record = copy.deepcopy(self.record)
         record["versions"][0]["archive_org"]["item_url"] += "?download=1"

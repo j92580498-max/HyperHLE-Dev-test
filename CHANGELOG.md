@@ -10,6 +10,8 @@
   instructions, game-focused issue forms, and repository policy checks.
 - Add a simple self-service guide for people using coding agents to improve a
   game they care about.
+- Add a simple one-to-five-star compatibility view while keeping exact build,
+  feature, commit, and Archive.org evidence underneath it.
 - Add exact Archive.org compatibility provenance, the first Ricky in-game
   milestone, MP3 streaming support, AudioQueue OpenAL source cleanup, clean
   secondary-thread shutdown, and state-aware EAGL frame capture for
