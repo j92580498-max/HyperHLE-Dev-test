@@ -45,6 +45,15 @@ STATUS_LABELS = {
     "playable-with-issues": "Playable with issues",
     "playable": "Playable",
 }
+STATUS_RATINGS = {
+    "launch-blocked": (1, "Broken"),
+    "boots": (2, "Starts"),
+    "menu": (2, "Starts"),
+    "in-game": (3, "In game"),
+    "playable-with-issues": (4, "Playable"),
+    "playable": (5, "Fully working"),
+}
+assert STATUS_LABELS.keys() == STATUS_RATINGS.keys()
 FEATURE_STATES = {"unknown", "broken", "partial", "working", "not-applicable"}
 FEATURE_NAMES = ("graphics", "audio", "input", "saving", "network")
 ARCHIVE_STATES = {"content-hash-verified", "metadata-only", "unverified"}
@@ -59,6 +68,16 @@ AVAILABILITY_STATES = {
 
 class CompatibilityError(Exception):
     """An expected validation or verification failure."""
+
+
+def rating_label(status: str) -> str:
+    stars, label = STATUS_RATINGS[status]
+    return f"{'⭐' * stars} {label}"
+
+
+def plain_rating_label(status: str) -> str:
+    rating, label = STATUS_RATINGS[status]
+    return f"{rating}/5 {label}"
 
 
 def _keys(
@@ -694,6 +713,19 @@ def markdown_for_records(records: list[tuple[Path, dict[str, object]]]) -> str:
         "the app. See [the database protocol](compatibility/README.md) before adding",
         "or changing a report.",
         "",
+        "## Rating scale",
+        "",
+        "- ⭐ Broken — The game does not reach usable content.",
+        "- ⭐⭐ Starts — An intro or menu works, but gameplay does not.",
+        "- ⭐⭐⭐ In game — Some gameplay works, but major problems remain.",
+        "- ⭐⭐⭐⭐ Playable — The whole game can be played, with small problems.",
+        "- ⭐⭐⭐⭐⭐ Fully working — Everything important works.",
+        "- — Not tested — There is no verified tapHLE Windows result.",
+        "",
+        "Stars are a short summary. The exact milestone and feature states below",
+        "show what was really tested. The scale is adapted from the",
+        "[touchHLE app database](https://appdb.touchhle.org/) under CC BY 4.0.",
+        "",
         "| Game | Exact build | Latest Windows result | tapHLE commit | Tested |",
         "| --- | --- | --- | --- | --- |",
     ]
@@ -711,10 +743,10 @@ def markdown_for_records(records: list[tuple[Path, dict[str, object]]]) -> str:
             latest = reports[-1] if reports else None
             build = _identity_label(identity)
             if latest is None:
-                status, commit, tested = "Not yet tested", "—", "—"
+                status, commit, tested = "— Not tested", "—", "—"
             else:
                 assert isinstance(latest, dict)
-                status = STATUS_LABELS[str(latest["status"])]
+                status = rating_label(str(latest["status"]))
                 if latest.get("booted") and latest.get("status") == "launch-blocked":
                     status += " (app booted)"
                 commit = f"`{str(latest['taphle_commit'])[:8]}`"
@@ -776,7 +808,7 @@ def markdown_for_records(records: list[tuple[Path, dict[str, object]]]) -> str:
                 continue
             latest = reports[-1]
             assert isinstance(latest, dict)
-            status = STATUS_LABELS[str(latest["status"])]
+            status = rating_label(str(latest["status"]))
             if latest.get("booted") and latest.get("status") == "launch-blocked":
                 status += " (the app lifecycle booted before the blocker)"
             lines.extend(
@@ -804,6 +836,14 @@ def markdown_for_records(records: list[tuple[Path, dict[str, object]]]) -> str:
             "commit, and Windows host. It is not a claim that other versions work.",
             "Archive links are provenance references, not bundled downloads or blanket",
             "legal conclusions. See `compatibility/README.md` for the project policy.",
+            "",
+            "## Results from other emulators",
+            "",
+            "The [touchHLE database](https://appdb.touchhle.org/) and",
+            "[HyperHLE AppDB](https://github.com/HyperHLE/HyperHLE/tree/trunk/appdb)",
+            "are useful places to find games that may be worth testing. Their results are",
+            "not tapHLE results. A game is listed above only after its exact file is",
+            "hash-checked and tested with a committed tapHLE build on Windows.",
             "",
         ]
     )
@@ -1140,7 +1180,7 @@ def main(argv: list[str] | None = None) -> int:
                     reports = version["reports"]
                     assert isinstance(identity, dict)
                     assert isinstance(reports, list)
-                    status = STATUS_LABELS[str(reports[-1]["status"])] if reports else "Not yet tested"
+                    status = plain_rating_label(str(reports[-1]["status"])) if reports else "Not tested"
                     print(f"{record['slug']}\t{record['title']}\t{_identity_label(identity)}\t{status}")
         elif args.command == "show":
             record = find_record(validate_database(root), args.slug)

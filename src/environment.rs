@@ -1648,10 +1648,11 @@ impl Environment {
                             self.current_thread, 0,
                             "pthread_exit on the main guest thread is not implemented"
                         );
-                        // This supports pthread_exit from a secondary thread's
-                        // top-level start routine. It returns from that routine's
-                        // host call, which records r0, marks the thread inactive,
-                        // and lets the coroutine finish without forced unwinding.
+                        // This supports pthread_exit from a secondary
+                        // thread's top-level start routine. It returns from
+                        // that routine's host call, which records r0, marks
+                        // the thread inactive, and lets the coroutine finish
+                        // without forced unwinding.
                         // Nested host-to-guest calls and pthread cleanup/TSD
                         // destructors are not implemented by this path.
                         ThreadNextAction::ReturnToHost

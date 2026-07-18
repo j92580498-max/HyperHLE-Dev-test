@@ -1025,6 +1025,12 @@ fn unqueue_buffers<F: FnMut(ALuint)>(al_source: ALuint, context: &OpenAL<'_>, mu
     }
 }
 
+fn delete_owned_al_source(al_source: &mut Option<ALuint>, delete_source: impl FnOnce(ALuint)) {
+    if let Some(al_source) = al_source.take() {
+        delete_source(al_source);
+    }
+}
+
 /// For use by `NSRunLoop`: check the status of an audio queue, recycle buffers,
 /// call callbacks, push new buffers etc.
 pub fn handle_audio_queue(env: &mut Environment, in_aq: AudioQueueRef) {
@@ -1385,6 +1391,13 @@ pub fn AudioQueueDispose(
         }
     }
 
+    // AudioQueue owns the source it lazily created while priming. Stops and
+    // resets deliberately keep it for reuse; disposal is its terminal owner.
+    delete_owned_al_source(&mut host_object.al_source, |al_source| unsafe {
+        context.DeleteSources(1, &al_source);
+        assert!(context.GetError() == 0);
+    });
+
     ns_run_loop::remove_audio_queue(env, host_object.run_loop, in_aq);
 
     0 // success
@@ -1426,8 +1439,8 @@ pub const FUNCTIONS: FunctionExports = &[
 #[cfg(test)]
 mod tests {
     use super::{
-        audio_queue_buffer_frame_count, is_supported_audio_format, is_supported_audio_queue_format,
-        validate_packet_descriptions, HostPacketDescription,
+        audio_queue_buffer_frame_count, delete_owned_al_source, is_supported_audio_format,
+        is_supported_audio_queue_format, validate_packet_descriptions, HostPacketDescription,
     };
     use crate::frameworks::core_audio_types::{
         kAudioFormatMPEGLayer3, AudioStreamBasicDescription, AudioStreamPacketDescription,
@@ -1528,5 +1541,17 @@ mod tests {
             audio_queue_buffer_frame_count(&ricky_mp3_format(), 835, &descriptions),
             1728
         );
+    }
+
+    #[test]
+    fn owned_openal_source_is_deleted_exactly_once() {
+        let mut source = Some(73);
+        let mut deleted_sources = Vec::new();
+
+        delete_owned_al_source(&mut source, |source| deleted_sources.push(source));
+        delete_owned_al_source(&mut source, |source| deleted_sources.push(source));
+
+        assert_eq!(source, None);
+        assert_eq!(deleted_sources, [73]);
     }
 }

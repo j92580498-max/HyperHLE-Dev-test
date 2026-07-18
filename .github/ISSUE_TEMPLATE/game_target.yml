@@ -1,7 +1,13 @@
-name: Propose a game compatibility target
-description: Propose an early iPhone OS game to make playable on Windows.
+name: Start work on a game
+description: Track work that you or your coding agent plan to do.
 labels: ["game target"]
 body:
+  - type: markdown
+    attributes:
+      value: |
+        This is a place to track work, not a promise that someone else will do it.
+        You can use your own coding agent. Start with [HELP_A_GAME.md](https://github.com/ephun/tapHLE/blob/trunk/HELP_A_GAME.md).
+        Never upload an IPA, game files, or a raw log.
   - type: input
     id: game
     attributes:
@@ -22,8 +28,8 @@ body:
   - type: input
     id: archive_item
     attributes:
-      label: Maintainer-supplied canonical Archive.org item URL
-      description: Optional. Do not search for or guess an item; use the exact https://archive.org/details/<identifier> URL.
+      label: Exact Archive.org item URL
+      description: Optional. Use only an exact https://archive.org/details/<identifier> URL that you already have. Do not ask an agent to search for one.
   - type: input
     id: archive_filename
     attributes:
@@ -43,10 +49,30 @@ body:
       placeholder: Reach the main menu with working audio and input.
     validations:
       required: true
+  - type: input
+    id: taphle_version
+    attributes:
+      label: tapHLE version
+      description: Give a release number or Git commit. Ask your agent if you do not know it.
+      placeholder: v0.3.0-alpha.1 or commit abc1234
+    validations:
+      required: true
+  - type: input
+    id: windows
+    attributes:
+      label: Windows, CPU, and GPU
+      placeholder: Windows 11, Ryzen 7 5800X, NVIDIA RTX 3070
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Launch steps and tapHLE options
+      description: Ask your agent to fill this in if you are not sure.
   - type: dropdown
     id: evidence
     attributes:
-      label: Can you help test the exact game version on Windows?
+      label: Can you or your agent test this exact game version on Windows?
       options:
         - "Yes"
         - "No"
@@ -59,5 +85,9 @@ body:
       options:
         - label: I will not upload an app, extracted assets, keys, save data, or other proprietary payloads.
           required: true
-        - label: Any Archive.org reference above is exact, maintainer-supplied, and follows compatibility/README.md, including current-market and takedown rules.
+        - label: If I gave an Archive.org link, my agent will follow compatibility/README.md before it opens or runs the IPA. It will stop if any file name, hash, app ID, or version check fails.
+          required: true
+        - label: If I gave an Archive.org link, I checked whether the rightsholder still sells or officially offers the game. I understand that the maintainer decides whether Archive-based testing fits the project rules.
+          required: true
+        - label: I understand that this issue does not require another contributor to do the work.
           required: true

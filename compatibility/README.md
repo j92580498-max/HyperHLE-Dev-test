@@ -6,6 +6,27 @@ for exact early iPhone OS app builds. It does not contain apps. Each record in
 Archive.org IPA filenames, and an append-only sequence of reports. The root
 `COMPATIBILITY.md` is generated from those records.
 
+## Simple rating scale
+
+The public list uses five simple levels:
+
+- ⭐ Broken — The game does not reach usable content.
+- ⭐⭐ Starts — An intro or menu works, but gameplay does not.
+- ⭐⭐⭐ In game — Some gameplay works, but major problems remain.
+- ⭐⭐⭐⭐ Playable — The whole game can be played, with small problems.
+- ⭐⭐⭐⭐⭐ Fully working — Everything important works.
+- — Not tested — There is no verified tapHLE Windows result.
+
+The stars are only a short summary. The exact report, feature states, app file,
+tapHLE commit, and Windows host say what was really tested. `boots` and `menu`
+both display as two stars, while the stored status keeps the difference.
+
+The scale is adapted from the [touchHLE app database](https://appdb.touchhle.org/),
+whose database content is published under the Creative Commons Attribution 4.0
+license. Results from touchHLE or HyperHLE are useful testing leads, but they do
+not become tapHLE ratings until the exact app file is hash-checked and run with
+a committed tapHLE build on Windows.
+
 ## Project testing policy
 
 tapHLE may compatibility-test a build that the maintainer has determined in

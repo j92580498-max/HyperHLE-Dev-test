@@ -8,12 +8,20 @@ policies.
 
 ## Mission and priorities
 
-tapHLE is a high-level emulator for running early iPhone OS games on Windows.
-The maintainer chooses concrete games as compatibility targets.
+tapHLE is a high-level emulator with a broad goal: make as many early iPhone OS
+games as possible work on Windows. Contributors choose concrete games as
+practical compatibility targets. A target is one step toward the broad goal,
+not a limit on the games tapHLE aims to support.
+
+Game work is self-service. A contributor may use an agent to work on a game
+they care about. No contributor is required to take someone else's request.
+`HELP_A_GAME.md` is the simple starting point for humans using agents.
+The maintainer decides what is merged and what appears in the official
+compatibility database.
 
 Use this priority order when tradeoffs arise:
 
-1. Make the maintainer's target games work on Windows.
+1. Move the current target game closer to working on Windows.
 2. Get a reproducible improvement into a testable state quickly.
 3. Avoid regressions in games or code paths that already work.
 4. Improve architecture when it directly helps the first three priorities.
@@ -77,6 +85,9 @@ The detailed workflow and intake checklist are in
 `dev-docs/app-debugging-playbook.md` and the target's sanitized continuation
 note under `dev-docs/app-notes/` when one exists. Resume from its last proven
 milestone and next discriminator instead of repeating settled investigation.
+Version bumps, tags, and release packaging follow `dev-docs/releases.md`.
+Agents may prepare release changes, but must not create or push a release tag
+without explicit maintainer authorization.
 
 ## Compatibility database and unavailable builds
 
@@ -168,11 +179,11 @@ that exact game version.
 - Public documentation, clean behavioral experiments, and compatibly licensed
   open-source code are valid sources. Record non-obvious sources in the pull
   request or code comment.
-- A target game provided or authorized by the maintainer under the
-  compatibility policy may be inspected for that task. Follow
-  `compatibility/README.md`; authorization to test is never authorization to
-  commit or redistribute its binary, assets, keys, personal data, or other
-  proprietary material.
+- A contributor may explicitly authorize an agent to inspect a lawfully
+  accessed local game copy for that contributor's current task. Archive-backed
+  public reports still need maintainer approval under `compatibility/README.md`.
+  Authorization to test is never authorization to commit or redistribute the
+  binary, assets, keys, personal data, or other proprietary material.
 - Do not seek or use leaked Apple source, private SDK material, or decompiled
   proprietary operating-system implementations.
 - Do not copy code with an incompatible license. Preserve required notices for
