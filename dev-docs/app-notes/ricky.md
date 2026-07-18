@@ -103,12 +103,45 @@ exact-commit runtime crossed the former failure point without the old error or
 panic. Embedded packet descriptions remain unsupported, but Ricky supplies
 direct descriptions and does not require that path.
 
+## Audio continuity evidence
+
+A clean `c31aabcf` run used OpenAL Soft's Wave File Writer at 44.1 kHz stereo
+signed 16-bit output. The resulting valid 54.52-second file contained 25.5
+continuous seconds of meaningful signal around -18 dB mean/-7 dB peak before
+the dither-only tail. That duration is far beyond the approximately 3.06
+seconds held by Ricky's initial three buffers.
+
+Because Ricky also creates a separate guest OpenAL context and the wave backend
+uses one global output filename, the capture timeline alone is not sufficient
+attribution. A second bounded build enabled only the existing AudioQueue debug
+module and proved the queue lifecycle directly:
+
+- the three guest buffer references were each decoded exactly seven times;
+- 19 processed buffers invoked Ricky's callback and were re-enqueued;
+- 21 total MP3 buffer decodes completed; and
+- there were no MP3 decode warnings, prime failures, or OpenAL source-underrun
+  restarts.
+
+This establishes non-silent host-mixer output and continuous callback-driven
+MP3 streaming. It does not establish default Windows audio-device routing or
+that a person heard artifact-free sound, so the compatibility feature remains
+`partial`.
+
+## Clean-exit frontier
+
+A process-scoped `WM_CLOSE` reaches `applicationWillResignActive`,
+`applicationWillTerminate`, immediate AudioQueue stop/reset, and queue disposal.
+Shutdown then panics while lazily resolving the unimplemented `_pthread_exit`
+symbol, and the harness must terminate the exact process after its five-second
+grace period. Treat this as the next concrete API/scheduler boundary; do not
+misdiagnose it as an MP3 or OpenAL failure.
+
 ## Next compatibility frontier
 
-Confirm audible output and continuity across recycled AudioQueue buffers. Then
-exercise action buttons, hazards, death/restart, level completion, and saving.
-Run a longer gameplay session while monitoring memory because the `0x40`-byte
-allocation quarantine deliberately retains matching chunks for the process
-lifetime. Do not promote audio to `working` until a human or a trustworthy
-capture confirms sane audible output; successful decode/prime and process
-survival prove only `partial` audio support.
+Identify and implement the smallest correct `_pthread_exit`/thread-termination
+behavior, then confirm a clean bounded quit. Separately confirm sound through
+the default Windows backend by listening before promoting audio to `working`.
+Then exercise action buttons, hazards, death/restart, level completion, and
+saving. Run a longer gameplay session while monitoring memory because the
+`0x40`-byte allocation quarantine deliberately retains matching chunks for the
+process lifetime.

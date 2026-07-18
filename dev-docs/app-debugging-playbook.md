@@ -139,6 +139,49 @@ Reuse a proven input recipe. Change one step at the frontier rather than
 inventing a new route on every launch. A successful click path is evidence and
 belongs in the app note.
 
+## Verify streaming audio in layers
+
+Separate four questions: did the decoder produce PCM, did buffers recycle, did
+the host mixer emit signal, and did a person hear sane audio? One observation
+does not automatically answer all four.
+
+The bundled OpenAL Soft Wave File Writer can capture tapHLE's process-local
+mixed output without a microphone or system loopback. In a unique run
+directory, create an OpenAL config with a new output path and launch tapHLE with
+`ALSOFT_CONF` pointing to it and `ALSOFT_DRIVERS=wave`. Use stereo, signed
+16-bit output at the app's sample rate when possible. Assert that the target
+WAV does not exist first: the backend overwrites it without prompting. This
+backend replaces speaker output for the run.
+
+Use `ffprobe` to validate the resulting codec, rate, channel count, duration,
+and file size. Use `ffmpeg` `silencedetect`, `volumedetect`, or `astats` over
+bounded time windows rather than inspecting raw samples. For a streaming
+queue, calculate how much audio its initial buffers contain. Meaningful signal
+beyond that duration supports continuity, but pair it with a module-scoped
+queue trace when the conclusion matters. A strong lifecycle trace shows each
+guest buffer repeating this chain:
+
+```text
+processed by OpenAL -> guest callback -> re-enqueue -> decode
+```
+
+Count exact buffer references, decode/recycle events, decoder warnings, and
+source-underrun restarts. Do not dump encoded packets or PCM.
+
+tapHLE may open separate OpenAL contexts for guest OpenAL and internal Audio
+Toolbox. OpenAL Soft's wave backend uses one global output filename, so two
+devices can truncate or overwrite regions of the same file. Do not interpret
+that file's timeline by itself when multiple devices appear in the OpenAL log;
+use the queue lifecycle trace to attribute continuity. A wave capture proves
+host-mixer signal, not default-device routing or subjective audio quality.
+Keep the compatibility feature `partial` until listening or another trustworthy
+end-to-end observation confirms sane audible output.
+
+Close only the spawned process and allow a bounded grace period so the backend
+can finalize RIFF lengths. If shutdown panics or needs forced termination,
+verify the header and duration before using the capture and record that
+limitation. Never silently repair or classify an ambiguous file as evidence.
+
 ## Conserve time and disk
 
 - Check free space before a large build or extraction when the drive has been
