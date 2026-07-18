@@ -112,3 +112,15 @@ reach the game menu.
 When work remains in progress, update the sanitized app note with proven facts,
 rejected hypotheses, dirty diagnostics, and the single next discriminator.
 Never copy raw logs, app code/data, screenshots, or personal paths into it.
+
+When committing material work created with an agent, add the attribution
+trailer required by `AGENTS.md`. For Codex, the final lines of the commit
+message are:
+
+```text
+Co-authored-by: OpenAI Codex <codex@openai.com>
+```
+
+Keep the human author identity configured by the maintainer; the trailer makes
+the collaboration explicit without impersonating that maintainer or rewriting
+previously published commits.

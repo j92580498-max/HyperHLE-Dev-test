@@ -187,6 +187,13 @@ refactors, mass formatting, dependency upgrades, or platform work unrelated to
 the target game. Keep commits and pull requests small enough to test and
 revert. Never add a proprietary game to a test fixture.
 
+Credit material coding-agent authorship in every commit the agent creates.
+Use a standard `Co-authored-by:` trailer with the agent or tool identity; Codex
+commits use `Co-authored-by: OpenAI Codex <codex@openai.com>`. Do not add an
+agent trailer when the agent did not materially help create the commit. Older
+agent-created commits that predate this rule are recorded without history
+rewrites in `dev-docs/agent-provenance.md`.
+
 A change is done when the requested behavior is implemented, relevant checks
 pass (or their limitations are explicit), user-facing names say tapHLE, and the
 handoff distinguishes verified results from assumptions.
