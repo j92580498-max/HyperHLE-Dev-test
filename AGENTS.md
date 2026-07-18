@@ -77,6 +77,9 @@ The detailed workflow and intake checklist are in
 `dev-docs/app-debugging-playbook.md` and the target's sanitized continuation
 note under `dev-docs/app-notes/` when one exists. Resume from its last proven
 milestone and next discriminator instead of repeating settled investigation.
+Version bumps, tags, and release packaging follow `dev-docs/releases.md`.
+Agents may prepare release changes, but must not create or push a release tag
+without explicit maintainer authorization.
 
 ## Compatibility database and unavailable builds
 

@@ -87,6 +87,10 @@ evidence guided the implementation, what was tested on Windows, and which
 claims still need manual game validation. AI involvement is not a negative;
 transparent validation makes the result easier to trust and continue.
 
+Version bumps, release tags, and Windows packages follow
+`dev-docs/releases.md`. Do not create or move a release tag as part of an
+ordinary contribution.
+
 ## Copyright and reverse engineering
 
 Compatibility work must not compromise the project legally.

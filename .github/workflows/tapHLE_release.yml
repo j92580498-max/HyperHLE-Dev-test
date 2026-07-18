@@ -6,7 +6,7 @@ permissions:
 on:
   push:
     branches: [ "trunk" ]
-    tags: [ "v*" ]
+    tags: [ "taphle-v*" ]
   pull_request:
     branches: [ "trunk" ]
 
@@ -15,6 +15,9 @@ env:
   COMMON_SDK_VERSION: v0.3.7
   COMMON_SDK_MACOS_SHA256: 16cedbc008841b8367037e36826385947d8a9aa4125b825707f7923bad834498
   COMMON_SDK_WINDOWS_SHA256: c616f77aa309cca34813f5f5a3207fc27e830d235dd3d45f352fe0db01fafc8e
+  BOOST_WINDOWS_SHA256: d7bc4e2a2aee374a8c24832cacfed1265680c1e824d09fab3e00f87508155353
+  CMAKE_WINDOWS_SHA256: d163cd3ab4959b0a53fa8988f2ddbd2e6c501658201e6a154386bad9dbe4f836
+  LLVM_WINDOWS_SHA256: fcbabc9a170208bb344f7bba8366cca57ff103d72a316781bbb77d634b9e9433
 
 jobs:
   repository-policy:
@@ -22,11 +25,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout tapHLE
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           fetch-depth: 0
       - name: Validate agent policy
         run: bash dev-scripts/audit-agent-safety.sh
+      - name: Test repository policy tools
+        run: python -m unittest discover -s dev-scripts/tests -v
       - name: Validate compatibility database
         env:
           EVENT_NAME: ${{ github.event_name }}
@@ -42,6 +47,22 @@ jobs:
             ""|0000000000000000000000000000000000000000) ;;
             *) python dev-scripts/compatibility.py check --baseline-ref "$BASE" ;;
           esac
+      - name: Validate release tag and exact trunk commit
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          python dev-scripts/release_version.py check-tag "$RELEASE_TAG"
+          # checkout v4 can leave an annotated pushed tag represented locally
+          # as a lightweight tag. Restore the exact remote tag object before
+          # enforcing tapHLE's annotated-tag policy.
+          git fetch --force --no-tags origin \
+            "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
+          test "$(git cat-file -t "refs/tags/$RELEASE_TAG")" = tag
+          TAG_COMMIT="$(git rev-list -n 1 "refs/tags/$RELEASE_TAG")"
+          test "$TAG_COMMIT" = "$GITHUB_SHA"
+          git fetch --no-tags origin trunk:refs/remotes/origin/trunk
+          test "$TAG_COMMIT" = "$(git rev-parse origin/trunk)"
 
   build-macos-development:
     name: macOS development validation
@@ -52,7 +73,7 @@ jobs:
 
     steps:
       - name: Checkout tapHLE
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           fetch-depth: 0
       - name: Install clang-format
@@ -65,7 +86,7 @@ jobs:
         run: brew install boost
       - name: Try to get cached copy of cmake
         id: cache-cmake
-        uses: actions/cache@v3
+        uses: actions/cache@f4b3439a656ba812b8cb417d2d49f9c810103092 # v3.4.0
         with:
           path: vendor/cmake
           key: cmake_3_31_6_macos
@@ -84,7 +105,7 @@ jobs:
           CMAKE: ${{ github.workspace }}/vendor/cmake/bin/cmake
       - name: Try to get cached copy of LLVM
         id: cache-llvm
-        uses: actions/cache@v3
+        uses: actions/cache@f4b3439a656ba812b8cb417d2d49f9c810103092 # v3.4.0
         with:
           path: tests/llvm
           key: llvm_12_0_0_macOS_x64
@@ -114,7 +135,7 @@ jobs:
         run: cargo build --target x86_64-apple-darwin --release
         env:
           CMAKE: ${{ github.workspace }}/vendor/cmake/bin/cmake
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: TestApp_built_on_macOS_development
           path: tests/TestApp.app
@@ -127,7 +148,7 @@ jobs:
 
     steps:
     - name: Checkout tapHLE
-      uses: actions/checkout@v4
+      uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       with:
         fetch-depth: 0
     # Apparently the Windows runner already has clang-format? That's nice.
@@ -138,25 +159,33 @@ jobs:
       run: git submodule update --init
     - name: Try to get cached copy of Boost
       id: cache-boost
-      uses: actions/cache@v3
+      uses: actions/cache@f4b3439a656ba812b8cb417d2d49f9c810103092 # v3.4.0
       with:
         path: vendor\boost
-        key: boost_1_81_0
+        key: boost_1_81_0_${{ env.BOOST_WINDOWS_SHA256 }}
     - if: ${{ steps.cache-boost.outputs.cache-hit != 'true' }}
       name: Download Boost
-      run: curl -L -o boost_1_81_0.7z "https://archives.boost.io/release/1.81.0/source/boost_1_81_0.7z"
+      run: |
+        curl.exe -L --fail --output boost_1_81_0.7z "https://archives.boost.io/release/1.81.0/source/boost_1_81_0.7z"
+        if ((Get-FileHash -Algorithm SHA256 boost_1_81_0.7z).Hash.ToLowerInvariant() -ne $env:BOOST_WINDOWS_SHA256) {
+          throw "Boost checksum mismatch"
+        }
     - if: ${{ steps.cache-boost.outputs.cache-hit != 'true' }}
       name: Extract Boost
       run: 7z -ovendor x boost_1_81_0.7z && ren vendor\boost_1_81_0 boost
     - name: Try to get cached copy of cmake
       id: cache-cmake
-      uses: actions/cache@v3
+      uses: actions/cache@f4b3439a656ba812b8cb417d2d49f9c810103092 # v3.4.0
       with:
         path: vendor/cmake
-        key: cmake_3_31_6_windows
+        key: cmake_3_31_6_windows_${{ env.CMAKE_WINDOWS_SHA256 }}
     - if: ${{ steps.cache-cmake.outputs.cache-hit != 'true' }}
       name: Download Cmake
-      run: curl -L -O "https://github.com/Kitware/CMake/releases/download/v3.31.6/cmake-3.31.6-windows-x86_64.zip"
+      run: |
+        curl.exe -L --fail --output cmake-3.31.6-windows-x86_64.zip "https://github.com/Kitware/CMake/releases/download/v3.31.6/cmake-3.31.6-windows-x86_64.zip"
+        if ((Get-FileHash -Algorithm SHA256 cmake-3.31.6-windows-x86_64.zip).Hash.ToLowerInvariant() -ne $env:CMAKE_WINDOWS_SHA256) {
+          throw "CMake checksum mismatch"
+        }
     - if: ${{ steps.cache-cmake.outputs.cache-hit != 'true' }}
       name: Extract Cmake
       run: 7z -ovendor x "cmake-3.31.6-windows-x86_64.zip" && ren vendor\cmake-3.31.6-windows-x86_64 cmake
@@ -170,13 +199,17 @@ jobs:
         CMAKE: ${{ github.workspace }}\vendor\cmake\bin\cmake
     - name: Try to get cached copy of LLVM
       id: cache-llvm
-      uses: actions/cache@v3
+      uses: actions/cache@f4b3439a656ba812b8cb417d2d49f9c810103092 # v3.4.0
       with:
         path: tests/llvm
-        key: llvm_12_0_1_Windows_x64
+        key: llvm_12_0_1_Windows_x64_${{ env.LLVM_WINDOWS_SHA256 }}
     - if: ${{ steps.cache-llvm.outputs.cache-hit != 'true' }}
       name: Download LLVM
-      run: curl -L -O "https://github.com/llvm/llvm-project/releases/download/llvmorg-12.0.1/LLVM-12.0.1-win64.exe"
+      run: |
+        curl.exe -L --fail --output LLVM-12.0.1-win64.exe "https://github.com/llvm/llvm-project/releases/download/llvmorg-12.0.1/LLVM-12.0.1-win64.exe"
+        if ((Get-FileHash -Algorithm SHA256 LLVM-12.0.1-win64.exe).Hash.ToLowerInvariant() -ne $env:LLVM_WINDOWS_SHA256) {
+          throw "LLVM checksum mismatch"
+        }
     - if: ${{ steps.cache-llvm.outputs.cache-hit != 'true' }}
       name: Extract LLVM
       run: 7z -otests/llvm x LLVM-12.0.1-win64.exe
@@ -193,18 +226,122 @@ jobs:
       run: cargo test
       env:
         CMAKE: ${{ github.workspace }}\vendor\cmake\bin\cmake
+    - name: Require clean tagged source after tests
+      if: startsWith(github.ref, 'refs/tags/')
+      shell: bash
+      run: |
+        # Dependency archives are downloaded into the checkout and are
+        # intentionally untracked. Release identity follows `git describe
+        # --dirty`, so only tracked source changes invalidate the build.
+        if [ -n "$(git status --porcelain --untracked-files=no)" ]; then
+          git status --short --untracked-files=no
+          exit 1
+        fi
     - name: Build
       run: cargo build --release
       env:
         CMAKE: ${{ github.workspace }}\vendor\cmake\bin\cmake
+    - name: Validate exact tagged release identity
+      if: startsWith(github.ref, 'refs/tags/')
+      run: |
+        $cargoVersion = python dev-scripts/release_version.py version
+        if ($LASTEXITCODE -ne 0) {
+          throw "Could not determine Cargo version"
+        }
+        $versionLines = @(& cargo run --quiet --release -p tapHLE_version --bin tapHLE_version_bin)
+        if ($LASTEXITCODE -ne 0) {
+          throw "Could not read built tapHLE version"
+        }
+        $actualVersion = ($versionLines -join "`n").Trim()
+        if ($actualVersion -ne "v$cargoVersion") {
+          throw "Built version '$actualVersion' is not exact release version 'v$cargoVersion'"
+        }
+        $brandingLines = @(& cargo run --quiet --release -p tapHLE_version --bin tapHLE_version_bin -- --branding)
+        if ($LASTEXITCODE -ne 0) {
+          throw "Could not read built tapHLE branding"
+        }
+        $actualBranding = ($brandingLines -join "`n").Trim()
+        if ($actualBranding.Length -ne 0) {
+          throw "Exact release build unexpectedly has '$actualBranding' branding"
+        }
     - name: Create bundle
       shell: bash
       run: cd dev-scripts && ./make-windows-bundle.sh ../target/release/tapHLE.exe && mv tapHLE_windows_bundle/ ..
-    - uses: actions/upload-artifact@v4
+    - name: Package tagged Windows release
+      if: startsWith(github.ref, 'refs/tags/')
+      id: release-package
+      run: |
+        $archive = python dev-scripts/release_version.py archive-name
+        if ($LASTEXITCODE -ne 0) {
+          throw "Could not determine release archive name"
+        }
+        Compress-Archive -Path tapHLE_windows_bundle\* -DestinationPath $archive
+        $checksum = "$archive.sha256"
+        $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $archive).Hash.ToLowerInvariant()
+        [IO.File]::WriteAllText($checksum, "$hash  $archive`n")
+        "archive=$archive" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+        "checksum=$checksum" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+    - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
       with:
         name: tapHLE_Windows_x86_64
         path: tapHLE_windows_bundle/
-    - uses: actions/upload-artifact@v4
+    - name: Upload tagged Windows release package
+      if: startsWith(github.ref, 'refs/tags/')
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      with:
+        name: tapHLE_tagged_Windows_x86_64
+        path: |
+          ${{ steps.release-package.outputs.archive }}
+          ${{ steps.release-package.outputs.checksum }}
+    - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
       with:
         name: TestApp_built_on_Windows
         path: tests/TestApp.app
+
+  stage-release:
+    name: Stage draft GitHub release
+    if: startsWith(github.ref, 'refs/tags/taphle-v')
+    runs-on: ubuntu-latest
+    needs: build-windows
+    permissions:
+      contents: write
+    steps:
+      - name: Download tagged Windows package
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: tapHLE_tagged_Windows_x86_64
+          path: release
+      - name: Create verified draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          files=(release/*)
+          if [ "${#files[@]}" -ne 2 ]; then
+            echo "Expected a Windows ZIP and SHA-256 file, found ${#files[@]} files" >&2
+            exit 1
+          fi
+          cargo_version="${RELEASE_TAG#taphle-v}"
+          version="v$cargo_version"
+          archive="tapHLE-v${cargo_version}-Windows-x86_64.zip"
+          checksum="$archive.sha256"
+          if [ ! -f "release/$archive" ] || [ ! -f "release/$checksum" ]; then
+            echo "Downloaded release files do not have the exact expected names" >&2
+            printf 'Expected: %s and %s\n' "$archive" "$checksum" >&2
+            printf 'Found: %s\n' "${files[@]}" >&2
+            exit 1
+          fi
+          (cd release && sha256sum --check "$checksum")
+          prerelease=()
+          precedence_version="${version%%+*}"
+          case "$precedence_version" in
+            *-*) prerelease=(--prerelease) ;;
+          esac
+          gh release create "$RELEASE_TAG" "${files[@]}" \
+            --verify-tag \
+            --title "tapHLE $version" \
+            --notes "Draft created by CI. Replace this text with curated CHANGELOG notes before publishing." \
+            --draft \
+            "${prerelease[@]}"

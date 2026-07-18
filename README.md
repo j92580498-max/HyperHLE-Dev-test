@@ -35,6 +35,11 @@ tapHLE is experimental. Compatibility is specific to an exact game version,
 and many applications will not work yet. The project does not include games,
 Apple software, decryption keys, or other proprietary material.
 
+The first tapHLE release line is `0.3`; numbered alpha/beta/RC/stable builds are
+Windows x86_64 releases, while green `trunk` builds are commit-identified
+previews. The versioning and packaging policy is documented in
+`dev-docs/releases.md`.
+
 Exact, hash-verified results are published in [the compatibility
 database](COMPATIBILITY.md). For unavailable historical builds, tapHLE follows
 a narrow maintainer-reviewed testing policy documented in
