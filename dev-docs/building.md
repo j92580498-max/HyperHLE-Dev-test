@@ -12,7 +12,9 @@ If you are building to contribute, also read `../CONTRIBUTING.md` and the root
 Install:
 
 - [Git](https://git-scm.com/), including Git Bash for the shell scripts;
-- the stable [Rust toolchain](https://www.rust-lang.org/tools/install);
+- [rustup](https://www.rust-lang.org/tools/install), which automatically
+  installs the exact Rust version and components pinned in
+  `../rust-toolchain.toml`;
 - Visual Studio 2022 Build Tools with “Desktop development with C++”;
 - [CMake](https://cmake.org/) available on `PATH`; and
 - Boost headers.

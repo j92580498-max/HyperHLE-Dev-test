@@ -861,11 +861,11 @@ fn audio_queue_buffer_frame_count(
         });
     }
 
-    if bytes_per_packet != 0 {
-        return (audio_data_byte_size / bytes_per_packet).saturating_mul(frames_per_packet);
+    if let Some(packet_count) = audio_data_byte_size.checked_div(bytes_per_packet) {
+        return packet_count.saturating_mul(frames_per_packet);
     }
-    if bytes_per_frame != 0 {
-        return audio_data_byte_size / bytes_per_frame;
+    if let Some(frame_count) = audio_data_byte_size.checked_div(bytes_per_frame) {
+        return frame_count;
     }
     0
 }
