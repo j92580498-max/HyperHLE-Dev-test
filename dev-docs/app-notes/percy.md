@@ -20,9 +20,14 @@ Last updated: 2026-07-18.
 
 ## Highest clean committed milestone
 
-No Windows runtime milestone has been recorded. The exact Archive original is
-content-hash verified, but the compatibility record intentionally has no
-reports and renders as **Not tested**.
+Commit `1ae13a3460d1f59a29ce0cf3dc8b131308189865` exports the two
+archived navigation classes needed by Percy's main NIB. Its exact release
+binary has SHA-256
+`021bfded3645d290aaed1d17f324b5bb46aa498c0f065e507ba579a1650849df`.
+After a fresh full Archive verification, Percy completed NIB class resolution,
+initialized its audio session, created a 480x320 window, and stayed alive for
+a controlled 17-second observation. It still displayed no usable content and
+is recorded as **★☆☆☆☆ (1/5) Broken (app booted)**.
 
 ## Proven facts
 
@@ -35,6 +40,15 @@ reports and renders as **Not tested**.
 - Apple's US lookups for app ID `356468446` and bundle identifier
   `com.deluxe.Pipes` each returned zero results on 2026-07-18. This supports
   the maintainer's project-scope decision; it is not a legal conclusion.
+- The clean baseline at `4a2476c0` panicked while keyed-unarchiving
+  `MainWindow.nib` because `UINavigationBar` was not exported.
+- `UINavigationBar` can inherit the existing `UIView` allocation and NIB coder
+  path. `UINavigationItem` needs a bounded `initWithCoder:` because `NSObject`
+  does not provide one.
+- The exact `1ae13a34` build crossed both class boundaries, reached app setup,
+  and accepted a process-owned close request without a panic or forced stop.
+- No guest EAGL frame was submitted. The navigation controller instead logged
+  that it created an empty plain `UIView`.
 
 ## Rejected hypotheses
 
@@ -42,25 +56,45 @@ reports and renders as **Not tested**.
   `com.deluxe.pipes`: that is Percy's embedded bundle identity.
 - A local cache filename is not evidence of artifact identity. Only the exact
   Archive association plus matching content hashes is accepted.
+- The loader and GLES surface were not the first startup blocker. The exact
+  baseline reached CPU execution and created the GLES1-on-GL2 context before
+  failing at navigation-class resolution.
 
 ## Current diagnostics or code
 
-None. No app-derived data, raw log, screenshot, or runtime diagnostic is in
-the repository.
+The implementation checkpoint is committed and pushed. There are no
+uncommitted diagnostics. Raw logs and both attempted frame captures remain
+outside the repository in unique temporary run directories.
 
 ## Checks already run
 
 - Exact Archive metadata, MD5, and SHA-1 verification.
 - Local MD5, SHA-1, SHA-256, and embedded identity verification.
 - Apple US availability lookups by exact app ID and bundle identifier.
+- `cargo fmt --all -- --check`.
+- `cargo test --workspace --lib`: all 47 workspace library tests passed.
+- `cargo clippy --workspace --lib -- -D warnings`.
+- Clean release build from exact commit `1ae13a34`.
+- Full Archive verification immediately before the exact-commit Windows run.
+- Two bounded exact-commit runs from fresh sandboxes: no panic, no forced
+  termination, and the same empty navigation-controller milestone.
+
+The broader `cargo clippy --workspace --all-targets -- -D warnings` check is
+currently blocked by six pre-existing warnings in the integration harness and
+an `NSString` test-module layout. None is in the Percy change.
 
 ## Known risks and next discriminator
 
-No graphics, audio, input, saving, network, shutdown, or gameplay behavior is
-known yet. Before the first run, repeat full Archive verification and
-cross-check the same file with `tapHLE --info`. Then build a clean committed
-`compat/percy` release binary and make one bounded Windows launch. The first
-discriminator is whether the app reaches its lifecycle or stops earlier at a
-loader, missing-symbol, or emulator boundary. Record only a sanitized summary;
-do not add a compatibility report until an exact committed build reproduces a
-Windows milestone.
+The next blocker is navigation-controller archive restoration. Percy's main
+NIB records a view-controller stack, child controllers, a hidden navigation
+bar, and a parent-controller relationship, but tapHLE's
+`UINavigationController` currently inherits the generic `UIViewController`
+coder and discards those relationships. The next focused implementation should
+decode and retain that graph without firing view lifecycle callbacks while the
+NIB is still recursively unarchiving. The next discriminator is whether the
+restored root controller submits the first guest frame or reveals a narrower
+missing API.
+
+Audio effects, input, saving, networking, and gameplay remain unknown. Static
+inspection suggests AIFF decoding and optional photo/gallery APIs may be later
+gaps, but neither should be implemented before the navigation frontier moves.

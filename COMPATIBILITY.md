@@ -23,7 +23,7 @@ The scale is adapted from the
 
 | Game | Exact build | Latest Windows result | tapHLE commit | Tested |
 | --- | --- | --- | --- | --- |
-| [Percy Jackson & The Olympians: The Lightning Thief](#percy) | 1.0 (`com.deluxe.Pipes`) | — Not tested | — | — |
+| [Percy Jackson & The Olympians: The Lightning Thief](#percy) | 1.0 (`com.deluxe.Pipes`) | ★☆☆☆☆ (1/5) Broken (app booted) | `1ae13a34` | 2026-07-18 |
 | [Ricky](#ricky) | 2.1 (`com.nabilchatbi.Ricky`) | ★★★☆☆ (3/5) In game | `e2d51c6c` | 2026-07-17 |
 
 <a id="percy"></a>
@@ -34,11 +34,17 @@ The scale is adapted from the
 - Bundle identifier: `com.deluxe.Pipes`
 - Minimum OS version: 3.1.2
 - Archive source: [ios-ipa-com.deluxe.pipes](https://archive.org/details/ios-ipa-com.deluxe.pipes)
-- Exact target IPA filename: `Percy Jackson & The Olympians: The Lightning Thief (v1.0) [Decrypted].ipa`
+- Exact tested IPA filename: `Percy Jackson & The Olympians: The Lightning Thief (v1.0) [Decrypted].ipa`
 - Source verification: content hash verified
 - Availability review: 2026-07-18 (maintainer designated unavailable)
 
-No verified Windows test report has been recorded yet.
+Latest verified report: **★☆☆☆☆ (1/5) Broken (the app lifecycle booted before the blocker)** on 2026-07-18 with tapHLE `1ae13a3460d1f59a29ce0cf3dc8b131308189865`.
+
+Loads Percy's main NIB and remains alive on Windows after resolving its archived navigation-bar classes, but does not display usable game content because the navigation-controller hierarchy is not restored.
+
+Blocker: UINavigationController does not restore the archived view-controller stack and parent-child relationships, so it falls back to an empty plain UIView and no guest EAGL frame is submitted.
+
+Feature state: graphics=broken, audio=unknown, input=unknown, saving=unknown, network=unknown.
 
 <a id="ricky"></a>
 ## Ricky
