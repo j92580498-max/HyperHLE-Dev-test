@@ -11,8 +11,9 @@
 - Add a simple self-service guide for people using coding agents to improve a
   game they care about.
 - Add exact Archive.org compatibility provenance, the first Ricky in-game
-  milestone, MP3 streaming support, clean secondary-thread shutdown, and
-  state-aware EAGL frame capture for agent-driven Windows testing.
+  milestone, MP3 streaming support, AudioQueue OpenAL source cleanup, clean
+  secondary-thread shutdown, and state-aware EAGL frame capture for
+  agent-driven Windows testing.
 
 Earlier release history belongs to the upstream touchHLE project and can be
 found in its repository history.
