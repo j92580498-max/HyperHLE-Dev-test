@@ -106,19 +106,26 @@ restricted, removed, or disputed.
 For an Archive.org-backed test, use the exact item URL supplied by the
 maintainer or reporter; do not search for or guess one. Verify the canonical
 item URL and exact IPA filename against
-`https://archive.org/metadata/<identifier>`, content-hash the local uncommitted
-IPA against that metadata, inspect its embedded `Info.plist`, and cross-check
-it with local `tapHLE --info` when available. Never commit the IPA, extracted
-files, assets, keys, save data, or raw log. A report may claim a result only
-for a content-hash-verified artifact and a committed tapHLE revision. Reports
-are immutable: append a new one instead of editing an old observation.
+`https://archive.org/metadata/<identifier>`. After the live metadata confirms
+that the maintainer-designated filename is an original file, an agent may
+download only that exact file to an external cache outside the checkout. Treat
+the downloaded bytes as opaque until their MD5 and SHA-1 match the live
+metadata and their SHA-256 is recorded; only then may the IPA be opened,
+inspected, or run. The Archive filename remains canonical. If Windows requires
+a different local filename, map it explicitly with `--archive-filename`.
+Inspect the verified IPA's embedded `Info.plist`, and cross-check it with local
+`tapHLE --info` when available. Never commit the IPA, extracted files, assets,
+keys, save data, or raw log. A report may claim a result only for a
+content-hash-verified artifact and a committed tapHLE revision. Reports are
+immutable: append a new one instead of editing an old observation.
 
 Use `compat/<app-slug>` for app work, such as `compat/ricky`. Exploratory
-checkpoint commits are welcome on that branch. Promote or merge it after a
-hash-verified artifact reproduces a useful milestone on a committed revision,
-the database records the exact achieved and remaining state, and normal
-regression checks pass. Full playability is not required. Provisional dirty
-worktree results never enter the compatibility database.
+checkpoint commits are welcome on that branch. Keep unfinished, unverified, or
+unstable experiments there. A stable checkpoint that reproduces a useful
+hash-verified milestone on a committed revision, records the exact achieved
+state and known limitations, and passes normal regression checks should be
+merged to `trunk`. Full playability is not required. Provisional dirty worktree
+results never enter the compatibility database.
 
 ## Code map
 

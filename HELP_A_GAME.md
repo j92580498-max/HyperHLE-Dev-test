@@ -16,13 +16,18 @@ You need:
 3. A coding agent that can work in that folder.
 4. Lawful access to the exact game version you want to test.
 
-Never upload an IPA or game files to GitHub. Keep them private. The
-`tapHLE_apps` folder is ignored by Git for this reason.
+Never upload an IPA or game files to GitHub. Keep them outside the repository.
+The `tapHLE_apps` folder is ignored by Git for this reason.
 
 ## If the game is on Archive.org
 
 Give the agent the exact item link and exact IPA file name. Do not ask the
 agent to search for a copy.
+
+After the agent confirms that exact name is an original file in the live item
+metadata, it may download only that file to a cache outside the tapHLE folder.
+It must match the hashes before opening it. The Archive filename stays the
+official name even if Windows needs a different local cache name.
 
 Before the agent opens, inspects, or runs the IPA, it must first match:
 
@@ -50,7 +55,7 @@ I want to improve tapHLE support for [game title and exact version] on Windows.
 
 Exact Archive.org item URL: [URL, or "none"]
 Exact Archive.org IPA file name: [file name, or "none"]
-Private local IPA path: [path on my computer]
+Local IPA path: [path, or "download the exact named original to an external cache"]
 
 Read AGENTS.md, HELP_A_GAME.md, compatibility/README.md,
 dev-docs/agent-workflow.md, and dev-docs/app-debugging-playbook.md before
@@ -60,19 +65,24 @@ Create or continue the branch compat/[short-game-name]. Check the compatibility
 database and dev-docs/app-notes first so you do not repeat old work.
 
 If I gave an Archive.org item, match the exact item, original file name, MD5,
-SHA-1, and SHA-256 before opening, inspecting, or running the IPA. Only after
-those match may you read the app ID and version. Stop if any check fails. If I
-wrote "none," do not search for an item and do not make an Archive-linked
-database report. Ask me to confirm that I authorize use of my lawful local copy
-for this task. Never commit the IPA, extracted files, save data, screenshots,
-raw logs, or my private file paths.
+SHA-1, and SHA-256 before opening, inspecting, or running the IPA. If no local
+path was supplied, download only the exact named original to an external cache
+after live metadata confirms it, and treat it as opaque until its hashes match.
+If Windows changes the local name, preserve the exact Archive name through
+--archive-filename. Only after the hashes match may you read the app ID and
+version. Stop if any check fails. If I wrote "none," do not search for an item
+and do not make an Archive-linked database report. Ask me to confirm that I
+authorize use of my lawful local copy for this task. Never commit the IPA,
+extracted files, save data, screenshots, raw logs, or my private file paths.
 
 Find the first thing that stops the game from working. Make the smallest useful
 fix, add a focused test when possible, and run the repository checks. Keep
-unfinished but useful work on the compat branch. Only add a compatibility
-database report after the result works from a clean commit with the exact
-checked IPA. If work continues into another session, update the sanitized app
-note so the next agent does not repeat the same work.
+unfinished experiments on the compat branch. When a checkpoint is clean,
+reproducible, tested, and its limitations are recorded, prepare it for merge to
+trunk even if the game is not finished. Only add a compatibility database
+report after the result works from a clean commit with the exact checked IPA.
+If work continues into another session, update the sanitized app note so the
+next agent does not repeat the same work.
 
 Use simple status updates. Tell me when you need me to click, play, listen, or
 describe what is on screen. Do not push, create a release tag, or contact

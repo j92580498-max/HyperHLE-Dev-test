@@ -358,8 +358,9 @@ A dirty-worktree run is a useful experiment but never database evidence.
 4. If the milestone is reproducible, append a compatibility report referencing
    the tested implementation commit.
 5. Commit the generated compatibility view separately when practical.
-6. When publishing is authorized, push checkpoints so another agent can resume
-   them; promote to `trunk` only at the documented milestone boundary.
+6. When publishing is authorized, push unfinished checkpoints to the
+   compatibility branch so another agent can resume them. Merge a stable,
+   documented milestone to `trunk` even when known limitations remain.
 
 Keep implementation, agent-policy documentation, and compatibility reports in
 separable commits. This makes incomplete app experiments easy to continue or

@@ -61,14 +61,18 @@ report.
 
 Use the exact Archive.org item URL supplied by the maintainer or reporter; do
 not search for or guess one. Verify its canonical identifier, exact IPA
-filename, and published hashes through the Archive metadata endpoint. Keep the
-IPA outside Git, content-hash the local file, inspect its embedded
+filename, and published hashes through the Archive metadata endpoint. Once the
+exact designated original is confirmed, an agent may download only that file
+to an external cache and must hash-match it before opening it. The Archive
+filename remains canonical even if Windows needs a different local cache name.
+Keep the IPA outside Git, content-hash the local file, inspect its embedded
 `Info.plist`, and cross-check the same file with `tapHLE --info` when possible.
 Only a hash-verified artifact run on a committed tapHLE revision may become a
 compatibility report. Append reports; never overwrite an earlier result.
 
 App work belongs on `compat/<app-slug>` (for example, `compat/ricky`).
-Exploratory checkpoint commits are allowed there. Merge or promote the work
+Exploratory checkpoint commits are allowed there. Keep unfinished, unverified,
+or unstable experiments on that branch. Merge a stable checkpoint to `trunk`
 once the exact hash-verified app reproduces a useful milestone, the database
 honestly records what works and what remains, and normal regression checks
 pass. Full playability is not required. Dirty-worktree observations are

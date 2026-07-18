@@ -89,22 +89,27 @@ an item when no exact URL was supplied.
 3. Fetch only `https://archive.org/metadata/<identifier>` to verify that each
    exact IPA filename exists as an original file and to capture its published
    MD5 and SHA-1. Never select a file merely because its name looks similar.
-4. Keep the IPA outside Git. Match the local file's MD5 and SHA-1 to the item
-   metadata and record a locally calculated SHA-256. A renamed local file must
-   be associated with an explicit exact archive filename. A similarly named
-   or same-sized file is not equivalent.
-5. Read `Payload/*.app/Info.plist` from the hash-matched IPA and verify the
+4. Only after step 3 succeeds, an agent may download the exact
+   maintainer-designated original to an external cache outside the repository.
+   Do not extract it or open it as an IPA while it is downloading or before the
+   hash gate in step 5 passes.
+5. Keep the IPA outside Git. Match the local file's MD5 and SHA-1 to the item
+   metadata and record a locally calculated SHA-256. The record always retains
+   the metadata's exact `ipa_filename`; a Windows-safe local cache name is only
+   a path alias. A similarly named or same-sized file is not equivalent.
+6. Read `Payload/*.app/Info.plist` from the hash-matched IPA and verify the
    bundle identifier, bundle version, optional short version, and minimum OS
    version. Cross-check the same local file with `tapHLE --info` when a built
    executable is available.
-6. Only after those checks may `archive_org.verification.state` be
+7. Only after those checks may `archive_org.verification.state` be
    `content-hash-verified`, and only a content-hash-verified file may support a
    compatibility report.
 
-The dependency-free helper performs steps 1, 3, 4, and 5 against a record. It
+The dependency-free helper performs steps 1, 3, 5, and 6 against a record. It
 uses only Python's `urllib`, `zipfile`, `plistlib`, `hashlib`, and related
 standard-library modules. Network access occurs only for this explicit
-command; it never searches Archive.org and never downloads the IPA:
+command; it never searches Archive.org and never downloads the IPA. The exact
+original download authorized in step 4 must already be complete:
 
 ```powershell
 python .\dev-scripts\compatibility.py verify-archive ricky `
@@ -113,12 +118,13 @@ python .\dev-scripts\compatibility.py verify-archive ricky `
   --taphle-exe .\target\release\tapHLE.exe
 ```
 
-If a local file was renamed, add
-`--archive-filename 'the exact Archive.org filename.ipa'`. Hash matching is
-still mandatory. A failed check means agents must not inspect, execute, or use
-that local copy, even for a provisional diagnosis. Find the exact canonical
-copy through the maintainer rather than treating the mismatch as “close
-enough.” Re-run verification before each report-worthy clean run.
+If the local Windows-safe filename differs, add
+`--archive-filename 'the exact Archive.org filename.ipa'`. This maps the local
+path to the canonical filename; it does not rename the database artifact. Hash
+matching is still mandatory. A failed check means agents must not inspect,
+execute, or use that local copy, even for a provisional diagnosis. Find the
+exact canonical copy through the maintainer rather than treating the mismatch
+as “close enough.” Re-run verification before each report-worthy clean run.
 
 For a manual `tapHLE --info` cross-check, use:
 
@@ -143,6 +149,9 @@ Merge or otherwise promote the branch only after:
    database; and
 3. the relevant normal regression checks pass.
 
+Meeting these gates defines a stable compatibility checkpoint. Merge it to
+`trunk` with its limitations recorded even when more app work remains. Leave
+unfinished, unverified, or unstable experiments on the compatibility branch.
 Full playability is not required. A smaller verified milestone is useful when
 the database states it honestly. Provisional results from a dirty worktree do
 not enter the compatibility database. Commit the implementation checkpoint,
