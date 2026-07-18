@@ -22,7 +22,22 @@ show what was really tested. The scale is adapted from the
 
 | Game | Exact build | Latest Windows result | tapHLE commit | Tested |
 | --- | --- | --- | --- | --- |
+| [Percy Jackson & The Olympians: The Lightning Thief](#percy) | 1.0 (`com.deluxe.Pipes`) | — Not tested | — | — |
 | [Ricky](#ricky) | 2.1 (`com.nabilchatbi.Ricky`) | ⭐⭐⭐ In game | `e2d51c6c` | 2026-07-17 |
+
+<a id="percy"></a>
+## Percy Jackson & The Olympians: The Lightning Thief
+
+### 1.0 (`com.deluxe.Pipes`)
+
+- Bundle identifier: `com.deluxe.Pipes`
+- Minimum OS version: 3.1.2
+- Archive source: [ios-ipa-com.deluxe.pipes](https://archive.org/details/ios-ipa-com.deluxe.pipes)
+- Exact target IPA filename: `Percy Jackson & The Olympians: The Lightning Thief (v1.0) [Decrypted].ipa`
+- Source verification: content hash verified
+- Availability review: 2026-07-18 (maintainer designated unavailable)
+
+No verified Windows test report has been recorded yet.
 
 <a id="ricky"></a>
 ## Ricky

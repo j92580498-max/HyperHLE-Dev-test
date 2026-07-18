@@ -1,0 +1,41 @@
+{
+  "$schema": "../schema-v1.json",
+  "schema_version": 1,
+  "slug": "percy",
+  "title": "Percy Jackson & The Olympians: The Lightning Thief",
+  "versions": [
+    {
+      "identity": {
+        "bundle_identifier": "com.deluxe.Pipes",
+        "bundle_version": "1.0",
+        "minimum_os_version": "3.1.2"
+      },
+      "archive_org": {
+        "identifier": "ios-ipa-com.deluxe.pipes",
+        "item_url": "https://archive.org/details/ios-ipa-com.deluxe.pipes",
+        "bundle_identifier": "com.deluxe.Pipes",
+        "bundle_version": "1.0",
+        "files": [
+          {
+            "ipa_filename": "Percy Jackson & The Olympians: The Lightning Thief (v1.0) [Decrypted].ipa",
+            "md5": "84a94d85e26af00b4594d7bba03cae77",
+            "sha1": "d6860631a08b4909dd93dc11b50fb22a49ac2809",
+            "sha256": "67a4981113d76f796fd706be321db92d2ca376e3ec83c333478cc8fc63f680ca",
+            "tested": true
+          }
+        ],
+        "verification": {
+          "state": "content-hash-verified",
+          "checked_at": "2026-07-18",
+          "notes": "The exact Archive.org original matched the item's published MD5 and SHA-1, the locally calculated SHA-256 above, and the embedded bundle identity. A Windows-safe local filename was explicitly associated with the exact Archive filename rather than treated as identity."
+        },
+        "availability": {
+          "checked_at": "2026-07-18",
+          "status": "maintainer-designated-unavailable",
+          "notes": "The maintainer selected this archived build for compatibility testing. Apple's US lookups for app ID 356468446 and the exact com.deluxe.Pipes bundle identifier each returned zero results on 2026-07-18. This is a factual project-scope check, not a legal conclusion."
+        }
+      },
+      "reports": []
+    }
+  ]
+}
