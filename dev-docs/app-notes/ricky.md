@@ -1,6 +1,6 @@
 # Ricky compatibility work note
 
-Last updated: 2026-07-17.
+Last updated: 2026-07-18.
 
 ## Identity and branch
 
@@ -191,13 +191,36 @@ stereo 44.1 kHz signed 16-bit wave output contained non-silent signal, but the
 default Windows device was not heard and the known multi-context attribution
 caveat still applies.
 
+## Maintainer manual stopping point
+
+On 2026-07-18, the maintainer launched Ricky through the app picker using the
+clean `22e0bd2a4ec040cdda456aeaf7a3a72a4a80fb5d` release executable. The log
+identifies the selected file as the exact canonical
+`Ricky (v2.1) [Cracked].ipa`, records the expected bundle identity, and shows
+that the new default options were loaded. A post-run hash check still matched
+the Archive MD5, SHA-1, and repository SHA-256.
+
+The maintainer manually confirmed audible output through the normal Windows
+speaker path, jumping, defeating enemies, and restarting a level. They also
+created and saved a custom level. The save alert and a newly written custom
+level file corroborate creation, but selecting that level and pressing Play
+crashed tapHLE. The terminal crash text was not captured, so the cause is not
+yet localized.
+
+This remains a three-star `in-game` result rather than four-star `playable`:
+substantial functionality works, but the whole main game has not been shown
+playable and custom-level playback has a major crash. The observation is kept
+here rather than appended to the public database because the strict
+report-worthy Archive verification was not run immediately before that manual
+session. A future Ricky pass can make it an official appended report by
+verifying first and reproducing the short manual checkpoint on an exact
+committed build.
+
 ## Next compatibility frontier
 
-Validate the new default mapping with an SDL-recognized physical controller;
-mouse input proves the coordinates but not the controller event path. Check
-left/right, simultaneous right plus A, B's visible gameplay effect, and
-pause/resume. Then exercise hazards, death/restart, level completion, and save
-persistence across a fresh process. Confirm sound through the default Windows
-backend by listening before promoting audio to `working`. Finally, run a longer
-gameplay session while monitoring memory because the `0x40`-byte allocation
-quarantine deliberately retains matching chunks for the process lifetime.
+If Ricky work resumes, start at the custom-level Play crash. Capture terminal
+output and resolve its first emulator boundary before repeating broad gameplay.
+After that, validate story completion/progression, save persistence across a
+fresh process, the physical-controller path, and a longer memory trend for the
+`0x40`-byte allocation quarantine. Audio should become `working` in the next
+eligible report if normal-device audibility is reconfirmed.
