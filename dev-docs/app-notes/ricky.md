@@ -61,6 +61,31 @@ begin in its bottom 50-pixel strip. It has three textures and loads level 2
 after two qualifying taps; blind center-screen tapping and waiting are rejected
 strategies.
 
+## First-level controls and capture evidence
+
+A state-aware internal EAGL capture on a dirty diagnostic build established the
+first-level control targets at the 480 by 320 landscape-left client size:
+
+- left movement: `(40, 285)`;
+- right movement: `(130, 285)`;
+- B/action: `(355, 285)`;
+- A/jump: `(444, 285)`; and
+- pause: `(16, 16)`.
+
+Holding A visibly highlighted the A target and moved Ricky roughly 90 pixels
+upward, directly establishing the jump action. Holding B visibly highlighted
+the B target, which establishes touch acceptance but not the resulting action;
+no projectile was visible in the bounded before/held/after frames. The earlier
+clean run already established rightward movement. Leftward movement, B's full
+behavior, and pause/resume still need direct runtime checks.
+
+Commit `cdc8aab0` converts the diagnostic into a general, safe one-shot frame
+capture protocol documented in `dev-docs/app-debugging-playbook.md`. The dirty
+captures remain provisional debugging evidence and are not compatibility
+database evidence. A clean committed run should use the new protocol when a
+visual claim is ready to record. Desktop `Graphics.CopyFromScreen` remains a
+rejected capture method for this OpenGL window.
+
 ## Proven fixes and risks
 
 - `9b31d508`: `dlsym(RTLD_DEFAULT)` resolves symbols from loaded app binaries
@@ -168,8 +193,11 @@ caveat still applies.
 
 ## Next compatibility frontier
 
-Confirm sound through the default Windows backend by listening before promoting
-audio to `working`. Then exercise action buttons, hazards, death/restart, level
-completion, and saving. Run a longer gameplay session while monitoring memory
-because the `0x40`-byte allocation quarantine deliberately retains matching
-chunks for the process lifetime.
+Validate the new default mapping with an SDL-recognized physical controller;
+mouse input proves the coordinates but not the controller event path. Check
+left/right, simultaneous right plus A, B's visible gameplay effect, and
+pause/resume. Then exercise hazards, death/restart, level completion, and save
+persistence across a fresh process. Confirm sound through the default Windows
+backend by listening before promoting audio to `working`. Finally, run a longer
+gameplay session while monitoring memory because the `0x40`-byte allocation
+quarantine deliberately retains matching chunks for the process lifetime.
