@@ -148,6 +148,94 @@ Reuse a proven input recipe. Change one step at the frontier rather than
 inventing a new route on every launch. A successful click path is evidence and
 belongs in the app note.
 
+### Capture the submitted guest frame when desktop capture is black
+
+Windows desktop screenshot APIs may return a black OpenGL client area. For one
+state-aware diagnostic per process, tapHLE can capture the next valid EAGL
+renderbuffer submitted through `presentRenderbuffer:`. This is a harness
+feature, not an app option: set both paths in the child process environment
+before launch, then create the request marker only after the target state is
+reached.
+
+```powershell
+$captureDir = Join-Path ([IO.Path]::GetTempPath()) (
+    'taphle-frame-' + [Guid]::NewGuid().ToString('N')
+)
+[void](New-Item -ItemType Directory -Path $captureDir)
+$tapHLEPath = '<absolute path to the exact committed tapHLE.exe>'
+$ipaPath = '<absolute path to the exact hash-verified IPA>'
+$requestPath = Join-Path $captureDir 'frame.request'
+$outputPath = Join-Path $captureDir 'frame.ppm'
+
+$env:TAPHLE_FRAME_CAPTURE_REQUEST = $requestPath
+$env:TAPHLE_FRAME_CAPTURE_OUTPUT = $outputPath
+try {
+    # Start-Process returns immediately, which lets the harness create the
+    # marker while this exact child is running. Set up the capture directory's
+    # resource links/default-options file as described earlier in this section.
+    $process = Start-Process `
+        -FilePath $tapHLEPath `
+        -ArgumentList ('"' + $ipaPath + '"') `
+        -WorkingDirectory $captureDir `
+        -PassThru
+}
+finally {
+    Remove-Item Env:\TAPHLE_FRAME_CAPTURE_REQUEST -ErrorAction SilentlyContinue
+    Remove-Item Env:\TAPHLE_FRAME_CAPTURE_OUTPUT -ErrorAction SilentlyContinue
+}
+
+# At the desired UI state, create the marker without replacing anything.
+$marker = [IO.File]::Open(
+    $requestPath,
+    [IO.FileMode]::CreateNew,
+    [IO.FileAccess]::Write,
+    [IO.FileShare]::None
+)
+$marker.Dispose()
+
+$deadline = [DateTime]::UtcNow.AddSeconds(10)
+$captureComplete = $false
+while (-not $captureComplete -and [DateTime]::UtcNow -lt $deadline) {
+    if (Test-Path -LiteralPath $outputPath -PathType Leaf) {
+        # The destination becomes visible before its payload is fully written,
+        # so file existence alone is not completion.
+        ffmpeg -v quiet -i $outputPath -f null -
+        $captureComplete = $LASTEXITCODE -eq 0
+    }
+    Start-Sleep -Milliseconds 100
+}
+if (-not $captureComplete) {
+    throw 'Timed out waiting for a complete, decodable EAGL frame capture'
+}
+```
+
+The output path must not exist. tapHLE creates it with no-overwrite semantics,
+logs the PPM dimensions on success, and makes only one triggered attempt per
+process. A successful attempt removes the marker on a best-effort basis. A
+write failure, inaccessible path, invalid marker, or pre-existing output is
+logged without crashing the emulator; the request is disarmed and may leave
+the marker in place, so restart tapHLE before retrying.
+
+Wait for the output with a short deadline rather than an unbounded loop. Check
+that the file begins with a `P6` header and that a decoder reports the expected
+dimensions and complete pixel payload. The capture has OpenGL's pixel origin
+and may need a vertical flip and an orientation-specific rotation for visual
+inspection. For example, Ricky's landscape-left diagnostic used:
+
+```powershell
+ffmpeg -i $outputPath -vf 'vflip,transpose=2' (
+    Join-Path $captureDir 'frame-oriented.png'
+)
+```
+
+This is the submitted guest renderbuffer before host rotation, layer
+composition, scaling, letterboxing, or virtual-cursor drawing. It is not a
+general final-window screenshot and, in a multi-layer app, may not be the layer
+ultimately visible. The synchronous readback can briefly stall one frame and
+temporarily holds both RGBA and RGB copies in memory. Keep the PPM, converted
+image, marker, and raw logs in the unique temporary run directory; never add
+them to Git or treat a dirty-build capture as compatibility-database evidence.
+
 ## Treat shutdown as an observable boundary
 
 Test process shutdown separately after reaching a meaningful milestone. Post

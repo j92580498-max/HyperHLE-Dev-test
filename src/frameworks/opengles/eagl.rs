@@ -302,6 +302,22 @@ pub const CLASSES: ClassExports = objc_classes! {
         return false;
     };
 
+    if let Some(request) = env
+        .framework_state
+        .opengles
+        .take_triggered_frame_capture()
+    {
+        let mut gles = super::sync_context(
+            &mut env.framework_state.opengles,
+            &mut env.objc,
+            env.window.as_mut().unwrap(),
+            env.current_thread,
+        );
+        unsafe {
+            capture_renderbuffer(gles.as_mut(), request);
+        }
+    }
+
     // We're presenting to the opaque CAEAGLLayer that covers the screen.
     // We can use the fast path where we skip composition and present directly.
     if drawable == fullscreen_layer {
@@ -541,6 +557,58 @@ unsafe fn read_renderbuffer(gles: &mut dyn GLES, mut pixel_buffer: Vec<u8>) -> (
     gles.BindFramebufferOES(gles11::FRAMEBUFFER_OES, old_framebuffer);
 
     (pixel_buffer, width_u32, height_u32)
+}
+
+/// Capture a submitted guest renderbuffer for an external debugging harness.
+///
+/// This is intentionally a one-shot, host-configured diagnostic. It captures
+/// before host rotation, composition, and virtual-cursor rendering.
+unsafe fn capture_renderbuffer(gles: &mut dyn GLES, request: super::FrameCaptureRequest) {
+    match std::fs::metadata(&request.output_path) {
+        Ok(_) => {
+            log!(
+                "Warning: refusing to overwrite frame capture output {}.",
+                request.output_path.display(),
+            );
+            return;
+        }
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => {}
+        Err(err) => {
+            log!(
+                "Warning: could not inspect frame capture output {}: {}.",
+                request.output_path.display(),
+                err,
+            );
+            return;
+        }
+    }
+
+    let (pixels, width, height) = read_renderbuffer(gles, Vec::new());
+    let pixels = crate::debug::rgba8_to_rgb8(&pixels);
+    match crate::debug::write_ppm_create_new(&request.output_path, width, height, &pixels) {
+        Ok(()) => {
+            log!(
+                "Captured submitted EAGL renderbuffer to {} ({}x{} PPM).",
+                request.output_path.display(),
+                width,
+                height,
+            );
+            if let Err(err) = std::fs::remove_file(&request.marker_path) {
+                log!(
+                    "Warning: frame capture succeeded, but marker {} could not be removed: {}.",
+                    request.marker_path.display(),
+                    err,
+                );
+            }
+        }
+        Err(err) => {
+            log!(
+                "Warning: could not write frame capture output {}: {}.",
+                request.output_path.display(),
+                err,
+            );
+        }
+    }
 }
 
 /// Copies the pixels in a renderbuffer bound to `GL_RENDERBUFFER_BINDING_OES`
