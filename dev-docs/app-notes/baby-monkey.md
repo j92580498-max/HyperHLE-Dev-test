@@ -36,8 +36,8 @@ and `performSelector:onThread:withObject:waitUntilDone:` compatibility.
 On Windows, the exact hash-checked IPA now creates two native OpenGL ES 2.0
 contexts using the Intel Iris Xe driver. It proceeds through Cocos2D graphics
 setup, mounts its root controller, performs its initial orientation decision,
-and begins display-loop setup. The current stop is
-`-[CADisplayLink timestamp]`, which is not implemented.
+and begins display-loop setup. With CADisplayLink and Caches directory mapped, the current stop is
+`-[NSProcessInfo environment]`, which is not implemented.
 
 This is still not a compatibility-database milestone or rating. No human menu,
 presented frame, input, gameplay or audio result has been established.
@@ -75,11 +75,9 @@ presented frame, input, gameplay or audio result has been established.
 ## Next discriminator
 
 Do not continue adding unrelated missing constants from the startup warning
-list. Implement and test the `CADisplayLink timestamp` behavior used by the
-game. Determine whether it also needs `duration` or target-timestamp behavior
-from the same frame-time source before paying for another release link. The
-next meaningful milestone is a submitted/presented frame, not merely another
-successful startup selector.
+list. Implement and test `-[NSProcessInfo environment]` which is where the game
+currently crashes. Determine what environment variables the game expects from
+this dictionary (e.g. system properties) to proceed further towards a presented frame.
 
 The native ES 2.0 work was adapted from the smaller HyperHLE snapshot at
 `ec06f12b886a166b220df94d44861a2de78299b3`, with authorship retained in the
