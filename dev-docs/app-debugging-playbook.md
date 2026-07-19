@@ -79,10 +79,58 @@ directory; do not unpack an entire library of apps. Record the summarized
 condition or symbol, then remove the exact temporary directory when it is no
 longer needed.
 
+For an archived UIKit screen, diagnose drawing and hit testing separately.
+`UISubviews` is stored back-to-front, so a decorative full-screen view near the
+end can intercept every control even when the buttons render correctly. Check
+the exact archived interaction flag and any content wrapper objects (for
+example, image-only button content) before changing event routing or drawing.
+When a missing keyed value and an explicit false value have different
+semantics, use `containsValueForKey:` before decoding; otherwise a decoder can
+silently replace a subclass-specific default.
+
+Treat layout as a separate runtime boundary too. A view created after launch
+can be mounted, touchable, and still blank if its custom `layoutSubviews` never
+runs. For an EAGL-backed view, distinguish these checkpoints in order:
+display-link creation, layout-driven drawable allocation, a nonzero bound
+renderbuffer, and `presentRenderbuffer:`. Do not paper over a missing layout
+pass by calling every view's layout method every frame; that can make an app
+destroy and recreate its framebuffer continuously. The current narrow
+post-launch behavior lays out a newly mounted controller root once. Nested
+runtime views and later geometry changes still need a future dirty-layout
+implementation.
+
 For a guest crash, resolve the program counter to its owning app image,
 library, or HLE boundary before designing a fix. Inspect the register values
 and object/allocation lifetime around that exact operation. A native library
 fault, managed-code fault, and emulator panic have different recovery paths.
+
+On Windows, first check the LLVM tools already installed with the pinned Rust
+toolchain before installing another disassembler. After extracting only the
+authorized app executable to a unique temporary directory, a narrow lookup is:
+
+```powershell
+$llvmBin = Join-Path (rustc --print sysroot) `
+    'lib\rustlib\x86_64-pc-windows-msvc\bin'
+$objdump = Join-Path $llvmBin 'llvm-objdump.exe'
+$appBinary = '<temporary path to the extracted app executable>'
+$faultPc = '1234' # clear the Thumb bit when an address includes it
+
+& $objdump --macho --arch=armv6 --disassemble $appBinary |
+    Select-String -Pattern "^\s*$faultPc`:" -Context 40,60
+```
+
+Use `llvm-nm.exe --arch=armv6 --defined-only` from the same directory to map
+nearby methods and C++ functions. Keep only the small address context needed
+to explain the fault; do not save or commit a full disassembly. Reconcile the
+faulting operands with tapHLE's register dump. For an Objective-C++ object,
+also check compiler-emitted `.cxx_construct` and `.cxx_destruct` methods before
+treating a zeroed C++ container as valid initialized state.
+
+When the fault is an assertion at an HLE graphics boundary, recover the exact
+guest API call and enum before relaxing it. Some old apps make invalid GL calls
+that a real driver answers by recording `GL_INVALID_ENUM` and continuing. A
+bounded emulator fix should preserve that guest-visible error behavior instead
+of converting the app mistake into a host panic or ignoring all GL errors.
 
 ## Instrument one boundary at a time
 
@@ -143,6 +191,21 @@ verify the exact target handle again after positioning the cursor and before
 injecting input. Do not send a synthetic Alt key while an unrelated app owns
 the foreground; it can alter that app's state. Abort safely if dual attachment
 cannot establish ownership.
+
+Allow the target event loop to consume the cursor move before sending the
+button-down event (a short bounded pause such as 200 ms is sufficient in the
+current harness). When touch routing is the boundary under test, confirm the
+trace contains a `MouseMotion` at the intended client coordinate before the
+matching `MouseButtonDown`. Sending the press immediately after
+`SetCursorPos` can make SDL use the previous cursor coordinate and create a
+false hit-testing diagnosis.
+
+Also verify that `FocusGained` precedes the first intended client click.
+Windows may consume the first click only to activate the emulator even when
+`SetForegroundWindow` was requested. A reliable harness can click the spawned
+window's title bar, wait for the focus event, and only then begin the recorded
+client-coordinate recipe. Never use a focus click inside the app as if it were
+part of the compatibility test.
 
 Reuse a proven input recipe. Change one step at the frontier rather than
 inventing a new route on every launch. A successful click path is evidence and

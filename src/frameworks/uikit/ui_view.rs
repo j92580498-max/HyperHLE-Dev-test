@@ -366,6 +366,16 @@ pub const CLASSES: ClassExports = objc_classes! {
     let key_ns_string = get_static_str(env, "UIMultipleTouchEnabled");
     let multi_touch_enabled: bool = msg![env; coder decodeBoolForKey:key_ns_string];
 
+    // NIB archives store the inverse of UIView's public property. Do not
+    // decode a missing key as false: subclasses such as UIImageView have a
+    // different default for user interaction and must keep that default when
+    // the archive does not override it.
+    let user_interaction_disabled_key = get_static_str(env, "UIUserInteractionDisabled");
+    let has_user_interaction_override: bool =
+        msg![env; coder containsValueForKey:user_interaction_disabled_key];
+    let user_interaction_disabled = has_user_interaction_override
+        && msg![env; coder decodeBoolForKey:user_interaction_disabled_key];
+
     let key_ns_string = get_static_str(env, "UISubviews");
     let subviews: id = msg![env; coder decodeObjectForKey:key_ns_string];
     let subview_count: NSUInteger = msg![env; subviews count];
@@ -391,6 +401,10 @@ pub const CLASSES: ClassExports = objc_classes! {
     () = msg![env; this setBackgroundColor:bg_color];
     () = msg![env; this setTag:tag];
     () = msg![env; this setMultipleTouchEnabled:multi_touch_enabled];
+    if has_user_interaction_override {
+        let user_interaction_enabled = !user_interaction_disabled;
+        () = msg![env; this setUserInteractionEnabled:user_interaction_enabled];
+    }
 
     for i in 0..subview_count {
         let subview: id = msg![env; subviews objectAtIndex:i];

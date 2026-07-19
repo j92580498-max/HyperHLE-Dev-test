@@ -11,8 +11,9 @@
 //! - Mike Ash's [objc_msgSend's New Prototype](https://www.mikeash.com/pyblog/objc_msgsends-new-prototype.html)
 //! - Peter Steinberger's [Calling Super at Runtime in Swift](https://steipete.com/posts/calling-super-at-runtime/) explains `objc_msgSendSuper2`
 
-use super::{id, nil, Class, ObjC, IMP, SEL};
-use crate::abi::{CallFromHost, GuestRet};
+use super::objects::CxxLifecycle;
+use super::{id, nil, Class, ClassHostObject, ObjC, IMP, SEL};
+use crate::abi::{write_next_arg, CallFromHost, GuestRet};
 use crate::environment::ThreadId;
 use crate::libc::pthread::cond::{
     pthread_cond_broadcast, pthread_cond_destroy, pthread_cond_init, pthread_cond_t,
@@ -22,10 +23,135 @@ use crate::libc::pthread::mutex::{
     pthread_mutex_destroy, pthread_mutex_init, pthread_mutex_lock, pthread_mutex_t,
     pthread_mutex_unlock,
 };
-use crate::mem::{guest_size_of, ConstPtr, MutPtr, MutVoidPtr, SafeRead};
+use crate::mem::{guest_size_of, ConstPtr, MutPtr, MutVoidPtr, Ptr, SafeRead};
 use crate::objc::classes::InitializationStatus;
 use crate::Environment;
 use std::any::TypeId;
+
+/// Call an Objective-C++ lifecycle method on one exact class implementation.
+/// Normal message dispatch is deliberately bypassed because every class-local
+/// implementation in the hierarchy must run.
+fn call_cxx_method(env: &mut Environment, object: id, selector: SEL, imp: IMP) -> id {
+    let saved_regs = *env.cpu.regs();
+    let result = match imp {
+        IMP::Host(host_imp) => {
+            // There are currently no host lifecycle methods, but handling them
+            // keeps future host classes and guest categories unsurprising.
+            let mut reg_offset = 0;
+            write_next_arg(&mut reg_offset, env.cpu.regs_mut(), &mut env.mem, object);
+            write_next_arg(&mut reg_offset, env.cpu.regs_mut(), &mut env.mem, selector);
+            host_imp.call_from_guest(env);
+            let result: id = Ptr::from_bits(env.cpu.regs()[0]);
+            result
+        }
+        IMP::Guest(guest_imp) => guest_imp.call_from_host(env, (object, selector)),
+    };
+    env.cpu.regs_mut().copy_from_slice(&saved_regs);
+    result
+}
+
+fn class_chain_from_class(objc: &ObjC, mut class: Class) -> Vec<Class> {
+    let mut classes = Vec::new();
+    while class != nil {
+        classes.push(class);
+        class = objc.borrow::<ClassHostObject>(class).superclass;
+    }
+    classes
+}
+
+fn class_chain(env: &Environment, object: id) -> Vec<Class> {
+    class_chain_from_class(&env.objc, ObjC::read_isa(object, &env.mem))
+}
+
+fn uninherited_cxx_imp(env: &Environment, class: Class, selector: SEL) -> Option<IMP> {
+    env.objc
+        .borrow::<ClassHostObject>(class)
+        .methods
+        .get(&selector)
+        .copied()
+}
+
+fn call_cxx_destructors(
+    env: &mut Environment,
+    object: id,
+    classes_subclass_first: impl IntoIterator<Item = Class>,
+) {
+    let Some(selector) = env.objc.lookup_selector(".cxx_destruct") else {
+        return;
+    };
+    for class in classes_subclass_first {
+        let Some(imp) = uninherited_cxx_imp(env, class, selector) else {
+            continue;
+        };
+        log_dbg!(
+            "Calling .cxx_destruct for class {} ({:?}) on {:?}",
+            env.objc.get_class_name(class),
+            class,
+            object
+        );
+        let _ = call_cxx_method(env, object, selector, imp);
+    }
+}
+
+/// Finish construction of a newly allocated object returned by a host method.
+/// A nil constructor result means failure: already-constructed superclasses
+/// are unwound and the allocation is discarded, matching objc4.
+fn maybe_construct_object(env: &mut Environment, object: id) -> id {
+    let Some(entry) = env.objc.objects.get_mut(&object) else {
+        return object;
+    };
+    if entry.cxx_lifecycle != CxxLifecycle::Allocated {
+        return object;
+    }
+    entry.cxx_lifecycle = CxxLifecycle::Constructing;
+
+    let mut classes = class_chain(env, object);
+    classes.reverse();
+
+    if let Some(selector) = env.objc.lookup_selector(".cxx_construct") {
+        for (index, &class) in classes.iter().enumerate() {
+            let Some(imp) = uninherited_cxx_imp(env, class, selector) else {
+                continue;
+            };
+            log_dbg!(
+                "Calling .cxx_construct for class {} ({:?}) on {:?}",
+                env.objc.get_class_name(class),
+                class,
+                object
+            );
+            if call_cxx_method(env, object, selector, imp) == nil {
+                // The failing class itself was never fully constructed.
+                call_cxx_destructors(env, object, classes[..index].iter().rev().copied());
+                env.objc.objects.get_mut(&object).unwrap().cxx_lifecycle = CxxLifecycle::Destructed;
+                env.objc
+                    .discard_failed_cxx_construction(object, &mut env.mem);
+                return nil;
+            }
+        }
+    }
+
+    env.objc.objects.get_mut(&object).unwrap().cxx_lifecycle = CxxLifecycle::Constructed;
+    object
+}
+
+/// Run destructors immediately before dispatch reaches the first host
+/// deallocator. Guest `-dealloc` overrides therefore run first, while the
+/// lifecycle state prevents host super-calls from running destructors twice.
+fn maybe_destruct_object(env: &mut Environment, object: id) {
+    let Some(entry) = env.objc.objects.get_mut(&object) else {
+        return;
+    };
+    if entry.cxx_lifecycle != CxxLifecycle::Constructed {
+        return;
+    }
+    entry.cxx_lifecycle = CxxLifecycle::Destructing;
+
+    let classes = class_chain(env, object);
+    call_cxx_destructors(env, object, classes);
+    if let Some(entry) = env.objc.objects.get_mut(&object) {
+        entry.cxx_lifecycle = CxxLifecycle::Destructed;
+    }
+}
 
 pub(super) struct ThreadInitializer {
     mutex: MutPtr<pthread_mutex_t>,
@@ -243,7 +369,7 @@ fn objc_msgSend_inner(
                 continue;
             }
 
-            if let Some(imp) = methods.get(&selector) {
+            if let Some(&imp) = methods.get(&selector) {
                 log_dbg!("Found method on: {}", name);
                 match imp {
                     IMP::Host(host_imp) => {
@@ -274,7 +400,19 @@ Type mismatch when sending message {} to {:?}!
                                 }
                             }
                         }
-                        host_imp.call_from_guest(env)
+                        if selector.as_str(&env.mem) == "dealloc" {
+                            maybe_destruct_object(env, receiver);
+                        }
+                        host_imp.call_from_guest(env);
+
+                        // All normal guest objects are allocated by a host
+                        // implementation of +allocWithZone:. Run any C++ ivar
+                        // constructors before that object is returned to its
+                        // caller. Host-only classes have no such methods and
+                        // simply transition to the constructed state.
+                        let returned_object: id = Ptr::from_bits(env.cpu.regs()[0]);
+                        let constructed_object = maybe_construct_object(env, returned_object);
+                        env.cpu.regs_mut()[0] = constructed_object.to_bits();
                     }
                     // We can't create a new stack frame, because that would
                     // interfere with pass-through of stack arguments.
@@ -666,4 +804,41 @@ pub fn autorelease(env: &mut Environment, object: id) -> id {
         return nil;
     }
     msg![env; object autorelease]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashMap;
+
+    fn test_class(name: &str, superclass: Class) -> ClassHostObject {
+        ClassHostObject {
+            name: name.to_string(),
+            is_metaclass: false,
+            superclass,
+            methods: HashMap::new(),
+            guest_method_signatures: HashMap::new(),
+            ivars: HashMap::new(),
+            instance_start: 4,
+            instance_size: 4,
+            is_initialized: InitializationStatus::NotInitialized,
+        }
+    }
+
+    #[test]
+    fn cxx_class_chain_supports_opposite_constructor_and_destructor_order() {
+        let mut objc = ObjC::new();
+        let root: Class = Ptr::from_bits(0x1000);
+        let middle: Class = Ptr::from_bits(0x2000);
+        let leaf: Class = Ptr::from_bits(0x3000);
+        objc.register_static_object(root, Box::new(test_class("Root", nil)));
+        objc.register_static_object(middle, Box::new(test_class("Middle", root)));
+        objc.register_static_object(leaf, Box::new(test_class("Leaf", middle)));
+
+        let destructor_order = class_chain_from_class(&objc, leaf);
+        assert_eq!(destructor_order, vec![leaf, middle, root]);
+
+        let constructor_order: Vec<_> = destructor_order.into_iter().rev().collect();
+        assert_eq!(constructor_order, vec![root, middle, leaf]);
+    }
 }

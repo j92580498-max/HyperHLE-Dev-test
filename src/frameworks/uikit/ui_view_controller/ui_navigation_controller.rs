@@ -5,10 +5,12 @@
  */
 //! `UINavigationController`.
 
+use crate::frameworks::foundation::ns_string::get_static_str;
 use crate::frameworks::foundation::{ns_array, NSUInteger};
+use crate::frameworks::uikit::ui_application::UIInterfaceOrientation;
 use crate::objc::{
-    autorelease, id, impl_HostObject_with_superclass, msg, nil, objc_classes, release, retain,
-    ClassExports, NSZonePtr, SEL,
+    autorelease, id, impl_HostObject_with_superclass, msg, msg_super, nil, objc_classes, release,
+    retain, ClassExports, NSZonePtr, SEL,
 };
 
 // TODO: navigation bar and toolbar
@@ -22,6 +24,9 @@ struct UINavigationControllerHostObject {
     /// Navigation stack of view controllers, non-retaining
     /// (we explicitly retain/release on push/pop messages)
     navigation_stack: Vec<id>,
+    /// Navigation bar restored from a NIB, retained.
+    navigation_bar: id,
+    navigation_bar_hidden: bool,
 }
 impl_HostObject_with_superclass!(UINavigationControllerHostObject);
 
@@ -36,9 +41,101 @@ pub const CLASSES: ClassExports = objc_classes! {
     env.objc.alloc_object(this, host_object, &mut env.mem)
 }
 
+- (id)initWithCoder:(id)coder {
+    let this: id = msg_super![env; this initWithCoder:coder];
+
+    // Early UIKit archives may contain both keys with equivalent controller
+    // arrays. Decode one authoritative representation so child -> parent
+    // back-references do not recursively instantiate this controller.
+    let view_controllers_key = get_static_str(env, "UIViewControllers");
+    let child_view_controllers_key = get_static_str(env, "UIChildViewControllers");
+    let controllers: id = if msg![env; coder containsValueForKey:view_controllers_key] {
+        msg![env; coder decodeObjectForKey:view_controllers_key]
+    } else {
+        msg![env; coder decodeObjectForKey:child_view_controllers_key]
+    };
+
+    let mut navigation_stack = Vec::new();
+    if controllers != nil {
+        let count: NSUInteger = msg![env; controllers count];
+        navigation_stack.reserve(count as usize);
+        for i in 0..count {
+            let controller: id = msg![env; controllers objectAtIndex:i];
+            retain(env, controller);
+            super::set_parent_view_controller(env, controller, this);
+            navigation_stack.push(controller);
+        }
+    }
+
+    let navigation_bar_key = get_static_str(env, "UINavigationBar");
+    let navigation_bar: id = msg![env; coder decodeObjectForKey:navigation_bar_key];
+    retain(env, navigation_bar);
+
+    let navigation_bar_hidden_key = get_static_str(env, "UINavigationBarHidden");
+    let navigation_bar_hidden: bool =
+        msg![env; coder decodeBoolForKey:navigation_bar_hidden_key];
+    if navigation_bar != nil {
+        () = msg![env; navigation_bar setHidden:navigation_bar_hidden];
+    }
+
+    let host_object = env.objc.borrow_mut::<UINavigationControllerHostObject>(this);
+    assert!(host_object.navigation_stack.is_empty());
+    assert!(host_object.navigation_bar == nil);
+    host_object.navigation_stack = navigation_stack;
+    host_object.navigation_bar = navigation_bar;
+    host_object.navigation_bar_hidden = navigation_bar_hidden;
+
+    this
+}
+
+- (())dealloc {
+    let (navigation_stack, navigation_bar) = {
+        let host_object = env.objc.borrow_mut::<UINavigationControllerHostObject>(this);
+        (
+            std::mem::take(&mut host_object.navigation_stack),
+            std::mem::replace(&mut host_object.navigation_bar, nil),
+        )
+    };
+
+    for controller in navigation_stack {
+        let parent = env
+            .objc
+            .borrow::<super::UIViewControllerHostObject>(controller)
+            .parent_view_controller;
+        if parent == this {
+            super::set_parent_view_controller(env, controller, nil);
+        }
+        release(env, controller);
+    }
+    release(env, navigation_bar);
+
+    msg_super![env; this dealloc]
+}
+
 - (id)initWithRootViewController:(id)root_vc { // UIViewController *
     () = msg![env; this pushViewController:root_vc animated:false];
     this
+}
+
+- (())loadView {
+    // Restore only the model during initWithCoder:. Loading the top child here
+    // keeps view creation and appearance callbacks out of recursive NIB
+    // decoding while making the archived hierarchy visible on first use.
+    () = msg_super![env; this loadView];
+
+    let (self_view, top_view_controller) = {
+        let host_object = env.objc.borrow::<UINavigationControllerHostObject>(this);
+        (
+            host_object.superclass.view,
+            host_object.navigation_stack.last().copied(),
+        )
+    };
+    if let Some(top_view_controller) = top_view_controller {
+        let view: id = msg![env; top_view_controller view];
+        () = msg![env; top_view_controller viewWillAppear:false];
+        () = msg![env; self_view addSubview:view];
+        () = msg![env; top_view_controller viewDidAppear:false];
+    }
 }
 
 // weak/non-retaining
@@ -53,10 +150,17 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 - (())pushViewController:(id)view_controller // UIViewController *
                 animated:(bool)_animated {
+    // Load the container before changing the stack. For an ordinary
+    // initWithRootViewController: this prevents loadView from mistaking the
+    // newly pushed controller for an archived controller that still needs to
+    // be attached.
+    let self_view: id = msg![env; this view];
+
     let stack = &mut env.objc.borrow_mut::<UINavigationControllerHostObject>(this).navigation_stack;
     assert!(!stack.contains(&view_controller));
     stack.push(view_controller);
     retain(env, view_controller);
+    super::set_parent_view_controller(env, view_controller, this);
 
     let delegate = env.objc.borrow::<UINavigationControllerHostObject>(this).delegate;
     let sel: SEL = env
@@ -69,7 +173,6 @@ pub const CLASSES: ClassExports = objc_classes! {
     if responds {
         () = msg![env; delegate navigationController:this willShowViewController:view_controller animated:false];
     }
-    let self_view: id = msg![env; this view];
     let vc_view: id = msg![env; view_controller view];
     // TODO: animations
     () = msg![env; view_controller viewWillAppear:false];
@@ -109,30 +212,40 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 - (())setViewControllers:(id)controllers // NSArray *
                 animated:(bool)animated {
-    assert!(!animated);
-
     // Clean existing view controllers
-    let self_view = env.objc.borrow::<UINavigationControllerHostObject>(this).superclass.view;
+    let self_view: id = msg![env; this view];
     let mut stack = std::mem::take(&mut env.objc.borrow_mut::<UINavigationControllerHostObject>(this).navigation_stack);
-    // TODO: shall we drain in reverse order? does it matter?
     for controller in stack.drain(..) {
         let vc_view = env.objc.borrow::<super::UIViewControllerHostObject>(controller).view;
-        let vc_view_superview = msg![env; vc_view superview];
-        assert_eq!(self_view, vc_view_superview);
-        // TODO: view{Will,Did}Disappear: messages for vc?
-        () = msg![env; vc_view removeFromSuperview];
+        if vc_view != nil {
+            let vc_view_superview: id = msg![env; vc_view superview];
+            if self_view == vc_view_superview {
+                // TODO: view{Will,Did}Disappear: messages for vc?
+                () = msg![env; vc_view removeFromSuperview];
+            }
+        }
+
+        let parent = env
+            .objc
+            .borrow::<super::UIViewControllerHostObject>(controller)
+            .parent_view_controller;
+        if parent == this {
+            super::set_parent_view_controller(env, controller, nil);
+        }
 
         release(env, controller);
     }
 
     let mut tmp_stack: Vec<id> = Vec::new();
     let count: NSUInteger = msg![env; controllers count];
-    // TODO: zero count
-    assert!(count > 0);
+    if count == 0 {
+        return;
+    }
     for i in 0..(count - 1) {
         let next: id = msg![env; controllers objectAtIndex:i];
         tmp_stack.push(next);
         retain(env, next);
+        super::set_parent_view_controller(env, next, this);
     }
     env.objc.borrow_mut::<UINavigationControllerHostObject>(this).navigation_stack = tmp_stack;
 
@@ -143,11 +256,41 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (id)navigationBar {
-    // TODO
-    nil
+    env.objc
+        .borrow::<UINavigationControllerHostObject>(this)
+        .navigation_bar
 }
-- (())setNavigationBarHidden:(bool)_hidden {
-    // TODO
+
+- (bool)shouldAutorotateToInterfaceOrientation:(UIInterfaceOrientation)interface_orientation {
+    let top_view_controller = env
+        .objc
+        .borrow::<UINavigationControllerHostObject>(this)
+        .navigation_stack
+        .last()
+        .copied();
+    if let Some(top_view_controller) = top_view_controller {
+        msg![env; top_view_controller shouldAutorotateToInterfaceOrientation:interface_orientation]
+    } else {
+        msg_super![env; this shouldAutorotateToInterfaceOrientation:interface_orientation]
+    }
+}
+- (bool)isNavigationBarHidden {
+    env.objc
+        .borrow::<UINavigationControllerHostObject>(this)
+        .navigation_bar_hidden
+}
+- (())setNavigationBarHidden:(bool)hidden {
+    let navigation_bar = {
+        let host_object = env.objc.borrow_mut::<UINavigationControllerHostObject>(this);
+        host_object.navigation_bar_hidden = hidden;
+        host_object.navigation_bar
+    };
+    if navigation_bar != nil {
+        () = msg![env; navigation_bar setHidden:hidden];
+    }
+}
+- (())setNavigationBarHidden:(bool)hidden animated:(bool)_animated {
+    () = msg![env; this setNavigationBarHidden:hidden];
 }
 
 @end

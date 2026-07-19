@@ -56,7 +56,7 @@ owned_ttf_parser = "0.15.2"
 # (The above statements should not understood as legal claims/advice.)
 symphonia = { version = "0.6.0", default-features = false, features = [
     # formats
-    "caf", "isomp4", "wav",
+    "aiff", "caf", "isomp4", "wav",
     # codecs
     "aac", "adpcm", "alac", "mp3", "pcm"
 ] }

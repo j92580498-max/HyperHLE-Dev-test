@@ -12,6 +12,7 @@
 //! Resources:
 //! - [Apple Core Audio Format Specification 1.0](https://developer.apple.com/library/archive/documentation/MusicAudio/Reference/CAFSpec/CAF_intro/CAF_intro.html)
 
+mod caf;
 mod ima4;
 pub mod openal;
 mod symphonia_formats;
@@ -66,14 +67,16 @@ impl AudioFile {
             return Err(AudioFileOpenError::FileReadError);
         };
 
-        if let Ok(bytes) = Self::read_from_vec(bytes) {
-            Ok(bytes)
-        } else {
-            log!(
-                "Could not decode audio file at path {:?}, likely an unimplemented file format.",
-                path.as_ref()
-            );
-            Err(AudioFileOpenError::FileReadError)
+        match Self::read_from_vec(bytes) {
+            Ok(audio_file) => Ok(audio_file),
+            Err(error) => {
+                log!(
+                    "Could not decode audio file at path {:?}: {:?}, likely an unimplemented file format.",
+                    path.as_ref(),
+                    error
+                );
+                Err(error)
+            }
         }
     }
 
@@ -86,6 +89,8 @@ impl AudioFile {
         if hound::WavReader::new(Cursor::new(&bytes)).is_ok() {
             let reader = hound::WavReader::new(Cursor::new(bytes)).unwrap();
             Ok(AudioFile(AudioFileInner::Wave(reader)))
+        } else if let Ok(pcm) = caf::decode_signed_8_bit_lpcm(&bytes) {
+            Ok(AudioFile(AudioFileInner::Symphonia(pcm)))
         // TODO: Real MP3/MP4/Non-linear PCM container handling. Currently we
         // are immediately decoding the entire file to PCM and acting as if
         // it's a PCM file, simply because because this is easier. Full MP3
@@ -259,5 +264,68 @@ impl AudioFile {
         assert!(bytes_per_packet != 0); // TODO
         self.byte_count() as f64 * frames_per_packet as f64
             / (bytes_per_packet as f64 * sample_rate)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{AudioFile, AudioFormat};
+
+    fn synthetic_s16be_aiff(samples: &[i16], channels: u16) -> Vec<u8> {
+        assert!(!samples.is_empty());
+        assert!(channels != 0);
+        assert!(samples.len().is_multiple_of(usize::from(channels)));
+
+        let frame_count: u32 = (samples.len() / usize::from(channels)).try_into().unwrap();
+        let mut bytes = b"FORM".to_vec();
+        bytes.extend_from_slice(&0_u32.to_be_bytes());
+        bytes.extend_from_slice(b"AIFF");
+
+        bytes.extend_from_slice(b"COMM");
+        bytes.extend_from_slice(&18_u32.to_be_bytes());
+        bytes.extend_from_slice(&channels.to_be_bytes());
+        bytes.extend_from_slice(&frame_count.to_be_bytes());
+        bytes.extend_from_slice(&16_u16.to_be_bytes());
+        // 44,100 encoded as an IEEE 754 80-bit extended-precision value.
+        bytes.extend_from_slice(&[0x40, 0x0e, 0xac, 0x44, 0, 0, 0, 0, 0, 0]);
+
+        let sample_byte_count: u32 = (samples.len() * 2).try_into().unwrap();
+        bytes.extend_from_slice(b"SSND");
+        bytes.extend_from_slice(&(sample_byte_count + 8).to_be_bytes());
+        bytes.extend_from_slice(&0_u32.to_be_bytes()); // offset
+        bytes.extend_from_slice(&0_u32.to_be_bytes()); // block size
+        for sample in samples {
+            bytes.extend_from_slice(&sample.to_be_bytes());
+        }
+
+        let form_size: u32 = (bytes.len() - 8).try_into().unwrap();
+        bytes[4..8].copy_from_slice(&form_size.to_be_bytes());
+        bytes
+    }
+
+    #[test]
+    fn symphonia_decodes_big_endian_aiff_to_little_endian_pcm() {
+        let samples = [i16::MIN, i16::MAX, 0, -1];
+        let mut audio_file = AudioFile::read_from_vec(synthetic_s16be_aiff(&samples, 2)).unwrap();
+        let description = audio_file.audio_description();
+
+        assert_eq!(description.sample_rate, 44_100.0);
+        assert_eq!(description.channels_per_frame, 2);
+        assert_eq!(description.bits_per_channel, 16);
+        assert!(matches!(
+            description.format,
+            AudioFormat::LinearPcm {
+                is_float: false,
+                is_little_endian: true
+            }
+        ));
+
+        let mut decoded = vec![0; samples.len() * 2];
+        assert_eq!(audio_file.read_bytes(0, &mut decoded), Ok(decoded.len()));
+        let expected: Vec<u8> = samples
+            .iter()
+            .flat_map(|sample| sample.to_le_bytes())
+            .collect();
+        assert_eq!(decoded, expected);
     }
 }

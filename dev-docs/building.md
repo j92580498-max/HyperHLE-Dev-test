@@ -53,7 +53,19 @@ Running from the repository root lets tapHLE find `tapHLE_dylibs`,
 resources beside the executable. CI uses `dev-scripts/make-windows-bundle.sh`
 from Git Bash to assemble `tapHLE_windows_bundle`.
 
-To run a game directly:
+To open the graphical picker, run the executable without an app path while
+your working directory is the repository or unpacked Windows bundle:
+
+```powershell
+.\target\release\tapHLE.exe
+```
+
+The picker reads `.ipa` and `.app` files from `tapHLE_apps`. Keep all local
+playtest files there; that directory is ignored by Git, and app binaries must
+not be committed or redistributed. The executable also
+needs `tapHLE_dylibs`, `tapHLE_fonts`, and `tapHLE_default_options.txt` beside
+it (or in the repository root). If the picker says no apps were found, check
+the working directory and file extensions. To run a game directly:
 
 ```powershell
 .\target\release\tapHLE.exe "C:\path\to\Game.ipa"

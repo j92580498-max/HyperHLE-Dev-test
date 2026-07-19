@@ -81,6 +81,14 @@ pub const UNSUPPORTED_CAPABILITIES: &[GLenum] = &[
     gl21::TEXTURE,
 ];
 
+/// Buffer binding targets that old apps have been observed passing to
+/// `glEnableClientState`/`glDisableClientState` by mistake.
+///
+/// These are invalid client-state enums in both GLES 1.1 and desktop GL 2.1,
+/// so forwarding them to the host driver preserves the `GL_INVALID_ENUM`
+/// behavior without turning a guest API error into an emulator panic.
+const CLIENT_STATE_BUFFER_TARGETS: &[GLenum] = &[gl21::ARRAY_BUFFER, gl21::ELEMENT_ARRAY_BUFFER];
+
 pub struct ArrayInfo {
     /// Enum used by `glEnableClientState`, `glDisableClientState` and
     /// `glGetBoolean`.
@@ -729,6 +737,11 @@ impl GLES for GLES1OnGL2<'_> {
                 "Tolerating glEnableClientState({:#x}) of a capability",
                 array
             );
+        } else if CLIENT_STATE_BUFFER_TARGETS.contains(&array) {
+            log_dbg!(
+                "Tolerating glEnableClientState({:#x}) of a buffer target",
+                array
+            );
         } else {
             assert!(ARRAYS.iter().any(|&ArrayInfo { name, .. }| name == array));
         }
@@ -738,6 +751,11 @@ impl GLES for GLES1OnGL2<'_> {
         if CAPABILITIES.contains(&array) {
             log_dbg!(
                 "Tolerating glDisableClientState({:#x}) of a capability",
+                array
+            );
+        } else if CLIENT_STATE_BUFFER_TARGETS.contains(&array) {
+            log_dbg!(
+                "Tolerating glDisableClientState({:#x}) of a buffer target",
                 array
             );
         } else {
@@ -2150,5 +2168,17 @@ impl GLES for GLES1OnGL2<'_> {
     }
     unsafe fn UnmapBufferOES(&mut self, target: GLenum) -> GLboolean {
         gl21::UnmapBuffer(target)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn client_state_tolerates_buffer_binding_targets() {
+        assert!(CLIENT_STATE_BUFFER_TARGETS.contains(&gl21::ARRAY_BUFFER));
+        assert!(CLIENT_STATE_BUFFER_TARGETS.contains(&gl21::ELEMENT_ARRAY_BUFFER));
+        assert!(!CLIENT_STATE_BUFFER_TARGETS.contains(&gl21::VERTEX_ARRAY));
     }
 }

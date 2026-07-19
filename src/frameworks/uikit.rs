@@ -130,6 +130,95 @@ mod tests {
                 .any(|(selector, _)| *selector == "initWithCoder:"),
             "UINavigationItem cannot be restored from a keyed NIB",
         );
+
+        let navigation_controller = &ui_navigation_controller::CLASSES
+            .iter()
+            .find(|(name, _)| *name == "UINavigationController")
+            .expect("UINavigationController is missing from its class module")
+            .1;
+        for selector in [
+            "initWithCoder:",
+            "loadView",
+            "navigationBar",
+            "isNavigationBarHidden",
+            "setNavigationBarHidden:animated:",
+            "shouldAutorotateToInterfaceOrientation:",
+        ] {
+            assert!(
+                navigation_controller
+                    .instance_methods
+                    .iter()
+                    .any(|(exported, _)| *exported == selector),
+                "UINavigationController is missing {selector}",
+            );
+        }
+
+        let view_controller = &super::ui_view_controller::CLASSES
+            .iter()
+            .find(|(name, _)| *name == "UIViewController")
+            .expect("UIViewController is missing from its class module")
+            .1;
+        for selector in [
+            "parentViewController",
+            "navigationController",
+            "modalViewController",
+            "presentModalViewController:animated:",
+            "dismissModalViewControllerAnimated:",
+        ] {
+            assert!(
+                view_controller
+                    .instance_methods
+                    .iter()
+                    .any(|(exported, _)| *exported == selector),
+                "UIViewController is missing {selector}",
+            );
+        }
+    }
+
+    #[test]
+    fn image_view_exports_animation_repeat_count_state() {
+        let image_view = &ui_view::ui_image_view::CLASSES
+            .iter()
+            .find(|(name, _)| *name == "UIImageView")
+            .expect("UIImageView is missing from its class module")
+            .1;
+
+        for selector in [
+            "animationImages",
+            "animationDuration",
+            "animationRepeatCount",
+            "setAnimationRepeatCount:",
+            "startAnimating",
+            "stopAnimating",
+            "isAnimating",
+        ] {
+            assert!(
+                image_view
+                    .instance_methods
+                    .iter()
+                    .any(|(exported, _)| *exported == selector),
+                "UIImageView is missing {selector}",
+            );
+        }
+    }
+
+    #[test]
+    fn button_content_exports_archived_images() {
+        let button_content = &ui_view::ui_control::ui_button::CLASSES
+            .iter()
+            .find(|(name, _)| *name == "UIButtonContent")
+            .expect("UIButtonContent is missing from its class module")
+            .1;
+
+        for selector in ["image", "backgroundImage"] {
+            assert!(
+                button_content
+                    .instance_methods
+                    .iter()
+                    .any(|(exported, _)| *exported == selector),
+                "UIButtonContent is missing {selector}",
+            );
+        }
     }
 }
 

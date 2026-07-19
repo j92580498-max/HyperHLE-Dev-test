@@ -224,6 +224,12 @@ pub const CLASSES: ClassExports = objc_classes! {
             log_dbg!("New view frame after re-applying old view frame: {view_frame:?}");
         }
     }
+
+    // The launch path performs an initial layout pass over the views that
+    // already exist. A controller presented later must also receive a layout
+    // pass after its root view is mounted and oriented. Custom OpenGL views in
+    // particular commonly create their drawable storage in layoutSubviews.
+    () = msg![env; view layoutSubviews];
 }
 
 - (CGPoint)convertPoint:(CGPoint)point

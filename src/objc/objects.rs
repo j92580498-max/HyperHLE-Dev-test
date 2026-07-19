@@ -63,6 +63,19 @@ pub const nil: id = Ptr::null();
 pub(super) struct HostObjectEntry {
     host_object: Box<dyn AnyHostObject>,
     refcount: Option<NonZeroU32>,
+    pub(super) cxx_lifecycle: CxxLifecycle,
+}
+
+/// State for compiler-generated Objective-C++ ivar construction and teardown.
+/// Static objects such as classes do not participate in this lifecycle.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) enum CxxLifecycle {
+    NotApplicable,
+    Allocated,
+    Constructing,
+    Constructed,
+    Destructing,
+    Destructed,
 }
 
 /// Type for host objects.
@@ -174,6 +187,11 @@ impl super::ObjC {
             HostObjectEntry {
                 host_object,
                 refcount,
+                cxx_lifecycle: if refcount.is_some() {
+                    CxxLifecycle::Allocated
+                } else {
+                    CxxLifecycle::NotApplicable
+                },
             },
         );
         ptr
@@ -230,6 +248,7 @@ impl super::ObjC {
             HostObjectEntry {
                 host_object,
                 refcount: None,
+                cxx_lifecycle: CxxLifecycle::NotApplicable,
             },
         );
     }
@@ -344,6 +363,7 @@ impl super::ObjC {
         let HostObjectEntry {
             host_object,
             refcount,
+            cxx_lifecycle: _,
         } = self.objects.remove(&object).unwrap();
 
         if let Some(refcount) = refcount {
@@ -359,6 +379,19 @@ impl super::ObjC {
 
         std::mem::drop(host_object);
 
+        mem.free(object.cast());
+    }
+
+    /// Free an allocation whose Objective-C++ construction failed. Completed
+    /// superclass construction has already been unwound by the caller.
+    pub(super) fn discard_failed_cxx_construction(&mut self, object: id, mem: &mut Mem) {
+        let HostObjectEntry {
+            host_object,
+            refcount: _,
+            cxx_lifecycle,
+        } = self.objects.remove(&object).unwrap();
+        assert_eq!(cxx_lifecycle, CxxLifecycle::Destructed);
+        std::mem::drop(host_object);
         mem.free(object.cast());
     }
 }

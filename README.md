@@ -79,12 +79,25 @@ The executable is `target\release\tapHLE.exe`. A distributable directory also
 needs `tapHLE_dylibs`, `tapHLE_fonts`, and `tapHLE_default_options.txt`; the
 Windows bundle script assembles those files in CI.
 
-Put locally authorized `.ipa` files or `.app` bundles in `tapHLE_apps` to use
-the graphical app picker, or launch a path directly:
+To open the graphical app picker, run the executable with no app path from the
+repository (or unpacked Windows bundle) directory:
+
+```powershell
+.\target\release\tapHLE.exe
+```
+
+That directory must contain `tapHLE_dylibs`, `tapHLE_fonts`, and
+`tapHLE_default_options.txt`. The picker scans `tapHLE_apps` for `.ipa` and
+`.app` entries and labels them using each bundle's embedded display name.
+Those app files are intentionally local and ignored by Git, so you can keep
+any playtest targets there without committing or redistributing them. To
+bypass the picker, launch a path directly:
 
 ```powershell
 .\target\release\tapHLE.exe "C:\path\to\Game.ipa"
 ```
+
+The version and numbered Windows release rules are in `dev-docs/releases.md`.
 
 Run `.\target\release\tapHLE.exe --help` for command-line options. User options
 can be placed in `tapHLE_options.txt`; `OPTIONS_HELP.txt` documents each option.

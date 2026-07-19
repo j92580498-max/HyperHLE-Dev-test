@@ -7,6 +7,7 @@
 //!
 //! Resources:
 //! - [View Controller Programming Guide for iOS (Legacy)](https://developer.apple.com/library/archive/documentation/WindowsViews/Conceptual/ViewControllerPGforiOSLegacy/BasicViewControllers/BasicViewControllers.html)
+//! - [Presenting a View Controller Modally (Legacy)](https://developer.apple.com/library/archive/documentation/WindowsViews/Conceptual/ViewControllerPGforiOSLegacy/ModalViewControllers/ModalViewControllers.html)
 
 use crate::frameworks::core_graphics::CGRect;
 use crate::frameworks::foundation::ns_objc_runtime::NSStringFromClass;
@@ -37,6 +38,12 @@ struct UIViewControllerHostObject {
     /// of the nib by name, may be nil.
     /// `NSBundle*`
     bundle: id,
+    /// The containing view controller, if any. Weak/non-retaining.
+    /// `UIViewController*`
+    parent_view_controller: id,
+    /// The full-screen view controller presented by this controller. Retained.
+    /// `UIViewController*`
+    modal_view_controller: id,
 }
 impl HostObject for UIViewControllerHostObject {}
 
@@ -77,11 +84,34 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (())dealloc {
-    let &UIViewControllerHostObject { view, nib_name, bundle } = env.objc.borrow(this);
+    let &UIViewControllerHostObject {
+        view,
+        nib_name,
+        bundle,
+        parent_view_controller: _,
+        modal_view_controller,
+    } = env.objc.borrow(this);
 
+    if modal_view_controller != nil {
+        let modal_view = env
+            .objc
+            .borrow::<UIViewControllerHostObject>(modal_view_controller)
+            .view;
+        if modal_view != nil {
+            () = msg![env; modal_view removeFromSuperview];
+        }
+        let parent = env
+            .objc
+            .borrow::<UIViewControllerHostObject>(modal_view_controller)
+            .parent_view_controller;
+        if parent == this {
+            set_parent_view_controller(env, modal_view_controller, nil);
+        }
+    }
     if view != nil {
         set_view_controller(env, view, nil);
     }
+    release(env, modal_view_controller);
     release(env, view);
     release(env, nib_name);
     release(env, bundle);
@@ -158,6 +188,34 @@ pub const CLASSES: ClassExports = objc_classes! {
     }
 }
 
+- (id)parentViewController {
+    env.objc
+        .borrow::<UIViewControllerHostObject>(this)
+        .parent_view_controller
+}
+
+- (id)navigationController {
+    let navigation_controller_class: Class = msg_class![env; UINavigationController class];
+    let mut parent = env
+        .objc
+        .borrow::<UIViewControllerHostObject>(this)
+        .parent_view_controller;
+
+    while parent != nil {
+        let is_navigation_controller: bool =
+            msg![env; parent isKindOfClass:navigation_controller_class];
+        if is_navigation_controller {
+            return parent;
+        }
+        parent = env
+            .objc
+            .borrow::<UIViewControllerHostObject>(parent)
+            .parent_view_controller;
+    }
+
+    nil
+}
+
 // Usually overridden by the application
 - (())viewDidLoad {
     log_dbg!("[(UIViewController*){:?} viewDidLoad]", this);
@@ -191,8 +249,163 @@ pub const CLASSES: ClassExports = objc_classes! {
     todo_objc_setter!(this, style);
 }
 
+- (id)modalViewController {
+    env.objc
+        .borrow::<UIViewControllerHostObject>(this)
+        .modal_view_controller
+}
+
+- (())presentModalViewController:(id)modal_view_controller
+                         animated:(bool)animated {
+    if modal_view_controller == nil || modal_view_controller == this {
+        log!("Ignoring invalid modal presentation by {:?} of {:?}", this, modal_view_controller);
+        return;
+    }
+
+    // Prior to iOS 5, a presented controller's parentViewController was its
+    // modal presenter. If a controller that is already presenting receives a
+    // new request, UIKit presents from the visible end of that legacy chain.
+    let mut presenter = this;
+    loop {
+        let existing_modal = env
+            .objc
+            .borrow::<UIViewControllerHostObject>(presenter)
+            .modal_view_controller;
+        if existing_modal == nil {
+            break;
+        }
+        if existing_modal == modal_view_controller {
+            log!("Ignoring duplicate modal presentation of {:?}", modal_view_controller);
+            return;
+        }
+        presenter = existing_modal;
+    }
+
+    // Reject a presentation that would make an existing ancestor a child of
+    // its own modal chain. Besides leaking both controllers, that cycle would
+    // make parent/navigation traversal non-terminating.
+    let mut ancestor = presenter;
+    while ancestor != nil {
+        if ancestor == modal_view_controller {
+            log!(
+                "Ignoring modal presentation of ancestor {:?} by {:?}",
+                modal_view_controller,
+                presenter,
+            );
+            return;
+        }
+        ancestor = env
+            .objc
+            .borrow::<UIViewControllerHostObject>(ancestor)
+            .parent_view_controller;
+    }
+
+    let target_parent = env
+        .objc
+        .borrow::<UIViewControllerHostObject>(modal_view_controller)
+        .parent_view_controller;
+    if target_parent != nil {
+        log!("Ignoring modal presentation of {:?}: it already belongs to {:?}", modal_view_controller, target_parent);
+        return;
+    }
+
+    let presenter_view: id = msg![env; presenter view];
+    let window: id = msg![env; presenter_view window];
+    if window == nil {
+        log!("Ignoring modal presentation by {:?}: its view is not in a window", presenter);
+        return;
+    }
+
+    retain(env, modal_view_controller);
+    env.objc
+        .borrow_mut::<UIViewControllerHostObject>(presenter)
+        .modal_view_controller = modal_view_controller;
+    set_parent_view_controller(env, modal_view_controller, presenter);
+
+    () = msg![env; presenter viewWillDisappear:animated];
+    let modal_view: id = msg![env; modal_view_controller view];
+    // UIWindow's override supplies the modal appearance callbacks and applies
+    // the presented controller's orientation transform.
+    () = msg![env; window addSubview:modal_view];
+    () = msg![env; presenter viewDidDisappear:animated];
+}
+
 - (())dismissModalViewControllerAnimated:(bool)animated {
-    log!("TODO: [(UIViewController*){:?} dismissModalViewControllerAnimated:{}]", this, animated); // TODO
+    // UIKit permits dismissal from the presenter, the presented controller,
+    // or a child of the presented controller. Walk containment until reaching
+    // the controller that owns the retained modal relationship.
+    let mut presenter = this;
+    let first_modal_view_controller = loop {
+        let host_object = env.objc.borrow::<UIViewControllerHostObject>(presenter);
+        if host_object.modal_view_controller != nil {
+            break host_object.modal_view_controller;
+        }
+        if host_object.parent_view_controller == nil {
+            log_dbg!("No modal view controller to dismiss from {:?}", this);
+            return;
+        }
+        presenter = host_object.parent_view_controller;
+    };
+
+    // Dismissing an earlier presenter dismisses the entire modal chain. Keep
+    // each transferred retained reference alive until callbacks and view
+    // removal finish, but only send disappearance callbacks to the visible
+    // (deepest) controller.
+    let mut modal_chain = vec![first_modal_view_controller];
+    loop {
+        let next = env
+            .objc
+            .borrow::<UIViewControllerHostObject>(*modal_chain.last().unwrap())
+            .modal_view_controller;
+        if next == nil {
+            break;
+        }
+        modal_chain.push(next);
+    }
+    let visible_modal = *modal_chain.last().unwrap();
+
+    let mut retained_modals = Vec::with_capacity(modal_chain.len());
+    let mut edge_presenter = presenter;
+    for &modal in &modal_chain {
+        let retained_modal = std::mem::replace(
+            &mut env
+                .objc
+                .borrow_mut::<UIViewControllerHostObject>(edge_presenter)
+                .modal_view_controller,
+            nil,
+        );
+        assert!(retained_modal == modal);
+        retained_modals.push(retained_modal);
+
+        let parent = env
+            .objc
+            .borrow::<UIViewControllerHostObject>(modal)
+            .parent_view_controller;
+        if parent == edge_presenter {
+            set_parent_view_controller(env, modal, nil);
+        }
+        edge_presenter = modal;
+    }
+
+    () = msg![env; visible_modal viewWillDisappear:animated];
+    () = msg![env; presenter viewWillAppear:animated];
+
+    for &modal in modal_chain.iter().rev() {
+        let modal_view = env
+            .objc
+            .borrow::<UIViewControllerHostObject>(modal)
+            .view;
+        if modal_view != nil {
+            () = msg![env; modal_view removeFromSuperview];
+        }
+    }
+
+    () = msg![env; visible_modal viewDidDisappear:animated];
+    () = msg![env; presenter viewDidAppear:animated];
+
+    for retained_modal in retained_modals.into_iter().rev() {
+        release(env, retained_modal);
+    }
 }
 - (())dismissMoviePlayerViewControllerAnimated {
     log!("TODO: [(UIViewController*){:?} dismissMoviePlayerViewControllerAnimated]", this); // TODO
@@ -217,6 +430,14 @@ pub const CLASSES: ClassExports = objc_classes! {
 @end
 
 };
+
+/// Update a view controller's weak containment link without recursively
+/// decoding archived `UIParentViewController` back-references.
+fn set_parent_view_controller(env: &mut Environment, view_controller: id, parent: id) {
+    env.objc
+        .borrow_mut::<UIViewControllerHostObject>(view_controller)
+        .parent_view_controller = parent;
+}
 
 /// A helper function to resolve suitable NIB name for a `view_controller`
 /// in the `bundle`. Returns nil if fails.
