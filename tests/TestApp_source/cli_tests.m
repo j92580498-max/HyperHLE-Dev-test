@@ -26,6 +26,7 @@
 #include <mach/thread_info.h>
 #include <malloc/malloc.h>
 #include <math.h>
+#include <net/if.h>
 #include <pthread.h>
 #include <semaphore.h>
 #include <setjmp.h>
@@ -6492,6 +6493,18 @@ int test_NSDictionary_keysSortedByValueUsingSelector() {
   return [sorted isEqualToArray:expected] ? 0 : -1;
 }
 
+int test_if_nametoindex() {
+  if (if_nametoindex("lo0") != 1)
+    return -1;
+  if (if_nametoindex("en0") != 2)
+    return -2;
+  if (if_nametoindex("pdp_ip0") != 3)
+    return -3;
+  if (if_nametoindex("not-an-interface") != 0)
+    return -4;
+  return 0;
+}
+
 // clang-format off
 #define FUNC_DEF(func)                                                         \
   { &func, #func }
@@ -6612,6 +6625,7 @@ struct {
     FUNC_DEF(test_malloc_zone_basic),
     FUNC_DEF(test_malloc_zone_struct_dispatch),
     FUNC_DEF(test_NSDictionary_keysSortedByValueUsingSelector),
+    FUNC_DEF(test_if_nametoindex),
 };
 // clang-format on
 
