@@ -6488,6 +6488,34 @@ int test_malloc_zone_struct_dispatch() {
   return 0;
 }
 
+int test_NSNumber_objCType() {
+  if (strcmp([[NSNumber numberWithBool:YES] objCType], @encode(BOOL)) != 0)
+    return -1;
+  if (strcmp([[NSNumber numberWithUnsignedLongLong:1] objCType],
+             @encode(unsigned long long)) != 0)
+    return -2;
+  if (strcmp([[NSNumber numberWithUnsignedInt:1] objCType],
+             @encode(unsigned int)) != 0)
+    return -3;
+  if (strcmp([[NSNumber numberWithInt:1] objCType], @encode(int)) != 0)
+    return -4;
+  if (strcmp([[NSNumber numberWithLongLong:1] objCType],
+             @encode(long long)) != 0)
+    return -5;
+  if (strcmp([[NSNumber numberWithFloat:1] objCType], @encode(float)) != 0)
+    return -6;
+  if (strcmp([[NSNumber numberWithDouble:1] objCType], @encode(double)) != 0)
+    return -7;
+  if (strcmp([[NSNumber numberWithShort:1] objCType], @encode(short)) != 0)
+    return -8;
+  if (strcmp([[NSNumber numberWithUnsignedShort:1] objCType],
+             @encode(unsigned short)) != 0)
+    return -9;
+  if (strcmp([[NSNumber numberWithChar:1] objCType], @encode(char)) != 0)
+    return -10;
+  return 0;
+}
+
 int test_NSDictionary_keysSortedByValueUsingSelector() {
   NSString *firstKey = [NSString stringWithUTF8String:"first"];
   NSString *secondKey = [NSString stringWithUTF8String:"second"];
@@ -6639,6 +6667,7 @@ struct {
     FUNC_DEF(test_NSKeyedArchiver_NSDictionary_of_NSArray_of_NSStrings),
     FUNC_DEF(test_AutoreleasePool),
     FUNC_DEF(test_NSNumber_stringValue),
+    FUNC_DEF(test_NSNumber_objCType),
     FUNC_DEF(test_NSMethodSignature),
     FUNC_DEF(test_NSInvocation),
     FUNC_DEF(test_NSInvocation_invokeWithTarget),

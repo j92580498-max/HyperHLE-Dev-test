@@ -16,13 +16,19 @@ use crate::frameworks::core_foundation::cf_number::{
 use crate::frameworks::core_graphics::{CGPoint, CGRect, CGSize};
 use crate::frameworks::foundation::ns_keyed_archiver::get_value_to_encode_for_current_key;
 use crate::frameworks::foundation::NSInteger;
-use crate::mem::{ConstVoidPtr, MutVoidPtr};
+use crate::mem::{ConstPtr, ConstVoidPtr, MutVoidPtr};
 use crate::objc::{
     autorelease, id, msg, msg_class, nil, objc_classes, release, retain, Class, ClassExports,
     HostObject, NSZonePtr,
 };
 use crate::Environment;
 use std::cmp::Ordering;
+use std::collections::HashMap;
+
+#[derive(Default)]
+pub struct State {
+    objc_type_strings: HashMap<&'static str, ConstPtr<u8>>,
+}
 
 #[derive(Debug)]
 pub(super) enum NSValueHostObject {
@@ -68,6 +74,19 @@ pub(super) enum NSNumberHostObject {
 impl HostObject for NSNumberHostObject {}
 
 impl NSNumberHostObject {
+    fn objc_type(&self) -> &'static str {
+        match self {
+            NSNumberHostObject::Bool(_) | NSNumberHostObject::Char(_) => "c",
+            NSNumberHostObject::UnsignedLongLong(_) => "Q",
+            NSNumberHostObject::UnsignedInt(_) => "I",
+            NSNumberHostObject::Int(_) => "i",
+            NSNumberHostObject::LongLong(_) => "q",
+            NSNumberHostObject::Float(_) => "f",
+            NSNumberHostObject::Double(_) => "d",
+            NSNumberHostObject::Short(_) => "s",
+            NSNumberHostObject::UnsignedShort(_) => "S",
+        }
+    }
     fn as_bool(&self) -> bool {
         match self {
             NSNumberHostObject::Bool(x) => *x,
@@ -98,6 +117,28 @@ impl NSNumberHostObject {
     impl_AsValue!(as_unsigned_short, u16);
     impl_AsValue!(as_char, i8);
     impl_AsValue!(as_i128, i128);
+}
+
+fn get_objc_type_string(env: &mut Environment, objc_type: &'static str) -> ConstPtr<u8> {
+    if let Some(&existing) = env
+        .framework_state
+        .foundation
+        .ns_value
+        .objc_type_strings
+        .get(objc_type)
+    {
+        return existing;
+    }
+    let string = env
+        .mem
+        .alloc_and_write_cstr(objc_type.as_bytes())
+        .cast_const();
+    env.framework_state
+        .foundation
+        .ns_value
+        .objc_type_strings
+        .insert(objc_type, string);
+    string
 }
 
 pub const CLASSES: ClassExports = objc_classes! {
@@ -430,6 +471,11 @@ pub const CLASSES: ClassExports = objc_classes! {
     env.objc.borrow::<NSNumberHostObject>(this).as_char()
 }
 
+- (ConstPtr<u8>)objCType {
+    let objc_type = env.objc.borrow::<NSNumberHostObject>(this).objc_type();
+    get_objc_type_string(env, objc_type)
+}
+
 - (id)description {
     msg![env; this stringValue]
 }
@@ -556,4 +602,23 @@ pub fn is_conversion_lossless(env: &mut Environment, this: id, type_: CFNumberTy
         _ => unimplemented!("is_conversion_lossless for {}", type_),
     };
     msg![env; this isEqualToNumber:num2]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::NSNumberHostObject;
+
+    #[test]
+    fn number_variants_have_32_bit_objc_type_encodings() {
+        assert_eq!(NSNumberHostObject::Bool(false).objc_type(), "c");
+        assert_eq!(NSNumberHostObject::Char(0).objc_type(), "c");
+        assert_eq!(NSNumberHostObject::UnsignedLongLong(0).objc_type(), "Q");
+        assert_eq!(NSNumberHostObject::UnsignedInt(0).objc_type(), "I");
+        assert_eq!(NSNumberHostObject::Int(0).objc_type(), "i");
+        assert_eq!(NSNumberHostObject::LongLong(0).objc_type(), "q");
+        assert_eq!(NSNumberHostObject::Float(0.0).objc_type(), "f");
+        assert_eq!(NSNumberHostObject::Double(0.0).objc_type(), "d");
+        assert_eq!(NSNumberHostObject::Short(0).objc_type(), "s");
+        assert_eq!(NSNumberHostObject::UnsignedShort(0).objc_type(), "S");
+    }
 }
