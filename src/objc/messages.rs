@@ -161,7 +161,15 @@ pub(super) struct ThreadInitializer {
 }
 
 fn maybe_initialize_class(env: &mut Environment, receiver: id) {
-    let class_host_object = env.objc.get_host_object(receiver).unwrap();
+    let Some(class_host_object) = env.objc.get_host_object(receiver) else {
+        // Compiler-created objects such as stack and global block literals do
+        // not have a HostObjectEntry. Their isa still names a real class, so
+        // initialize that class before dispatching the first message.
+        let class = ObjC::read_isa(receiver, &env.mem);
+        assert!(class != nil);
+        maybe_initialize_class(env, class);
+        return;
+    };
     let Some(&super::ClassHostObject {
         superclass,
         is_metaclass,
@@ -318,7 +326,11 @@ fn objc_msgSend_inner(
     }
 
     let orig_class = super2.unwrap_or_else(|| ObjC::read_isa(receiver, &env.mem));
-    assert!(orig_class != nil);
+    assert!(
+        orig_class != nil,
+        "Receiver {receiver:?} has a nil isa while sending selector {:?}",
+        selector.as_str(&env.mem)
+    );
     if !skip_initialize {
         maybe_initialize_class(env, receiver);
     }

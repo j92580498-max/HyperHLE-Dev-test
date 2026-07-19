@@ -32,6 +32,11 @@ int test_NSOperation(void) {
     return -1;
 
   NSOperationQueue *queue = [NSOperationQueue new];
+  [queue setMaxConcurrentOperationCount:2];
+  if ([queue maxConcurrentOperationCount] != 2)
+    return -6;
+  if ([TestOperation instanceMethodForSelector:@selector(main)] == NULL)
+    return -7;
   [queue addOperation:operation];
   if (operation_value != 1 || [operation isExecuting] ||
       ![operation isFinished])

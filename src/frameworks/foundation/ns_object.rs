@@ -66,6 +66,17 @@ pub const CLASSES: ClassExports = objc_classes! {
     env.objc.class_has_method(this, selector)
 }
 
++ (ConstVoidPtr)instanceMethodForSelector:(SEL)selector {
+    match env.objc.class_get_method_implementation(this, selector) {
+        Some(IMP::Guest(imp)) => imp.to_ptr(),
+        Some(IMP::Host(_)) => {
+            log_once!("TODO: NSObject instanceMethodForSelector: for a host implementation");
+            ConstVoidPtr::null()
+        }
+        None => ConstVoidPtr::null(),
+    }
+}
+
 + (())cancelPreviousPerformRequestsWithTarget:(id)target selector:(SEL)selector object:(id)arg {
     let run_loop: id = msg_class![env; NSRunLoop currentRunLoop];
     cancel_perform_requests(env, run_loop, target, selector, arg);
