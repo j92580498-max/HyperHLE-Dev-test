@@ -104,6 +104,41 @@
             "network": "unknown"
           },
           "notes": "The exact Archive artifact was verified immediately before this release build. Desktop OpenGL screenshots may appear black; the internal guest-frame capture is the authoritative rendering check. Full controls, saving, and all game modes remain unvalidated."
+        },
+        {
+          "id": "2026-07-18-windows-zz-clean-menu-tile-checkpoint",
+          "tested_at": "2026-07-18",
+          "taphle_commit": "ad6d2ccdd9fc53f9a6c4baff8b9731ad71dae4d8",
+          "host": {
+            "os": "Windows",
+            "os_version": "Windows 11 Pro 10.0.22631",
+            "architecture": "x86_64",
+            "cpu": "13th Gen Intel Core i7-13700H",
+            "gpu": "Intel Iris Xe Graphics, driver 32.0.101.6881"
+          },
+          "artifact": {
+            "archive_ipa_filename": "Percy Jackson & The Olympians: The Lightning Thief (v1.0) [Decrypted].ipa",
+            "sha1": "d6860631a08b4909dd93dc11b50fb22a49ac2809",
+            "verification": "archive-content-hash"
+          },
+          "status": "in-game",
+          "booted": true,
+          "summary": "A clean Windows release build renders Percy's Instructions screen, returns safely to the main menu, reaches the Level 1 pipe board, and visibly rotates a selected pipe tile.",
+          "blocker": "Level completion, the remaining controls and levels, saving, other game modes, and long-session stability have not yet been validated.",
+          "milestones": [
+            "Rendered the archived Instructions text, font, color, bullet, and spacing without the earlier string or font decoder crashes.",
+            "Used the Instructions Main Menu control to pop the view controller and return to a framebuffer identical to the known-good main menu.",
+            "Repeated the Main Menu -> Level 1 -> Level Intro -> In Game route and captured the live portrait board.",
+            "Captured the same randomized board immediately before and after a controlled tap at (148,172), proving that the selected pipe tile changed orientation."
+          ],
+          "features": {
+            "graphics": "working",
+            "audio": "working",
+            "input": "partial",
+            "saving": "unknown",
+            "network": "unknown"
+          },
+          "notes": "The exact Archive original was reverified against its published MD5 and SHA-1, the recorded SHA-256, embedded bundle identity, and tapHLE --info immediately before this clean run. The release binary identified itself as ad6d2ccd. Repeated state-aware captures covered both the presented UIKit menu path and submitted EAGL gameplay frames. The process remained alive without a panic until the controlled harness stop. Audio was confirmed on the exact ancestor report and heard again during the equivalent pre-commit compatibility run; the final automated capture route did not independently measure audibility."
         }
       ]
     }
