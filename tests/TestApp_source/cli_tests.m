@@ -5847,6 +5847,51 @@ int test_NSInvocation_pointer() {
 }
 @end
 
+@interface DoubleCoderObject : NSObject {
+@public
+  double value;
+}
+@end
+
+@implementation DoubleCoderObject
+- (instancetype)initWithValue:(double)v {
+  self = [super init];
+  value = v;
+  return self;
+}
+
+- (void)encodeWithCoder:(NSCoder *)coder {
+  [coder encodeDouble:value forKey:[NSString stringWithUTF8String:"value"]];
+}
+
+- (instancetype)initWithCoder:(NSCoder *)coder {
+  self = [super init];
+  value = [coder decodeDoubleForKey:[NSString stringWithUTF8String:"value"]];
+  return self;
+}
+@end
+
+int test_NSKeyedArchiver_encodeDoubleForKey() {
+  NSAutoreleasePool *pool = [NSAutoreleasePool new];
+  double values[] = {12345.5, 0.0, -1.25, 1.0 / 3.0};
+  int count = sizeof(values) / sizeof(double);
+
+  for (int i = 0; i < count; i++) {
+    DoubleCoderObject *obj =
+        [[DoubleCoderObject alloc] initWithValue:values[i]];
+    NSData *archivedData = [NSKeyedArchiver archivedDataWithRootObject:obj];
+    DoubleCoderObject *unarchivedObj =
+        [NSKeyedUnarchiver unarchiveObjectWithData:archivedData];
+    if (unarchivedObj->value != values[i]) {
+      [pool drain];
+      return -(i + 1);
+    }
+  }
+
+  [pool drain];
+  return 0;
+}
+
 int test_NSKeyedArchiver_encodeIntForKey() {
   NSAutoreleasePool *pool = [NSAutoreleasePool new];
 
@@ -6549,6 +6594,7 @@ struct {
     FUNC_DEF(test_RespondsToSelector),
     FUNC_DEF(test_MethodForSelector),
     FUNC_DEF(test_NSOperation),
+    FUNC_DEF(test_NSKeyedArchiver_encodeDoubleForKey),
     FUNC_DEF(test_NSKeyedArchiver_encodeIntForKey),
     FUNC_DEF(test_NSKeyedArchiver_NSKeyedUnarchiver),
     FUNC_DEF(test_NSKeyedArchiver_NSDictionary_of_NSArray_of_NSStrings),
