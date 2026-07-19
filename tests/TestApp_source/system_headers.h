@@ -110,6 +110,7 @@ static inline NSRange NSMakeRange(NSUInteger loc, NSUInteger len) {
 - (NSUInteger)count;
 - (ObjectType)objectForKey:(KeyType)aKey;
 - (BOOL)isEqualToDictionary:(NSDictionary *)otherDictionary;
+- (NSArray<KeyType> *)keysSortedByValueUsingSelector:(SEL)comparator;
 @end
 
 @interface NSSet<ObjectType> : NSObject
@@ -132,6 +133,7 @@ typedef enum {
                                                (NSStringCompareOptions)options
                                              range:(NSRange)range;
 - (BOOL)isEqualToString:(NSString *)other;
+- (NSInteger)compare:(NSString *)other;
 @end
 @interface NSMutableString : NSString
 - (void)deleteCharactersInRange:(NSRange)range;

@@ -6431,6 +6431,22 @@ int test_malloc_zone_struct_dispatch() {
   return 0;
 }
 
+int test_NSDictionary_keysSortedByValueUsingSelector() {
+  NSString *firstKey = [NSString stringWithUTF8String:"first"];
+  NSString *secondKey = [NSString stringWithUTF8String:"second"];
+  NSString *a = [NSString stringWithUTF8String:"a"];
+  NSString *b = [NSString stringWithUTF8String:"b"];
+  NSArray *keys = [NSArray arrayWithObjects:secondKey, firstKey, nil];
+  NSArray *values = [NSArray arrayWithObjects:b, a, nil];
+  NSDictionary *dictionary =
+      [NSDictionary dictionaryWithObjects:values forKeys:keys];
+  NSArray *sorted =
+      [dictionary keysSortedByValueUsingSelector:@selector(compare:)];
+  NSArray *expected = [NSArray arrayWithObjects:firstKey, secondKey, nil];
+
+  return [sorted isEqualToArray:expected] ? 0 : -1;
+}
+
 // clang-format off
 #define FUNC_DEF(func)                                                         \
   { &func, #func }
@@ -6549,6 +6565,7 @@ struct {
     FUNC_DEF(test_NSNotificationCenter_addObserver_nilName_removeObserver),
     FUNC_DEF(test_malloc_zone_basic),
     FUNC_DEF(test_malloc_zone_struct_dispatch),
+    FUNC_DEF(test_NSDictionary_keysSortedByValueUsingSelector),
 };
 // clang-format on
 

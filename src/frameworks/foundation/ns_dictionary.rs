@@ -10,7 +10,10 @@ use super::ns_property_list_serialization::{
     deserialize_plist_from_file, NSPropertyListBinaryFormat_v1_0,
 };
 use super::ns_string::{from_rust_string, get_static_str, to_rust_string};
-use super::{_nib_archive_decoder, ns_array, ns_keyed_unarchiver, ns_string, ns_url, NSUInteger};
+use super::{
+    _nib_archive_decoder, ns_array, ns_keyed_unarchiver, ns_string, ns_url, NSComparisonResult,
+    NSUInteger,
+};
 use crate::abi::{CallFromHost, GuestFunction, VaList};
 use crate::frameworks::core_foundation::{CFHashCode, CFIndex};
 use crate::frameworks::foundation::ns_enumerator::{
@@ -23,10 +26,11 @@ use crate::frameworks::foundation::ns_keyed_archiver::{
     encode_object, get_value_to_encode_for_current_key,
 };
 use crate::fs::GuestPath;
+use crate::libc::stdlib::qsort::qsort_generic;
 use crate::mem::{ConstPtr, MutPtr, Ptr, SafeRead};
 use crate::objc::{
-    autorelease, id, msg, msg_class, nil, objc_classes, release, retain, Class, ClassExports,
-    HostObject, NSZonePtr,
+    autorelease, id, msg, msg_class, msg_send, nil, objc_classes, release, retain, Class,
+    ClassExports, HostObject, NSZonePtr, SEL,
 };
 use crate::{impl_HostObject_with_superclass, Environment};
 use std::collections::hash_map::Entry;
@@ -477,6 +481,41 @@ pub const CLASSES: ClassExports = objc_classes! {
     // TODO: strip '@' and call super
     assert!(!key_str.starts_with('@'));
     msg![env; this objectForKey:key]
+}
+
+- (id)keysSortedByValueUsingSelector:(SEL)comparator {
+    let keys_array: id = msg![env; this allKeys];
+    let count: NSUInteger = msg![env; keys_array count];
+    let mut keys = Vec::with_capacity(count as usize);
+    for index in 0..count {
+        keys.push(msg![env; keys_array objectAtIndex:index]);
+    }
+
+    let mut user_data = (env, this, &mut keys);
+    qsort_generic(
+        &mut user_data,
+        count,
+        &mut |(env, dictionary, keys), left, right| {
+            let dictionary = *dictionary;
+            let left_key = keys[left as usize];
+            let right_key = keys[right as usize];
+            let left_value: id = msg![env; dictionary objectForKey:left_key];
+            let right_value: id = msg![env; dictionary objectForKey:right_key];
+            let result: NSComparisonResult =
+                msg_send(env, (left_value, comparator, right_value));
+            result
+        },
+        &mut |(_, _, keys), left, right| {
+            keys.swap(left as usize, right as usize);
+        },
+    );
+    let (env, _, _) = user_data;
+
+    for &key in &keys {
+        retain(env, key);
+    }
+    let result = ns_array::from_vec(env, keys);
+    autorelease(env, result)
 }
 
 - (NSUInteger)hash {
