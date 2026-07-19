@@ -477,8 +477,8 @@ fn get_equivalent_font(system_font: &str) -> Option<FontKind> {
         // Font Family: Marker Felt
         "MarkerFelt-Thin" => None,
         // Font Family: Helvetica Neue
-        "HelveticaNeue" => None,
-        "HelveticaNeue-Bold" => None,
+        "HelveticaNeue" => Some(FontKind::SansRegular),
+        "HelveticaNeue-Bold" => Some(FontKind::SansBold),
         // Font Family: DB LCD Temp
         "DBLCDTempBlack" => None,
         // Font Family: Verdana
@@ -497,5 +497,22 @@ fn get_equivalent_font(system_font: &str) -> Option<FontKind> {
         "Georgia-BoldItalic" => None,
         "Georgia-Italic" => None,
         _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn helvetica_neue_uses_matching_sans_weight() {
+        assert!(matches!(
+            get_equivalent_font("HelveticaNeue"),
+            Some(FontKind::SansRegular)
+        ));
+        assert!(matches!(
+            get_equivalent_font("HelveticaNeue-Bold"),
+            Some(FontKind::SansBold)
+        ));
     }
 }
