@@ -236,6 +236,28 @@ into a brand name. Do not guess a model version. The canonical examples and
 fallback for tools without a verified co-author identity are in
 `dev-docs/agent-capability-log.md`.
 
+## Documentation placement
+
+Update documentation whenever a compatibility investigation reveals a durable
+lesson that would make the next agent faster, safer, or more accurate. Put
+project-wide policy, contribution, release, attribution, and debugging guidance
+in a focused commit on `trunk`, run the relevant documentation checks, and push
+it promptly. Do not leave guidance that every contributor needs visible only on
+an app compatibility branch.
+
+If you discover that you followed an instruction, convention, or existing
+pattern incorrectly, treat the documentation ambiguity as part of the bug.
+Correct the relevant agent guide or playbook in the same work, stating the
+intended rule clearly enough that another context-free agent will not repeat
+the mistake. Keep that documentation correction separate from unfinished app
+runtime code when their publication scopes differ.
+
+Keep app identity, exact runtime evidence, unresolved hypotheses, and the next
+app-specific discriminator in that app's `compat/<app-slug>` continuation note.
+When a realization contains both general and app-specific parts, split them:
+publish the reusable guidance to `trunk`, then return to the app branch for its
+runtime note and implementation.
+
 A change is done when the requested behavior is implemented, relevant checks
 pass (or their limitations are explicit), user-facing names say tapHLE, and the
 handoff distinguishes verified results from assumptions.
