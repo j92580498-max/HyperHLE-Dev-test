@@ -26,17 +26,21 @@ IPA in ignored `tapHLE_apps`; never add it to Git.
 
 ## Current checkpoint
 
-Commit `6f4e44b2` adds reusable Objective-C Blocks runtime support and advances
-the exact hash-checked IPA through its bundled Iddiction SDK and into Cocos2D
-graphics initialization. It also implements the adjacent
-`NSOperationQueue.maxConcurrentOperationCount` and
-`+[NSObject instanceMethodForSelector:]` paths reached during startup.
+The branch now passes the former ES 2.0 frontier and reaches the game's display
+loop. Commit `2ddbfc29` supplies compiler stack-protector symbols, basic Grand
+Central Dispatch queues, and useful register/stack diagnostics. Commit
+`fd543d42` adds the reviewed native ES 2.0 slice and iOS GL extension entry
+points. Commit `3fbcb0e9` adds `UIWindow.rootViewController` ownership/mounting
+and `performSelector:onThread:withObject:waitUntilDone:` compatibility.
 
-The current stop is `-[EAGLContext initWithAPI:2]`. tapHLE only creates an
-OpenGL ES 1.1 context, so it returns `nil` for the ES 2.0 request. The game then
-makes a GL call without a current context and reaches a null-page memory error.
-This is not yet a compatibility-database milestone or rating. No human menu,
-input, graphics, gameplay or audio result has been established.
+On Windows, the exact hash-checked IPA now creates two native OpenGL ES 2.0
+contexts using the Intel Iris Xe driver. It proceeds through Cocos2D graphics
+setup, mounts its root controller, performs its initial orientation decision,
+and begins display-loop setup. The current stop is
+`-[CADisplayLink timestamp]`, which is not implemented.
+
+This is still not a compatibility-database milestone or rating. No human menu,
+presented frame, input, gameplay or audio result has been established.
 
 ## Fixes that moved the frontier
 
@@ -56,19 +60,32 @@ input, graphics, gameplay or audio result has been established.
 - Class initialization for compiler-created Objective-C-compatible objects.
 - Stateful `NSOperationQueue` maximum concurrency accessors.
 - Guest IMP lookup through `+[NSObject instanceMethodForSelector:]`.
+- Compiler stack canary imports (`___stack_chk_guard` and
+  `__stack_chk_fail`).
+- Basic dispatch queue creation, main-queue lookup, inline async/sync block
+  invocation, and dispatch-object release compatibility.
+- Native Windows OpenGL ES 2.0 contexts, EAGL API 2 selection, shader/program
+  calls, ES2 renderbuffer presentation, and native OES vertex arrays.
+- Imported Apple multisample and discard entry points with conservative
+  single-sample/no-op fallbacks when the Windows driver lacks those exact
+  Apple extensions.
+- Retained `UIWindow.rootViewController` mounting and immediate
+  `performSelector:onThread:withObject:waitUntilDone:` compatibility.
 
 ## Next discriminator
 
 Do not continue adding unrelated missing constants from the startup warning
-list. The proven next dependency is a working ES 2.0 context plus guest shader
-entry-point dispatch.
+list. Implement and test the `CADisplayLink timestamp` behavior used by the
+game. Determine whether it also needs `duration` or target-timestamp behavior
+from the same frame-time source before paying for another release link. The
+next meaningful milestone is a submitted/presented frame, not merely another
+successful startup selector.
 
-HyperHLE has a substantial ES 2.0/3.0 implementation, but it is not a small
-drop-in patch. Start with the provenance and dependency review recorded in
-`dev-docs/upstream-sync.md`. Port or adapt the smallest coherent ES 2.0 stack
-on this branch, preserving tapHLE naming and Windows priorities. Re-run this
-exact SHA-256 from a fresh temporary sandbox after every coherent graphics
-checkpoint.
+The native ES 2.0 work was adapted from the smaller HyperHLE snapshot at
+`ec06f12b886a166b220df94d44861a2de78299b3`, with authorship retained in the
+port commit. This result supports the existing decision to review and port
+coherent subsystems rather than switching tapHLE's base. It is not the whole
+of HyperHLE's later ES 2.0/3.0 stack.
 
 Do not use `--headless` for this test. Baby Monkey enters UIKit/window code
 that requires a real tapHLE window, so headless mode creates an unrelated
@@ -76,17 +93,18 @@ window unwrap failure before the useful graphics frontier.
 
 ## Verification performed
 
-- `cargo check --release` passed at commit `6f4e44b2`.
-- The Blocks reference-count unit test passed before the final checkpoint;
-  the final code only tightened ABI-compatible byref ownership afterward.
-- A release build from the same change series launched the exact SHA-256 in a
-  fresh Windows temporary sandbox and reached the ES 2.0 request described
-  above.
-- The custom guest TestApp was not rebuilt because its separate SDK toolchain
-  was not available in this session. Its NSOperation source now covers the new
-  queue accessors and guest instance-method lookup for the next full TestApp
-  run.
+- `cargo check --release` passes with one dead-code warning group for GLES
+  trait methods that are not exported yet.
+- A full Windows release build succeeded after each runtime-facing checkpoint.
+- The exact SHA-256 was recalculated before every launch.
+- Successive bounded windowed runs proved these former stops were passed:
+  EAGL API 2 rejection, null stack-canary import, missing
+  `_dispatch_queue_create`, missing `_glGenVertexArraysOES`, missing
+  `-[UIWindow setRootViewController:]`, and missing
+  `performSelector:onThread:withObject:waitUntilDone:`.
+- The most recent run reached the `CADisplayLink timestamp` stop described
+  above. Its raw log remains temporary evidence and is not committed.
 
-Before claiming an exact committed runtime result, rebuild `6f4e44b2` and
-repeat the fresh-sandbox launch. Before adding a database record, also complete
-the live Archive verification and a human-visible playtest.
+Before claiming an exact committed runtime result, rebuild the current branch
+tip and repeat the windowed launch. Before adding a database record, also
+complete live Archive verification and a human-visible playtest.

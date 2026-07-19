@@ -126,6 +126,22 @@ faulting operands with tapHLE's register dump. For an Objective-C++ object,
 also check compiler-emitted `.cxx_construct` and `.cxx_destruct` methods before
 treating a zeroed C++ container as valid initialized state.
 
+When guest CPU execution fails without a debugger attached, current tapHLE
+automatically prints all guest registers and the current stack trace before
+panicking. Preserve that small diagnostic in normal builds: it can turn a null
+memory error into a single disassembly lookup without a trace rebuild. If the
+faulting instruction dereferences a zero register, inspect Mach-O non-lazy data
+imports as well as lazy function imports. Compiler support such as
+`___stack_chk_guard` is data, so a missing relocation may survive startup and
+only crash later when generated code loads through the unresolved slot.
+
+Rust and Cargo may retain absolute paths to an old worktree in `target` build
+metadata. If a diagnostic build unexpectedly names a deleted sibling checkout,
+do not recreate that sibling. Confirm the current repository and target path,
+then invalidate only the affected cached build scope or use the already proven
+release profile. Never treat a failure caused by stale build metadata or a
+missing optional debug dependency as an app compatibility result.
+
 When the fault is an assertion at an HLE graphics boundary, recover the exact
 guest API call and enum before relaxing it. Some old apps make invalid GL calls
 that a real driver answers by recording `GL_INVALID_ENUM` and continuing. A

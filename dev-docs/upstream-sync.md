@@ -129,3 +129,11 @@ all required parents and later corrective commits, preserve original authorship
 and license notices, exclude unrelated surfaces, translate active branding,
 and validate on Windows. Reconsider the base only on a dedicated migration
 branch after the full diff and regression surface are small enough to audit.
+
+The first bounded port validates that approach. tapHLE commit `fd543d42`
+adapts the smaller native ES 2.0 snapshot from HyperHLE commit
+`ec06f12b886a166b220df94d44861a2de78299b3`, retains its author credit, and
+advances Baby Monkey through two native Windows ES2 contexts and into its
+display-loop startup. It deliberately does not import HyperHLE's later ES3
+foundation, unrelated product changes, or incomplete desktop-GL fallback.
+Continue auditing later fixes only when a measured app frontier requires them.
