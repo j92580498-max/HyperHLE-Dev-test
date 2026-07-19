@@ -190,6 +190,45 @@ pub const CLASSES: ClassExports = objc_classes! {
     }
 }
 
+- (id)popViewControllerAnimated:(bool)_animated {
+    let (popped_view_controller, next_view_controller) = {
+        let host_object = env.objc.borrow_mut::<UINavigationControllerHostObject>(this);
+        if host_object.navigation_stack.len() <= 1 {
+            return nil;
+        }
+        let popped_view_controller = host_object.navigation_stack.pop().unwrap();
+        let next_view_controller = *host_object.navigation_stack.last().unwrap();
+        (popped_view_controller, next_view_controller)
+    };
+
+    // The stack owns the popped controller. Keep a conventional autoreleased
+    // return value alive while releasing that ownership after disappearance.
+    retain(env, popped_view_controller);
+
+    let self_view: id = msg![env; this view];
+    () = msg![env; popped_view_controller viewWillDisappear:false];
+    () = msg![env; next_view_controller viewWillAppear:false];
+
+    let popped_view: id = msg![env; popped_view_controller view];
+    () = msg![env; popped_view removeFromSuperview];
+
+    // A normal push leaves the previous view underneath the new one, but
+    // restore it defensively for archives/controllers that removed it.
+    let next_view: id = msg![env; next_view_controller view];
+    let next_superview: id = msg![env; next_view superview];
+    if next_superview != self_view {
+        () = msg![env; self_view addSubview:next_view];
+    }
+
+    () = msg![env; popped_view_controller viewDidDisappear:false];
+    () = msg![env; next_view_controller viewDidAppear:false];
+
+    super::set_parent_view_controller(env, popped_view_controller, nil);
+    release(env, popped_view_controller); // navigation stack ownership
+    autorelease(env, popped_view_controller);
+    popped_view_controller
+}
+
 - (id)topViewController {
     if let Some(top_vc) = env.objc.borrow::<UINavigationControllerHostObject>(this).navigation_stack.last() {
         *top_vc

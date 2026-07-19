@@ -23,7 +23,7 @@ The scale is adapted from the
 
 | Game | Exact build | Latest Windows result | tapHLE commit | Tested |
 | --- | --- | --- | --- | --- |
-| [Percy Jackson & The Olympians: The Lightning Thief](#percy) | 1.0 (`com.deluxe.Pipes`) | ★★★☆☆ (3/5) In game | `f8299889` | 2026-07-18 |
+| [Percy Jackson & The Olympians: The Lightning Thief](#percy) | 1.0 (`com.deluxe.Pipes`) | ★★★☆☆ (3/5) In game | `ad6d2ccd` | 2026-07-18 |
 | [Ricky](#ricky) | 2.1 (`com.nabilchatbi.Ricky`) | ★★★☆☆ (3/5) In game | `e2d51c6c` | 2026-07-17 |
 
 <a id="percy"></a>
@@ -38,11 +38,11 @@ The scale is adapted from the
 - Source verification: content hash verified
 - Availability review: 2026-07-18 (maintainer designated unavailable)
 
-Latest verified report: **★★★☆☆ (3/5) In game** on 2026-07-18 with tapHLE `f8299889c875c47111329427c5ef48a0bdf4d8c2`.
+Latest verified report: **★★★☆☆ (3/5) In game** on 2026-07-18 with tapHLE `ad6d2ccdd9fc53f9a6c4baff8b9731ad71dae4d8`.
 
-Reaches Percy's playable pipe board on Windows with the restored navigation/modal hierarchy, drawable OpenGL storage, decoded PCM effects, and deterministic tile input.
+A clean Windows release build renders Percy's Instructions screen, returns safely to the main menu, reaches the Level 1 pipe board, and visibly rotates a selected pipe tile.
 
-Blocker: Full controls, saving, and every game mode have not yet been validated.
+Blocker: Level completion, the remaining controls and levels, saving, other game modes, and long-session stability have not yet been validated.
 
 Feature state: graphics=working, audio=working, input=partial, saving=unknown, network=unknown.
 

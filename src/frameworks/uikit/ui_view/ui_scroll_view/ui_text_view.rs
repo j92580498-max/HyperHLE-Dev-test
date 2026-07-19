@@ -8,7 +8,7 @@
 use crate::frameworks::core_graphics::cg_context::CGContextSetRGBFillColor;
 use crate::frameworks::core_graphics::cg_geometry::CGPointZero;
 use crate::frameworks::core_graphics::{CGFloat, CGPoint, CGRect, CGSize};
-use crate::frameworks::foundation::ns_string::to_rust_string;
+use crate::frameworks::foundation::ns_string::{get_static_str, to_rust_string};
 use crate::frameworks::foundation::{NSRange, NSUInteger};
 use crate::frameworks::uikit::ui_color;
 use crate::frameworks::uikit::ui_font::{
@@ -96,6 +96,24 @@ pub const CLASSES: ClassExports = objc_classes! {
     // These aren't redundant, the setters fetch the real defaults.
     () = msg![env; this setFont:nil];
     () = msg![env; this setTextColor:nil];
+
+    let text_key = get_static_str(env, "UIText");
+    let text: id = msg![env; coder decodeObjectForKey:text_key];
+    () = msg![env; this setText:text];
+
+    let text_color_key = get_static_str(env, "UITextColor");
+    let text_color: id = msg![env; coder decodeObjectForKey:text_color_key];
+    () = msg![env; this setTextColor:text_color];
+
+    let font_key = get_static_str(env, "UIFont");
+    let font: id = msg![env; coder decodeObjectForKey:font_key];
+    () = msg![env; this setFont:font];
+
+    let editable_key = get_static_str(env, "UIEditable");
+    if msg![env; coder containsValueForKey:editable_key] {
+        let editable: bool = msg![env; coder decodeBoolForKey:editable_key];
+        () = msg![env; this setEditable:editable];
+    }
     this
 }
 

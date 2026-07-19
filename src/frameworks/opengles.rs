@@ -29,9 +29,9 @@ pub const DYLIB: crate::dyld::HostDylib = crate::dyld::HostDylib {
 const FRAME_CAPTURE_REQUEST_ENV: &str = "TAPHLE_FRAME_CAPTURE_REQUEST";
 const FRAME_CAPTURE_OUTPUT_ENV: &str = "TAPHLE_FRAME_CAPTURE_OUTPUT";
 
-struct FrameCaptureRequest {
-    marker_path: PathBuf,
-    output_path: PathBuf,
+pub(crate) struct FrameCaptureRequest {
+    pub(crate) marker_path: PathBuf,
+    pub(crate) output_path: PathBuf,
 }
 
 pub struct State {
@@ -81,7 +81,7 @@ impl State {
     }
 
     /// Return and disarm a configured capture once its marker appears.
-    fn take_triggered_frame_capture(&mut self) -> Option<FrameCaptureRequest> {
+    pub(crate) fn take_triggered_frame_capture(&mut self) -> Option<FrameCaptureRequest> {
         let request = self.frame_capture_request.as_ref()?;
         match std::fs::metadata(&request.marker_path) {
             Ok(metadata) if metadata.is_file() => self.frame_capture_request.take(),
@@ -104,6 +104,13 @@ impl State {
                 None
             }
         }
+    }
+
+    /// Re-arm a successfully completed capture. The harness must move the
+    /// output and create a new marker before another capture can occur.
+    pub(crate) fn rearm_frame_capture(&mut self, request: FrameCaptureRequest) {
+        assert!(self.frame_capture_request.is_none());
+        self.frame_capture_request = Some(request);
     }
 }
 

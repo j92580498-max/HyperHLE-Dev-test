@@ -9,7 +9,7 @@ use super::ui_touch::UITouchHostObject;
 use crate::frameworks::foundation::{NSTimeInterval, NSUInteger};
 use crate::mem::MutVoidPtr;
 use crate::objc::{
-    id, msg, msg_class, nil, objc_classes, release, retain, ClassExports, HostObject, NSZonePtr,
+    id, msg, msg_class, nil, objc_classes, release, ClassExports, HostObject, NSZonePtr,
 };
 use crate::Environment;
 
@@ -37,6 +37,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 - (())dealloc {
     let &UIEventHostObject { touches, .. } = env.objc.borrow(this);
     release(env, touches);
+    env.objc.dealloc_object(this, &mut env.mem)
 }
 
 - (NSTimeInterval)timestamp {
@@ -75,10 +76,14 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 };
 
-/// For use by [super::ui_touch]: create a `UIEvent` with a set of `UITouch*`
+/// For use by [super::ui_touch]: create a `UIEvent` with a set of `UITouch*`.
+///
+/// Ownership of `touches` is transferred to the event. UIKit keeps one event
+/// object for the lifetime of an active touch sequence, so callers update that
+/// object as the set of active touches changes instead of allocating a new
+/// event for every phase.
 pub(super) fn new_event(env: &mut Environment, touches: id) -> id {
     let event: id = msg_class![env; UIEvent alloc];
-    retain(env, touches);
     let timestamp: NSTimeInterval = {
         let process_info = msg_class![env; NSProcessInfo processInfo];
         msg![env; process_info systemUptime]
@@ -87,4 +92,20 @@ pub(super) fn new_event(env: &mut Environment, touches: id) -> id {
     borrow.touches = touches;
     borrow.timestamp = timestamp;
     event
+}
+
+/// Replace the event's active touch snapshot while preserving its identity.
+/// Ownership of `touches` is transferred to `event`.
+pub(super) fn update_event(env: &mut Environment, event: id, touches: id) {
+    let timestamp: NSTimeInterval = {
+        let process_info = msg_class![env; NSProcessInfo processInfo];
+        msg![env; process_info systemUptime]
+    };
+    let old_touches = {
+        let host_object = env.objc.borrow_mut::<UIEventHostObject>(event);
+        let old_touches = std::mem::replace(&mut host_object.touches, touches);
+        host_object.timestamp = timestamp;
+        old_touches
+    };
+    release(env, old_touches);
 }
