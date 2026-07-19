@@ -23,8 +23,29 @@ The scale is adapted from the
 
 | Game | Exact build | Latest Windows result | tapHLE commit | Tested |
 | --- | --- | --- | --- | --- |
+| [Fantastic Mr. Fox](#fantastic-mr-fox) | 1.0 (`com.fox.fmf`) | ★★★☆☆ (3/5) In game | `25dcc7b6` | 2026-07-18 |
 | [Percy Jackson & The Olympians: The Lightning Thief](#percy) | 1.0 (`com.deluxe.Pipes`) | ★★★☆☆ (3/5) In game | `ad6d2ccd` | 2026-07-18 |
 | [Ricky](#ricky) | 2.1 (`com.nabilchatbi.Ricky`) | ★★★☆☆ (3/5) In game | `e2d51c6c` | 2026-07-17 |
+
+<a id="fantastic-mr-fox"></a>
+## Fantastic Mr. Fox
+
+### 1.0 (`com.fox.fmf`)
+
+- Bundle identifier: `com.fox.fmf`
+- Minimum OS version: 2.2.1
+- Archive source: [ios-ipa-com.fox.fmf](https://archive.org/details/ios-ipa-com.fox.fmf)
+- Exact tested IPA filename: `Fantastic Mr. Fox - US (v1.0) [Decrypted].ipa`
+- Source verification: content hash verified
+- Availability review: 2026-07-18 (maintainer designated unavailable)
+
+Latest verified report: **★★★☆☆ (3/5) In game** on 2026-07-18 with tapHLE `25dcc7b692360f66931471b191c04ed8600cbbaa`.
+
+Reaches live Level 1 gameplay on Windows through a fully rendered main menu, level selector, and story screen.
+
+Blocker: Gameplay controls, audio coverage on this exact commit, death and restart behavior, saving, later levels, long-session stability, and the brief white launch-bar flash have not yet been validated or fixed.
+
+Feature state: graphics=working, audio=unknown, input=partial, saving=unknown, network=unknown.
 
 <a id="percy"></a>
 ## Percy Jackson & The Olympians: The Lightning Thief

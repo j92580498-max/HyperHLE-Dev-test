@@ -1,0 +1,77 @@
+{
+  "$schema": "../schema-v1.json",
+  "schema_version": 1,
+  "slug": "fantastic-mr-fox",
+  "title": "Fantastic Mr. Fox",
+  "versions": [
+    {
+      "identity": {
+        "bundle_identifier": "com.fox.fmf",
+        "bundle_version": "1.0",
+        "minimum_os_version": "2.2.1"
+      },
+      "archive_org": {
+        "identifier": "ios-ipa-com.fox.fmf",
+        "item_url": "https://archive.org/details/ios-ipa-com.fox.fmf",
+        "bundle_identifier": "com.fox.fmf",
+        "bundle_version": "1.0",
+        "files": [
+          {
+            "ipa_filename": "Fantastic Mr. Fox - US (v1.0) [Decrypted].ipa",
+            "md5": "91c18541a7747f0ee0c526ca894d8b60",
+            "sha1": "12105124c847a84e3836e7e8c82fac2ce10b5b77",
+            "sha256": "468d3418013cb17f0eebc00a0e1b3ec1396dd6e0184f9e3a120211a499b9f090",
+            "tested": true
+          }
+        ],
+        "verification": {
+          "state": "content-hash-verified",
+          "checked_at": "2026-07-18",
+          "notes": "The exact Archive.org original matched the item's published MD5 and SHA-1, the locally calculated SHA-256 above, and the embedded bundle identity. The same local file was hash-checked again immediately before the clean gameplay runs."
+        },
+        "availability": {
+          "checked_at": "2026-07-18",
+          "status": "maintainer-designated-unavailable",
+          "notes": "The maintainer selected this archived build for compatibility testing. Apple's US lookups for app ID 336383730 and the exact com.fox.fmf bundle identifier each returned zero results on 2026-07-18. This is a factual project-scope check, not a legal conclusion."
+        }
+      },
+      "reports": [
+        {
+          "id": "2026-07-18-windows-level-one-gameplay",
+          "tested_at": "2026-07-18",
+          "taphle_commit": "25dcc7b692360f66931471b191c04ed8600cbbaa",
+          "host": {
+            "os": "Windows",
+            "os_version": "Windows 11 Pro 10.0.22631",
+            "architecture": "x86_64",
+            "cpu": "13th Gen Intel Core i7-13700H",
+            "gpu": "Intel Iris Xe Graphics, driver 32.0.101.6881"
+          },
+          "artifact": {
+            "archive_ipa_filename": "Fantastic Mr. Fox - US (v1.0) [Decrypted].ipa",
+            "sha1": "12105124c847a84e3836e7e8c82fac2ce10b5b77",
+            "verification": "archive-content-hash"
+          },
+          "status": "in-game",
+          "booted": true,
+          "summary": "Reaches live Level 1 gameplay on Windows through a fully rendered main menu, level selector, and story screen.",
+          "milestones": [
+            "Rendered the complete loading screen and main menu after initializing the game's operation-based audio-loading path.",
+            "Used real foreground input to open the 18-level selector and the Level 1 story screen.",
+            "Entered Level 1 and captured the live scene with Mr. Fox, hazards, HUD, health bar, and advancing timer.",
+            "Remained alive without a Rust panic until the exact spawned process was stopped by the harness."
+          ],
+          "blocker": "Gameplay controls, audio coverage on this exact commit, death and restart behavior, saving, later levels, long-session stability, and the brief white launch-bar flash have not yet been validated or fixed.",
+          "features": {
+            "graphics": "working",
+            "audio": "unknown",
+            "input": "partial",
+            "saving": "unknown",
+            "network": "unknown"
+          },
+          "notes": "The release binary identified itself as 25dcc7b6. The exact Archive artifact was hash-checked immediately before each report-worthy route. Internal EAGL captures are the authoritative rendering evidence. Main Play used client coordinate (240,247), Level 1 used (57,130), and story Play used (240,282) in the 480x320 client area. Audio was heard by the maintainer in an earlier exploratory run but was not independently measured on this exact commit."
+        }
+      ]
+    }
+  ]
+}

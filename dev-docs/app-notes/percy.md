@@ -37,15 +37,6 @@ broader validation.
 
 ## Known gaps
 
-- On one dirty 2026-07-18 run, the maintainer saw and heard the Fox logo, then
-  saw a black screen while sound continued. A later run produced visible output
-  and sound. Instrumented captures now show both the complete decoded main menu
-  inside Core Animation and the correctly rotated final presented frame,
-  including all menu labels. The earlier black result is therefore intermittent
-  or launch/build-specific, not a missing menu or failed image decode. Confirm
-  the route again from a clean release build before calling a checkpoint.
-- The compatibility changes still need an exact clean-commit release build and
-  final Windows replay before the database report can move to that commit.
 - Full-session stability, saving, and every game mode are not yet validated;
   the custom-level crash belongs to the separate Ricky investigation, not
   Percy.
