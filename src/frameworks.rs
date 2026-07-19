@@ -53,6 +53,12 @@ pub struct State {
     uikit: uikit::State,
 }
 
+impl State {
+    pub(crate) fn take_triggered_frame_capture(&mut self) -> Option<opengles::FrameCaptureRequest> {
+        self.opengles.take_triggered_frame_capture()
+    }
+}
+
 /// Container for thread local state of various child modules
 #[derive(Default)]
 pub struct ThreadLocalState {

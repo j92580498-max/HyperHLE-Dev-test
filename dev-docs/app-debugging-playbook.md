@@ -211,14 +211,15 @@ Reuse a proven input recipe. Change one step at the frontier rather than
 inventing a new route on every launch. A successful click path is evidence and
 belongs in the app note.
 
-### Capture the submitted guest frame when desktop capture is black
+### Capture the rendered frame when desktop capture is black
 
 Windows desktop screenshot APIs may return a black OpenGL client area. For one
-state-aware diagnostic per process, tapHLE can capture the next valid EAGL
-renderbuffer submitted through `presentRenderbuffer:`. This is a harness
-feature, not an app option: set both paths in the child process environment
-before launch, then create the request marker only after the target state is
-reached.
+state-aware diagnostic per process, tapHLE can capture the next rendered frame.
+EAGL apps capture the next valid renderbuffer submitted through
+`presentRenderbuffer:`. UIKit-only screens capture the next frame presented by
+the Core Animation compositor. This is a harness feature, not an app option:
+set both paths in the child process environment before launch, then create the
+request marker only after the target state is reached.
 
 ```powershell
 $captureDir = Join-Path ([IO.Path]::GetTempPath()) (
@@ -268,7 +269,7 @@ while (-not $captureComplete -and [DateTime]::UtcNow -lt $deadline) {
     Start-Sleep -Milliseconds 100
 }
 if (-not $captureComplete) {
-    throw 'Timed out waiting for a complete, decodable EAGL frame capture'
+    throw 'Timed out waiting for a complete, decodable frame capture'
 }
 ```
 
@@ -291,13 +292,23 @@ ffmpeg -i $outputPath -vf 'vflip,transpose=2' (
 )
 ```
 
-This is the submitted guest renderbuffer before host rotation, layer
-composition, scaling, letterboxing, or virtual-cursor drawing. It is not a
-general final-window screenshot and, in a multi-layer app, may not be the layer
-ultimately visible. The synchronous readback can briefly stall one frame and
-temporarily holds both RGBA and RGB copies in memory. Keep the PPM, converted
-image, marker, and raw logs in the unique temporary run directory; never add
-them to Git or treat a dirty-build capture as compatibility-database evidence.
+Read the success log before interpreting the image because the rendering path
+changes what was captured:
+
+- `Captured submitted EAGL renderbuffer` is the guest renderbuffer before host
+  rotation, layer composition, scaling, letterboxing, or virtual-cursor
+  drawing. In a multi-layer app, it may not be the layer ultimately visible.
+- `Captured presented Core Animation frame` is the presented viewport after
+  host rotation and UIKit layer composition. This is the better check for a
+  menu or other UIKit-only screen that stops submitting EAGL frames.
+
+Both captures have OpenGL's bottom-left pixel origin, so start visual
+conversion with `vflip`. Apply an additional rotation only to a pre-rotation
+EAGL capture when its orientation requires one. The synchronous readback can
+briefly stall one frame and temporarily holds both RGBA and RGB copies in
+memory. Keep the PPM, converted image, marker, and raw logs in the unique
+temporary run directory; never add them to Git or treat a dirty-build capture
+as compatibility-database evidence.
 
 ## Treat shutdown as an observable boundary
 

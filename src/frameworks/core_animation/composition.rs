@@ -142,6 +142,7 @@ pub fn recomposite_if_necessary(env: &mut Environment, force: bool) -> Option<In
         env.window().rotation_matrix(),
         env.window().virtual_cursor_visible_at(),
     );
+    let frame_capture_request = env.framework_state.take_triggered_frame_capture();
 
     // TODO: draw status bar if it's not hidden
 
@@ -368,6 +369,9 @@ pub fn recomposite_if_necessary(env: &mut Environment, force: bool) -> Option<In
             present_frame_args.1,
             present_frame_args.2,
         );
+        if let Some(request) = frame_capture_request {
+            capture_composited_frame(gles.as_mut(), present_frame_args.0, request);
+        }
     }
     std::mem::drop(gles);
     window.swap_window();
@@ -375,6 +379,72 @@ pub fn recomposite_if_necessary(env: &mut Environment, force: bool) -> Option<In
     animation_state.update_started_and_finished_animations(env);
 
     new_recomposite_next
+}
+
+/// Capture a Core Animation frame after host rotation and presentation for an
+/// external debugging harness. This complements the EAGL renderbuffer capture
+/// path for UIKit-only screens, which do not submit another guest renderbuffer
+/// after a marker is created.
+unsafe fn capture_composited_frame(
+    gles: &mut dyn GLES,
+    viewport: (u32, u32, u32, u32),
+    request: crate::frameworks::opengles::FrameCaptureRequest,
+) {
+    match std::fs::metadata(&request.output_path) {
+        Ok(_) => {
+            log!(
+                "Warning: refusing to overwrite frame capture output {}.",
+                request.output_path.display(),
+            );
+            return;
+        }
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => {}
+        Err(err) => {
+            log!(
+                "Warning: could not inspect frame capture output {}: {}.",
+                request.output_path.display(),
+                err,
+            );
+            return;
+        }
+    }
+
+    let (x, y, width, height) = viewport;
+    let mut rgba = vec![0x7f; width as usize * height as usize * 4];
+    gles.ReadPixels(
+        x.try_into().unwrap(),
+        y.try_into().unwrap(),
+        width.try_into().unwrap(),
+        height.try_into().unwrap(),
+        gles11::RGBA,
+        gles11::UNSIGNED_BYTE,
+        rgba.as_mut_ptr().cast(),
+    );
+    let rgb = crate::debug::rgba8_to_rgb8(&rgba);
+    match crate::debug::write_ppm_create_new(&request.output_path, width, height, &rgb) {
+        Ok(()) => {
+            log!(
+                "Captured presented Core Animation frame to {} ({}x{} PPM).",
+                request.output_path.display(),
+                width,
+                height,
+            );
+            if let Err(err) = std::fs::remove_file(&request.marker_path) {
+                log!(
+                    "Warning: frame capture succeeded, but marker {} could not be removed: {}.",
+                    request.marker_path.display(),
+                    err,
+                );
+            }
+        }
+        Err(err) => {
+            log!(
+                "Warning: could not write frame capture output {}: {}.",
+                request.output_path.display(),
+                err,
+            );
+        }
+    }
 }
 
 /// Call `displayIfNeeded` on all relevant layers in the tree, so their bitmaps

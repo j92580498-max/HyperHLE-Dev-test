@@ -33,18 +33,24 @@ broader validation.
 
 ## Known gaps
 
-- On the current dirty 2026-07-18 build, the maintainer saw and heard the Fox
-  logo, then saw a black screen while sound continued. The process remained
-  alive without a panic, and a capture request after eight seconds received no
-  new EAGL frame. Treat post-logo rendering as the current blocker; do not call
-  the dirty build a usable checkpoint.
+- On one dirty 2026-07-18 run, the maintainer saw and heard the Fox logo, then
+  saw a black screen while sound continued. A later run produced visible output
+  and sound. Instrumented captures now show both the complete decoded main menu
+  inside Core Animation and the correctly rotated final presented frame,
+  including all menu labels. The earlier black result is therefore intermittent
+  or launch/build-specific, not a missing menu or failed image decode. Confirm
+  the route again from a clean release build before calling a checkpoint.
+- The current string, font, text-view, navigation-pop, and touch-event work is
+  still dirty. Correct-IPA manual checks of Instructions text/back navigation
+  and visible pipe rotation remain required.
 - Full-session stability, saving, and every game mode are not yet validated;
   the custom-level crash belongs to the separate Ricky investigation, not
   Percy.
 - Input coverage is only partially validated; continue with deterministic
   taps and then expand to gestures and controls.
-- The desktop screenshot path can appear black with OpenGL; guest-frame
-  capture and in-game behavior are the authoritative rendering checks.
+- The desktop screenshot path can appear black with OpenGL; use the EAGL or
+  presented Core Animation capture that matches the active rendering path, then
+  confirm behavior manually.
 - General dirty-layout scheduling and untested game APIs remain future work.
 
 ## Reproduction route
