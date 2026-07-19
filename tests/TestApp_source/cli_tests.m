@@ -56,6 +56,7 @@ int test_CGAffineTransform(void);  // CGAffineTransform.c
 int test_RespondsToSelector(void); // RespondsToSelector.m
 int test_MethodForSelector(void);  // MethodForSelector.m
 int test_Initialize(void);         // Initialize.m
+int test_NSOperation(void);        // NSOperation.m
 
 #ifndef DEFINE_ME_WHEN_BUILDING_ON_MACOS
 int test_cpp_virtual_inheritance(void); // CppVirtualInheritance.cpp
@@ -6531,6 +6532,7 @@ struct {
     FUNC_DEF(test_strftime),
     FUNC_DEF(test_RespondsToSelector),
     FUNC_DEF(test_MethodForSelector),
+    FUNC_DEF(test_NSOperation),
     FUNC_DEF(test_NSKeyedArchiver_encodeIntForKey),
     FUNC_DEF(test_NSKeyedArchiver_NSKeyedUnarchiver),
     FUNC_DEF(test_NSKeyedArchiver_NSDictionary_of_NSArray_of_NSStrings),

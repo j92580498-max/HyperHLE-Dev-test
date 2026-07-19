@@ -68,6 +68,34 @@ static inline NSRange NSMakeRange(NSUInteger loc, NSUInteger len) {
 - (void)drain;
 @end
 
+@class NSArray;
+
+@interface NSOperation : NSObject
+- (void)start;
+- (void)main;
+- (void)cancel;
+- (BOOL)isCancelled;
+- (BOOL)isExecuting;
+- (BOOL)isFinished;
+- (BOOL)isReady;
+- (void)waitUntilFinished;
+@end
+
+@interface NSInvocationOperation : NSOperation
+- (instancetype)initWithTarget:(id)target
+                       selector:(SEL)selector
+                         object:(id)object;
+- (id)result;
+@end
+
+@interface NSOperationQueue : NSObject
+- (void)addOperation:(NSOperation *)operation;
+- (NSArray *)operations;
+- (NSUInteger)operationCount;
+- (void)cancelAllOperations;
+- (void)waitUntilAllOperationsAreFinished;
+@end
+
 @interface NSArray<ObjectType> : NSObject
 + (instancetype)array;
 + (instancetype)arrayWithObjects:(ObjectType)firstObj, ...;
