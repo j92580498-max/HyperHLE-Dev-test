@@ -23,6 +23,29 @@ struct SetHostObject {
 }
 impl HostObject for SetHostObject {}
 
+fn copy_set(env: &mut Environment, set: id, mutable: bool) -> id {
+    let objects: Vec<id> = env
+        .objc
+        .borrow::<SetHostObject>(set)
+        .dict
+        .iter_keys()
+        .collect();
+    let copy: id = if mutable {
+        msg_class![env; NSMutableSet alloc]
+    } else {
+        msg_class![env; NSSet alloc]
+    };
+    let null: id = msg_class![env; NSNull null];
+    for object in objects {
+        let mut host_object: SetHostObject = std::mem::take(env.objc.borrow_mut(copy));
+        host_object
+            .dict
+            .insert(env, object, null, /* copy_key: */ false);
+        *env.objc.borrow_mut(copy) = host_object;
+    }
+    copy
+}
+
 pub const CLASSES: ClassExports = objc_classes! {
 
 (env, this, _cmd);
@@ -72,6 +95,11 @@ pub const CLASSES: ClassExports = objc_classes! {
     retain(env, this)
 }
 
+// NSMutableCopying implementation
+- (id)mutableCopyWithZone:(NSZonePtr)_zone {
+    copy_set(env, this, true)
+}
+
 - (bool)containsObject:(id)object {
     let enumerator: id = msg![env; this objectEnumerator];
     loop {
@@ -117,7 +145,12 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 // NSCopying implementation
 - (id)copyWithZone:(NSZonePtr)_zone {
-    todo!(); // TODO: this should produce an immutable copy
+    copy_set(env, this, false)
+}
+
+// NSMutableCopying implementation
+- (id)mutableCopyWithZone:(NSZonePtr)_zone {
+    copy_set(env, this, true)
 }
 
 @end
