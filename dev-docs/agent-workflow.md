@@ -7,6 +7,11 @@ Use `app-debugging-playbook.md` for the efficient runtime/static-analysis
 protocol. If `app-notes/<app-slug>.md` exists, read it first and continue from
 its highest proven milestone rather than rediscovering the same facts.
 
+Do not assign autonomous compatibility debugging to Terra or Luna. Maintainer
+testing on 2026-07-18 found that neither was sufficient to advance this
+project without stronger review. Treat their output as an unverified lead,
+not as implementation or compatibility evidence.
+
 ## 1. Capture a reproducible case
 
 Record these facts before diagnosing:

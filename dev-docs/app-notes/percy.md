@@ -18,12 +18,13 @@ the same rule: keep them local, ignored by Git, and do not redistribute them.
 
 ## Current checkpoint
 
-Percy now reaches live gameplay on Windows. The navigation-controller NIB
+The last clean committed Percy milestone reaches live gameplay on Windows. The navigation-controller NIB
 stack is restored, modal presentation and dismissal work through the level
 intro, C++ object constructors/destructors run in the required order, and the
 game creates drawable storage. An internal guest-frame capture shows the
 portrait pipe board, textured background, grid, and OPEN control. A controlled
-tile tap is delivered to the game and rotates the selected tile.
+tile tap reaches the game, but visible pipe rotation still needs manual
+confirmation.
 
 The CAF/AIFF audio paths now decode Percy's PCM effects, including the CAF
 asset whose data chunk has a nonzero edit-count field. Sound was confirmed in
@@ -32,6 +33,11 @@ broader validation.
 
 ## Known gaps
 
+- On the current dirty 2026-07-18 build, the maintainer saw and heard the Fox
+  logo, then saw a black screen while sound continued. The process remained
+  alive without a panic, and a capture request after eight seconds received no
+  new EAGL frame. Treat post-logo rendering as the current blocker; do not call
+  the dirty build a usable checkpoint.
 - Full-session stability, saving, and every game mode are not yet validated;
   the custom-level crash belongs to the separate Ricky investigation, not
   Percy.
