@@ -395,8 +395,16 @@ pub fn write(
     // TODO: handle errno properly
     set_errno(env, 0);
 
-    // TODO: error handling for unknown fd?
-    let file = env.libc_state.posix_io.file_for_fd(fd).unwrap();
+    let Some(file) = env.libc_state.posix_io.file_for_fd(fd) else {
+        log!(
+            "Warning: write({:?}, {:?}, {:#x}) called with unknown fd, returning -1",
+            fd,
+            buffer,
+            size,
+        );
+        set_errno(env, EBADF);
+        return -1;
+    };
 
     let buffer_slice = env.mem.bytes_at(buffer.cast(), size);
     match file.file.write(buffer_slice) {
