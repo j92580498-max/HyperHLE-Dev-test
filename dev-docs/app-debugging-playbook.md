@@ -150,6 +150,22 @@ logs. Never commit a diagnostic containing proprietary bytes or personal
 paths. After the question is answered, remove trace-only code or convert the
 small useful failure message into a normal diagnostic.
 
+### Recognize compiler-created Objective-C blocks
+
+Clang emits stack and global block literals directly in guest memory. They are
+Objective-C-compatible objects, but they were not allocated through tapHLE's
+normal object table. A high stack address receiving `copy`, combined with an
+unhandled `__NSConcreteStackBlock` or `__NSConcreteGlobalBlock` relocation, is
+evidence of a missing Blocks runtime rather than a corrupt ordinary object.
+
+Trace only the final selector sequence and inspect the stable block prefix:
+`isa`, flags, reserved word, invoke pointer and descriptor pointer. Implement
+the documented Blocks ABI coherently: external block classes, stack-to-heap
+copy by descriptor size, copy/dispose helpers, heap reference counts,
+`_Block_object_assign`, `_Block_object_dispose`, and `__block` forwarding.
+Returning the original stack pointer from `copy` may move one run forward but
+leaves a use-after-return bug, so it is not a valid compatibility fix.
+
 Read structures before reinterpreting data. For compressed audio, for example,
 capture the `AudioStreamBasicDescription`, packet-description route/count, and
 the first sync bytes before treating the buffer as PCM. For a stale-pointer
@@ -165,6 +181,12 @@ Use a uniquely named directory under `%TEMP%` as tapHLE's working directory.
 Link its `tapHLE_dylibs` and `tapHLE_fonts` to the checkout and copy the small
 tracked default-options file rather than copying large support trees. Do not
 add local options unless the experiment is specifically testing one.
+
+Do not use `--headless` merely to hide an automated app run. UIKit and EAGL
+paths can legitimately require `Environment.window`; headless mode may create
+an earlier, unrelated unwrap or no-context failure. Use it only when the named
+test is genuinely window-independent. A bounded normal-window run may redirect
+logs and stop only its exact spawned PID.
 
 For each meaningful run, record:
 
