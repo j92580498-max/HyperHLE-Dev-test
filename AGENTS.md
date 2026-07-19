@@ -187,6 +187,12 @@ cargo build --release
 python dev-scripts/compatibility.py check
 ```
 
+Observe every check's exit status. In PowerShell, do not place several checks
+in one semicolon-separated command and trust only the final process exit code;
+a later success can mask an earlier failure. Run checks separately or stop
+immediately when `$LASTEXITCODE` is nonzero. Report each skipped or failed check
+explicitly.
+
 The full `cargo test` needs the custom test SDK and LLVM described in
 `tests/README.md`. The lint script also needs the native build prerequisites:
 
