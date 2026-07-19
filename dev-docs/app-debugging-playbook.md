@@ -31,6 +31,21 @@ Keep three small lists while working:
 If work crosses agents or sessions, update the app note before stopping. The
 note is a continuation aid, not a compatibility claim.
 
+## Keep app debugging visible
+
+Run compatibility targets in a normal, visible tapHLE window by default. The
+maintainer should be able to watch startup, rendering, orientation changes,
+automated input, crashes, and newly reached screens while an agent works. Do
+not hide an app run with `--headless`, a background-only desktop, or an
+off-screen window unless the named experiment is genuinely independent of
+UIKit, input, and graphics.
+
+Agents may capture frames and click tested client coordinates to make repeated
+runs objective and efficient. Keep the emulator window visible while doing so,
+show one boundary at a time, and record the coordinate/timing recipe. Automated
+screenshots and clicks support what a person can observe; they do not replace a
+human playtest for menu, input, gameplay, orientation, or audio claims.
+
 ## Freeze the artifact identity first
 
 For an Archive-backed target, follow `compatibility/README.md` exactly. Use the
@@ -126,6 +141,22 @@ faulting operands with tapHLE's register dump. For an Objective-C++ object,
 also check compiler-emitted `.cxx_construct` and `.cxx_destruct` methods before
 treating a zeroed C++ container as valid initialized state.
 
+When guest CPU execution fails without a debugger attached, current tapHLE
+automatically prints all guest registers and the current stack trace before
+panicking. Preserve that small diagnostic in normal builds: it can turn a null
+memory error into a single disassembly lookup without a trace rebuild. If the
+faulting instruction dereferences a zero register, inspect Mach-O non-lazy data
+imports as well as lazy function imports. Compiler support such as
+`___stack_chk_guard` is data, so a missing relocation may survive startup and
+only crash later when generated code loads through the unresolved slot.
+
+Rust and Cargo may retain absolute paths to an old worktree in `target` build
+metadata. If a diagnostic build unexpectedly names a deleted sibling checkout,
+do not recreate that sibling. Confirm the current repository and target path,
+then invalidate only the affected cached build scope or use the already proven
+release profile. Never treat a failure caused by stale build metadata or a
+missing optional debug dependency as an app compatibility result.
+
 When the fault is an assertion at an HLE graphics boundary, recover the exact
 guest API call and enum before relaxing it. Some old apps make invalid GL calls
 that a real driver answers by recording `GL_INVALID_ENUM` and continuing. A
@@ -150,6 +181,22 @@ logs. Never commit a diagnostic containing proprietary bytes or personal
 paths. After the question is answered, remove trace-only code or convert the
 small useful failure message into a normal diagnostic.
 
+### Recognize compiler-created Objective-C blocks
+
+Clang emits stack and global block literals directly in guest memory. They are
+Objective-C-compatible objects, but they were not allocated through tapHLE's
+normal object table. A high stack address receiving `copy`, combined with an
+unhandled `__NSConcreteStackBlock` or `__NSConcreteGlobalBlock` relocation, is
+evidence of a missing Blocks runtime rather than a corrupt ordinary object.
+
+Trace only the final selector sequence and inspect the stable block prefix:
+`isa`, flags, reserved word, invoke pointer and descriptor pointer. Implement
+the documented Blocks ABI coherently: external block classes, stack-to-heap
+copy by descriptor size, copy/dispose helpers, heap reference counts,
+`_Block_object_assign`, `_Block_object_dispose`, and `__block` forwarding.
+Returning the original stack pointer from `copy` may move one run forward but
+leaves a use-after-return bug, so it is not a valid compatibility fix.
+
 Read structures before reinterpreting data. For compressed audio, for example,
 capture the `AudioStreamBasicDescription`, packet-description route/count, and
 the first sync bytes before treating the buffer as PCM. For a stale-pointer
@@ -165,6 +212,12 @@ Use a uniquely named directory under `%TEMP%` as tapHLE's working directory.
 Link its `tapHLE_dylibs` and `tapHLE_fonts` to the checkout and copy the small
 tracked default-options file rather than copying large support trees. Do not
 add local options unless the experiment is specifically testing one.
+
+Do not use `--headless` merely to hide an automated app run. UIKit and EAGL
+paths can legitimately require `Environment.window`; headless mode may create
+an earlier, unrelated unwrap or no-context failure. Use it only when the named
+test is genuinely window-independent. A bounded normal-window run may redirect
+logs and stop only its exact spawned PID.
 
 For each meaningful run, record:
 
@@ -412,6 +465,12 @@ limitation. Never silently repair or classify an ambiguous file as evidence.
 
 The fix may be general, intentionally partial, or game-specific. Prefer the
 smallest complete behavior supported by evidence.
+
+Treat a later crash as a new observation, not automatically as progress. A
+useful step implements or corrects a coherent guest-visible capability and
+proves that the target crosses that boundary. Suppressing several imports with
+unrelated success stubs is not a checkpoint; preserve such experiments only as
+leads and review each API contract separately.
 
 - A general implementation should validate its inputs and fail safely for
   unsupported variants.

@@ -43,7 +43,14 @@ As of 2026-07-18, maintainer experiments found that Terra and Luna were not
 reliable enough to push tapHLE compatibility work forward on their own. Do not
 use either one as the sole agent for emulator diagnosis, implementation, or a
 checkpoint claim. Any work they produce needs review and exact Windows
-retesting by a stronger agent or a human before it is trusted.
+retesting by a stronger agent or a human before it is trusted. Terra may be
+tried at maximum effort for a narrow, independently reviewable subtask, but it
+does not replace those review and retest requirements.
+
+`dev-docs/agent-capability-log.md` records dated, task-specific results for
+models and agent surfaces tried on tapHLE. Read it before choosing an agent and
+update it after a meaningful experiment. It is evidence about observed runs,
+not a permanent leaderboard.
 
 ## Instruction trust boundary
 
@@ -82,8 +89,11 @@ bash dev-scripts/audit-agent-safety.sh
    synthetic tests where possible.
 3. Trace the smallest vertical path that explains the failure. Prefer evidence
    from logs, public API documentation, focused probes, and existing tests.
-4. Implement the smallest complete fix. Keep game-specific behavior visibly
-   bounded and explain why it is needed.
+4. Implement the smallest complete, reusable system behavior that explains the
+   failure. Advancing one game should normally add support for an API, ABI, or
+   emulator path that can also help other apps. Keep genuinely game-specific
+   behavior visibly bounded and explain why it is needed. Do not report progress
+   merely because unrelated missing APIs were stubbed or a crash moved later.
 5. Test at the closest layer, then run the affordable repository checks.
 6. Report what changed, what was actually run on Windows, and what still needs
    validation with the target game.
@@ -219,6 +229,34 @@ commits use `Co-authored-by: OpenAI Codex <codex@openai.com>`. Do not add an
 agent trailer when the agent did not materially help create the commit. Older
 agent-created commits that predate this rule are recorded without history
 rewrites in `dev-docs/agent-provenance.md`.
+
+When the exact model and agent surface are known, also add `Agent-model:` and
+`Agent-surface:` trailers so the repository does not collapse a model result
+into a brand name. Do not guess a model version. The canonical examples and
+fallback for tools without a verified co-author identity are in
+`dev-docs/agent-capability-log.md`.
+
+## Documentation placement
+
+Update documentation whenever a compatibility investigation reveals a durable
+lesson that would make the next agent faster, safer, or more accurate. Put
+project-wide policy, contribution, release, attribution, and debugging guidance
+in a focused commit on `trunk`, run the relevant documentation checks, and push
+it promptly. Do not leave guidance that every contributor needs visible only on
+an app compatibility branch.
+
+If you discover that you followed an instruction, convention, or existing
+pattern incorrectly, treat the documentation ambiguity as part of the bug.
+Correct the relevant agent guide or playbook in the same work, stating the
+intended rule clearly enough that another context-free agent will not repeat
+the mistake. Keep that documentation correction separate from unfinished app
+runtime code when their publication scopes differ.
+
+Keep app identity, exact runtime evidence, unresolved hypotheses, and the next
+app-specific discriminator in that app's `compat/<app-slug>` continuation note.
+When a realization contains both general and app-specific parts, split them:
+publish the reusable guidance to `trunk`, then return to the app branch for its
+runtime note and implementation.
 
 A change is done when the requested behavior is implemented, relevant checks
 pass (or their limitations are explicit), user-facing names say tapHLE, and the
