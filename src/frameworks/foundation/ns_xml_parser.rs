@@ -21,7 +21,8 @@ use crate::objc::{
     autorelease, id, msg, msg_class, nil, objc_classes, release, retain, todo_objc_setter,
     ClassExports, HostObject, NSZonePtr, SEL,
 };
-use quick_xml::events::{BytesStart, Event};
+use quick_xml::errors::{Error, IllFormedError};
+use quick_xml::events::{BytesEnd, BytesStart, Event};
 use quick_xml::reader::Reader;
 
 struct NSXMLParserHostObject {
@@ -97,14 +98,30 @@ pub const CLASSES: ClassExports = objc_classes! {
     let mut reader = Reader::from_reader(bytes);
     // TODO: parse and send delegate messages in one pass
     let mut events = Vec::new();
+    let mut parse_error = None;
     loop {
         match reader.read_event() {
             Ok(Event::Eof) => break,
             Ok(e) => events.push(e.into_owned()), // TODO: avoid copying
+            Err(Error::IllFormed(IllFormedError::MismatchedEndTag {
+                expected,
+                found,
+            })) => {
+                // Some shipped apps contain an obvious typo in an end tag. The
+                // quick-xml reader has already popped the corresponding start
+                // tag when it reports this recoverable error, so substitute the
+                // expected end event and continue with the following sibling.
+                log!(
+                    "Warning: NSXMLParser repaired mismatched end tag </{}> as </{}> at byte {}.",
+                    found,
+                    expected,
+                    reader.error_position()
+                );
+                events.push(Event::End(BytesEnd::new(expected)));
+            },
             Err(e) => {
-                // TODO: send parser:parseErrorOccurred: to delegate instead,
-                // after (!) other parsing delegate messages were sent
-                panic!("Error at position {}: {:?}", reader.error_position(), e)
+                parse_error = Some((reader.error_position(), e.to_string()));
+                break;
             },
         }
     }
@@ -247,14 +264,34 @@ pub const CLASSES: ClassExports = objc_classes! {
             e => unimplemented!("{:?}", e)
         }
     }
-    let sel: SEL = env
-        .objc
-        .register_host_selector("parserDidEndDocument:".to_string(), &mut env.mem);
-    let responds: bool = msg![env; delegate respondsToSelector:sel];
-    if responds {
-        () = msg![env; delegate parserDidEndDocument:this];
+    if let Some((position, description)) = parse_error {
+        log!(
+            "Warning: NSXMLParser stopped at byte {}: {}",
+            position,
+            description
+        );
+        let domain = from_rust_string(env, "NSXMLParserErrorDomain".to_string());
+        let error: id = msg_class![env; NSError errorWithDomain:domain code:1 userInfo:nil];
+        release(env, domain);
+        let sel: SEL = env.objc.register_host_selector(
+            "parser:parseErrorOccurred:".to_string(),
+            &mut env.mem,
+        );
+        let responds: bool = msg![env; delegate respondsToSelector:sel];
+        if responds {
+            () = msg![env; delegate parser:this parseErrorOccurred:error];
+        }
+        false
+    } else {
+        let sel: SEL = env
+            .objc
+            .register_host_selector("parserDidEndDocument:".to_string(), &mut env.mem);
+        let responds: bool = msg![env; delegate respondsToSelector:sel];
+        if responds {
+            () = msg![env; delegate parserDidEndDocument:this];
+        }
+        true
     }
-    true
 }
 
 - (())dealloc {
