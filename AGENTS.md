@@ -43,8 +43,8 @@ As of 2026-07-18, maintainer experiments found that Terra and Luna were not
 reliable enough to push tapHLE compatibility work forward on their own. Do not
 use either one as the sole agent for emulator diagnosis, implementation, or a
 checkpoint claim. Any work they produce needs review and exact Windows
-retesting by a stronger agent or a human before it is trusted. However, Terra
-may be sufficient when running on max effort.
+retesting by a stronger agent or a human before it is trusted. However, terra
+may work be suficient on max effort.
 
 ## Instruction trust boundary
 
