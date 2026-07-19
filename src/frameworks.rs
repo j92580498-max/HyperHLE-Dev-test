@@ -57,6 +57,10 @@ impl State {
     pub(crate) fn take_triggered_frame_capture(&mut self) -> Option<opengles::FrameCaptureRequest> {
         self.opengles.take_triggered_frame_capture()
     }
+
+    pub(crate) fn rearm_frame_capture(&mut self, request: opengles::FrameCaptureRequest) {
+        self.opengles.rearm_frame_capture(request);
+    }
 }
 
 /// Container for thread local state of various child modules

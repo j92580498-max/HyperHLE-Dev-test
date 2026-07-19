@@ -360,7 +360,7 @@ pub fn recomposite_if_necessary(env: &mut Environment, force: bool) -> Option<In
 
     // Present our rendered frame (bound to TEXTURE_2D). This copies it to the
     // default framebuffer (0) so we need to unbind our internal framebuffer.
-    unsafe {
+    let rearm_capture_request = unsafe {
         gles.BindTexture(gles11::TEXTURE_2D, texture);
         gles.BindFramebufferOES(gles11::FRAMEBUFFER_OES, 0);
         present_frame(
@@ -370,11 +370,16 @@ pub fn recomposite_if_necessary(env: &mut Environment, force: bool) -> Option<In
             present_frame_args.2,
         );
         if let Some(request) = frame_capture_request {
-            capture_composited_frame(gles.as_mut(), present_frame_args.0, request);
+            capture_composited_frame(gles.as_mut(), present_frame_args.0, request)
+        } else {
+            None
         }
-    }
+    };
     std::mem::drop(gles);
     window.swap_window();
+    if let Some(request) = rearm_capture_request {
+        env.framework_state.rearm_frame_capture(request);
+    }
 
     animation_state.update_started_and_finished_animations(env);
 
@@ -389,14 +394,14 @@ unsafe fn capture_composited_frame(
     gles: &mut dyn GLES,
     viewport: (u32, u32, u32, u32),
     request: crate::frameworks::opengles::FrameCaptureRequest,
-) {
+) -> Option<crate::frameworks::opengles::FrameCaptureRequest> {
     match std::fs::metadata(&request.output_path) {
         Ok(_) => {
             log!(
                 "Warning: refusing to overwrite frame capture output {}.",
                 request.output_path.display(),
             );
-            return;
+            return None;
         }
         Err(err) if err.kind() == std::io::ErrorKind::NotFound => {}
         Err(err) => {
@@ -405,7 +410,7 @@ unsafe fn capture_composited_frame(
                 request.output_path.display(),
                 err,
             );
-            return;
+            return None;
         }
     }
 
@@ -436,6 +441,7 @@ unsafe fn capture_composited_frame(
                     err,
                 );
             }
+            Some(request)
         }
         Err(err) => {
             log!(
@@ -443,6 +449,7 @@ unsafe fn capture_composited_frame(
                 request.output_path.display(),
                 err,
             );
+            None
         }
     }
 }

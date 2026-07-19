@@ -313,8 +313,10 @@ pub const CLASSES: ClassExports = objc_classes! {
             env.window.as_mut().unwrap(),
             env.current_thread,
         );
-        unsafe {
-            capture_renderbuffer(gles.as_mut(), request);
+        let request = unsafe { capture_renderbuffer(gles.as_mut(), request) };
+        std::mem::drop(gles);
+        if let Some(request) = request {
+            env.framework_state.opengles.rearm_frame_capture(request);
         }
     }
 
@@ -557,16 +559,19 @@ unsafe fn read_renderbuffer(gles: &mut dyn GLES, mut pixel_buffer: Vec<u8>) -> (
 
 /// Capture a submitted guest renderbuffer for an external debugging harness.
 ///
-/// This is intentionally a one-shot, host-configured diagnostic. It captures
-/// before host rotation, composition, and virtual-cursor rendering.
-unsafe fn capture_renderbuffer(gles: &mut dyn GLES, request: super::FrameCaptureRequest) {
+/// This is an explicitly triggered host diagnostic. It captures before host
+/// rotation, composition, and virtual-cursor rendering.
+unsafe fn capture_renderbuffer(
+    gles: &mut dyn GLES,
+    request: super::FrameCaptureRequest,
+) -> Option<super::FrameCaptureRequest> {
     match std::fs::metadata(&request.output_path) {
         Ok(_) => {
             log!(
                 "Warning: refusing to overwrite frame capture output {}.",
                 request.output_path.display(),
             );
-            return;
+            return None;
         }
         Err(err) if err.kind() == std::io::ErrorKind::NotFound => {}
         Err(err) => {
@@ -575,7 +580,7 @@ unsafe fn capture_renderbuffer(gles: &mut dyn GLES, request: super::FrameCapture
                 request.output_path.display(),
                 err,
             );
-            return;
+            return None;
         }
     }
 
@@ -596,6 +601,7 @@ unsafe fn capture_renderbuffer(gles: &mut dyn GLES, request: super::FrameCapture
                     err,
                 );
             }
+            Some(request)
         }
         Err(err) => {
             log!(
@@ -603,6 +609,7 @@ unsafe fn capture_renderbuffer(gles: &mut dyn GLES, request: super::FrameCapture
                 request.output_path.display(),
                 err,
             );
+            None
         }
     }
 }

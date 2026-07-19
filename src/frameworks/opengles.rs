@@ -105,6 +105,13 @@ impl State {
             }
         }
     }
+
+    /// Re-arm a successfully completed capture. The harness must move the
+    /// output and create a new marker before another capture can occur.
+    pub(crate) fn rearm_frame_capture(&mut self, request: FrameCaptureRequest) {
+        assert!(self.frame_capture_request.is_none());
+        self.frame_capture_request = Some(request);
+    }
 }
 
 fn sync_context<'objc, 'win: 'objc>(

@@ -213,8 +213,8 @@ belongs in the app note.
 
 ### Capture the rendered frame when desktop capture is black
 
-Windows desktop screenshot APIs may return a black OpenGL client area. For one
-state-aware diagnostic per process, tapHLE can capture the next rendered frame.
+Windows desktop screenshot APIs may return a black OpenGL client area. tapHLE
+can capture the next rendered frame after an explicit request marker appears.
 EAGL apps capture the next valid renderbuffer submitted through
 `presentRenderbuffer:`. UIKit-only screens capture the next frame presented by
 the Core Animation compositor. This is a harness feature, not an app option:
@@ -274,11 +274,14 @@ if (-not $captureComplete) {
 ```
 
 The output path must not exist. tapHLE creates it with no-overwrite semantics,
-logs the PPM dimensions on success, and makes only one triggered attempt per
-process. A successful attempt removes the marker on a best-effort basis. A
-write failure, inaccessible path, invalid marker, or pre-existing output is
-logged without crashing the emulator; the request is disarmed and may leave
-the marker in place, so restart tapHLE before retrying.
+logs the PPM dimensions on success, and makes only one attempt per marker. A
+successful attempt removes the marker on a best-effort basis and re-arms the
+same paths. To capture a later state in the same process, move the completed
+output to a unique evidence filename, perform the next action, then create the
+same marker again. A write failure, inaccessible path, invalid marker, or
+pre-existing output is logged without crashing the emulator; that failure
+disarms the request and may leave the marker in place, so restart tapHLE before
+retrying.
 
 Wait for the output with a short deadline rather than an unbounded loop. Check
 that the file begins with a `P6` header and that a decoder reports the expected
