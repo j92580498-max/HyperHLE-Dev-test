@@ -19,10 +19,10 @@ use super::{NSTimeInterval, NSUInteger};
 use crate::frameworks::foundation::ns_run_loop::{add_perform_request, cancel_perform_requests};
 use crate::frameworks::foundation::ns_thread::detach_new_thread_inner;
 use crate::libc::semaphore::{host_destroy_semaphore, sem_wait};
-use crate::mem::MutVoidPtr;
+use crate::mem::{ConstVoidPtr, MutVoidPtr};
 use crate::objc::{
     autorelease, id, msg, msg_class, msg_send, msg_send_no_type_checking, nil, objc_classes,
-    retain, Class, ClassExports, NSZonePtr, ObjC, TrivialHostObject, SEL,
+    retain, Class, ClassExports, NSZonePtr, ObjC, TrivialHostObject, IMP, SEL,
 };
 
 pub const CLASSES: ClassExports = objc_classes! {
@@ -250,6 +250,23 @@ forUndefinedKey:(id)key { // NSString*
 
 - (bool)respondsToSelector:(SEL)selector {
     env.objc.object_has_method(&env.mem, this, selector)
+}
+
+- (ConstVoidPtr)methodForSelector:(SEL)selector {
+    match env.objc.object_get_method_implementation(&env.mem, this, selector) {
+        // A guest IMP is already a guest-callable function pointer, including
+        // its ARM/Thumb mode bit, so it can be returned directly.
+        Some(IMP::Guest(imp)) => imp.to_ptr(),
+        // Host methods are Rust functions rather than guest code. Returning a
+        // usable IMP for one needs a guest-callable trampoline, which tapHLE
+        // does not create yet. Returning null is safer than exposing a host
+        // address that guest code could try to branch to.
+        Some(IMP::Host(_)) => {
+            log_once!("TODO: NSObject methodForSelector: for a host implementation");
+            ConstVoidPtr::null()
+        }
+        None => ConstVoidPtr::null(),
+    }
 }
 
 - (id)performSelector:(SEL)sel {

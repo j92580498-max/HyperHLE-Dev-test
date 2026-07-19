@@ -57,6 +57,7 @@ static inline NSRange NSMakeRange(NSUInteger loc, NSUInteger len) {
 - (instancetype)autorelease;
 - (void)dealloc;
 - (NSUInteger)retainCount;
+- (void *)methodForSelector:(SEL)selector;
 - (id)performSelector:(SEL)selector;
 - (BOOL)respondsToSelector:(SEL)selector;
 @end

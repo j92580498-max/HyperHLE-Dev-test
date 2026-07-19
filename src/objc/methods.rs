@@ -160,6 +160,26 @@ impl ObjC {
         }
     }
 
+    /// Returns the implementation selected by normal Objective-C inheritance
+    /// lookup, if the class responds to the selector.
+    pub fn class_get_method_implementation(&self, class: Class, sel: SEL) -> Option<IMP> {
+        let mut class = class;
+        loop {
+            let &ClassHostObject {
+                superclass,
+                ref methods,
+                ..
+            } = self.borrow(class);
+            if let Some(&imp) = methods.get(&sel) {
+                return Some(imp);
+            } else if superclass == nil {
+                return None;
+            } else {
+                class = superclass;
+            }
+        }
+    }
+
     /// Variant of `class_has_method` which doesn't account for inheritance.
     pub fn class_has_uninherited_method(&self, class: Class, sel: SEL) -> bool {
         let ClassHostObject { methods, .. } = self.borrow(class);
@@ -199,6 +219,12 @@ impl ObjC {
     /// Checks if a given object has a method (responds to a selector).
     pub fn object_has_method(&self, mem: &Mem, obj: id, sel: SEL) -> bool {
         self.class_has_method(ObjC::read_isa(obj, mem), sel)
+    }
+
+    /// Returns the implementation selected by normal Objective-C inheritance
+    /// lookup for an object, if it responds to the selector.
+    pub fn object_get_method_implementation(&self, mem: &Mem, obj: id, sel: SEL) -> Option<IMP> {
+        self.class_get_method_implementation(ObjC::read_isa(obj, mem), sel)
     }
 
     /// Variant of `object_has_method` which doesn't account for inheritance.
