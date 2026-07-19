@@ -5,7 +5,7 @@
  */
 
 use crate::dyld::{export_c_func, FunctionExports};
-use crate::libc::errno::{set_errno, EINVAL, ENOMEM};
+use crate::libc::errno::{set_errno, EFAULT, EINVAL, ENOMEM};
 use crate::mem::{ConstPtr, ConstVoidPtr, GuestUSize, MutPtr, MutVoidPtr, Ptr, SafeRead};
 use crate::{Environment, ThreadId};
 use std::collections::HashMap;
@@ -51,6 +51,20 @@ impl State {
             .copied()
             .unwrap_or_else(Self::disabled_stack)
     }
+
+    fn update_stack_for_thread(&mut self, thread: ThreadId, requested: stack_t) {
+        let stored = if requested.ss_flags == SS_DISABLE {
+            let previous = self.stack_for_thread(thread);
+            stack_t {
+                ss_sp: previous.ss_sp,
+                ss_size: previous.ss_size,
+                ss_flags: SS_DISABLE,
+            }
+        } else {
+            requested
+        };
+        self.alternate_stacks.insert(thread, stored);
+    }
 }
 
 fn validate_alternate_stack(stack: stack_t) -> Result<(), i32> {
@@ -88,32 +102,29 @@ fn sigprocmask(env: &mut Environment, how: i32, set: ConstVoidPtr, old_set: MutV
 }
 
 fn sigaltstack(env: &mut Environment, stack: ConstPtr<stack_t>, old_stack: MutPtr<stack_t>) -> i32 {
-    set_errno(env, 0);
-
     let thread = env.current_thread;
     let previous = env.libc_state.signal.stack_for_thread(thread);
-    if !old_stack.is_null() {
-        env.mem.write(old_stack, previous);
+    if !old_stack.is_null() && !env.mem.write_fallible(old_stack, previous) {
+        set_errno(env, EFAULT);
+        return -1;
     }
 
     if stack.is_null() {
         return 0;
     }
 
-    let requested = env.mem.read(stack);
+    let Some(requested) = env.mem.read_fallible(stack) else {
+        set_errno(env, EFAULT);
+        return -1;
+    };
     if let Err(errno) = validate_alternate_stack(requested) {
         set_errno(env, errno);
         return -1;
     }
 
-    if requested.ss_flags == SS_DISABLE {
-        env.libc_state.signal.alternate_stacks.remove(&thread);
-    } else {
-        env.libc_state
-            .signal
-            .alternate_stacks
-            .insert(thread, requested);
-    }
+    env.libc_state
+        .signal
+        .update_stack_for_thread(thread, requested);
     0
 }
 
@@ -171,12 +182,34 @@ mod tests {
         assert_eq!(initial_size, 0);
         assert_eq!(initial_flags, SS_DISABLE);
 
-        state
-            .alternate_stacks
-            .insert(3, enabled_stack(ENFORCED_MINSIGSTKSZ));
+        state.update_stack_for_thread(3, enabled_stack(ENFORCED_MINSIGSTKSZ));
         let thread_3_flags = state.stack_for_thread(3).ss_flags;
         let thread_4_flags = state.stack_for_thread(4).ss_flags;
         assert_eq!(thread_3_flags, 0);
         assert_eq!(thread_4_flags, SS_DISABLE);
+    }
+
+    #[test]
+    fn disabling_preserves_the_previous_stack_address_and_size() {
+        let mut state = State::default();
+        let enabled = enabled_stack(ENFORCED_MINSIGSTKSZ);
+        let enabled_sp = enabled.ss_sp;
+        let enabled_size = enabled.ss_size;
+        state.update_stack_for_thread(7, enabled);
+
+        let requested_disable = stack_t {
+            ss_sp: Ptr::from_bits(0xdeadbeef),
+            ss_size: 1,
+            ss_flags: SS_DISABLE,
+        };
+        state.update_stack_for_thread(7, requested_disable);
+
+        let disabled = state.stack_for_thread(7);
+        let disabled_sp = disabled.ss_sp;
+        let disabled_size = disabled.ss_size;
+        let disabled_flags = disabled.ss_flags;
+        assert_eq!(disabled_sp, enabled_sp);
+        assert_eq!(disabled_size, enabled_size);
+        assert_eq!(disabled_flags, SS_DISABLE);
     }
 }
