@@ -69,6 +69,41 @@
             "network": "unknown"
           },
           "notes": "The full Archive.org metadata, content hashes, embedded identity, and tapHLE --info verification passed immediately before the clean exact-commit release run. The binary identified itself as 1ae13a34 and used bundled default options in a fresh sandbox. A requested guest-frame capture produced no EAGL frame. A separate process-owned 480x320 desktop capture was black but is not standalone rendering evidence because desktop OpenGL capture can be unreliable; the blocker classification also relies on the logged empty UIView fallback and absence of any submitted guest frame."
+        },
+        {
+          "id": "2026-07-18-windows-z-gameplay-audio",
+          "tested_at": "2026-07-18",
+          "taphle_commit": "f8299889c875c47111329427c5ef48a0bdf4d8c2",
+          "host": {
+            "os": "Windows",
+            "os_version": "Windows 11 Pro 10.0.22631",
+            "architecture": "x86_64",
+            "cpu": "13th Gen Intel Core i7-13700H",
+            "gpu": "Intel Iris Xe Graphics, driver 32.0.101.6881"
+          },
+          "artifact": {
+            "archive_ipa_filename": "Percy Jackson & The Olympians: The Lightning Thief (v1.0) [Decrypted].ipa",
+            "sha1": "d6860631a08b4909dd93dc11b50fb22a49ac2809",
+            "verification": "archive-content-hash"
+          },
+          "status": "in-game",
+          "booted": true,
+          "summary": "Reaches Percy's playable pipe board on Windows with the restored navigation/modal hierarchy, drawable OpenGL storage, decoded PCM effects, and deterministic tile input.",
+          "blocker": "Full controls, saving, and every game mode have not yet been validated.",
+          "milestones": [
+            "Restored the archived navigation-controller stack and modal Level1 -> LevelIntro -> InGame route.",
+            "Captured an internal guest frame showing the portrait board, textured background, grid, and OPEN control.",
+            "Delivered a controlled tile tap that reached the game's tile-rotation logic.",
+            "Decoded Percy's AIFF and CAF PCM effects, including CAF data with a nonzero edit-count field."
+          ],
+          "features": {
+            "graphics": "working",
+            "audio": "working",
+            "input": "partial",
+            "saving": "unknown",
+            "network": "unknown"
+          },
+          "notes": "The exact Archive artifact was verified immediately before this release build. Desktop OpenGL screenshots may appear black; the internal guest-frame capture is the authoritative rendering check. Full controls, saving, and all game modes remain unvalidated."
         }
       ]
     }
