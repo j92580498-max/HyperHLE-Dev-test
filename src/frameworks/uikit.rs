@@ -84,7 +84,53 @@ pub const DYLIB: crate::dyld::HostDylib = crate::dyld::HostDylib {
 
 #[cfg(test)]
 mod tests {
-    use super::{ui_view, ui_view_controller::ui_navigation_controller, DYLIB};
+    use super::{ui_pasteboard, ui_view, ui_view_controller::ui_navigation_controller, DYLIB};
+
+    #[test]
+    fn pasteboard_exports_named_lookup() {
+        let pasteboard = &ui_pasteboard::CLASSES
+            .iter()
+            .find(|(name, _)| *name == "UIPasteboard")
+            .expect("UIPasteboard is missing from its class module")
+            .1;
+
+        for selector in [
+            "generalPasteboard",
+            "pasteboardWithName:create:",
+            "pasteboardWithUniqueName",
+            "removePasteboardWithName:",
+        ] {
+            assert!(
+                pasteboard
+                    .class_methods
+                    .iter()
+                    .any(|(exported, _)| *exported == selector),
+                "UIPasteboard is missing {selector}",
+            );
+        }
+        for selector in [
+            "name",
+            "isPersistent",
+            "setPersistent:",
+            "string",
+            "setString:",
+            "changeCount",
+            "pasteboardTypes",
+            "containsPasteboardTypes:",
+            "valueForPasteboardType:",
+            "dataForPasteboardType:",
+            "setValue:forPasteboardType:",
+            "setData:forPasteboardType:",
+        ] {
+            assert!(
+                pasteboard
+                    .instance_methods
+                    .iter()
+                    .any(|(exported, _)| *exported == selector),
+                "UIPasteboard is missing {selector}",
+            );
+        }
+    }
 
     #[test]
     fn navigation_nib_classes_are_exported_with_coder_paths() {
@@ -231,6 +277,7 @@ pub struct State {
     ui_font: ui_font::State,
     ui_graphics: ui_graphics::State,
     ui_image: ui_image::State,
+    ui_pasteboard: ui_pasteboard::State,
     ui_screen: ui_screen::State,
     ui_touch: ui_touch::State,
     pub ui_view: ui_view::State,
