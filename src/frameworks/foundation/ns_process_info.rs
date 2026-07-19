@@ -8,14 +8,19 @@
 use super::NSTimeInterval;
 use crate::frameworks::foundation::ns_string;
 use crate::libc::mach::host::PHYSICAL_MEMORY;
-use crate::objc::{id, msg, msg_class, objc_classes, ClassExports};
+use crate::objc::{autorelease, id, msg, msg_class, objc_classes, ClassExports};
 use crate::Environment;
-use std::time::Instant;
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 #[derive(Default)]
 pub struct State {
     /// `NSProcessInfo*`
     process_info: Option<id>,
+    next_unique_string: u64,
+}
+
+fn format_unique_string(timestamp_nanos: u128, process_id: u32, sequence: u64) -> String {
+    format!("tapHLE-{timestamp_nanos:x}-{process_id:x}-{sequence:x}")
 }
 
 fn assert_process_info_singleton(env: &mut Environment, this: id) {
@@ -64,6 +69,40 @@ pub const CLASSES: ClassExports = objc_classes! {
     msg![env; main_bundle objectForInfoDictionaryKey:name_key]
 }
 
+- (id)globallyUniqueString {
+    assert_process_info_singleton(env, this); // TODO
+    let timestamp_nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("host clock is before the Unix epoch")
+        .as_nanos();
+    let sequence = env
+        .framework_state
+        .foundation
+        .ns_process_info
+        .next_unique_string;
+    env.framework_state
+        .foundation
+        .ns_process_info
+        .next_unique_string += 1;
+    let string = format_unique_string(timestamp_nanos, std::process::id(), sequence);
+    let string = ns_string::from_rust_string(env, string);
+    autorelease(env, string)
+}
+
 @end
 
 };
+
+#[cfg(test)]
+mod tests {
+    use super::format_unique_string;
+
+    #[test]
+    fn globally_unique_strings_change_with_the_sequence() {
+        let first = format_unique_string(1234, 42, 0);
+        let second = format_unique_string(1234, 42, 1);
+
+        assert_ne!(first, second);
+        assert!(first.starts_with("tapHLE-"));
+    }
+}
