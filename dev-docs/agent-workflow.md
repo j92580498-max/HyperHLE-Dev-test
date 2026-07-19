@@ -77,6 +77,14 @@ For partial or game-specific behavior, state:
 Do not pretend a stub is a complete API. A clear narrow implementation is more
 useful than an overbroad claim.
 
+Compatibility work is app-led, but the usual unit of progress is a reusable
+emulator capability. Implement the observed contract of one API, ABI, loader,
+graphics, input, audio, or filesystem path and use the target app to prove it.
+Do not add a batch of unrelated functions that only return success so startup
+continues: that can hide incorrect state and move the crash without improving
+compatibility. If a no-op is the correct behavior, explain why the caller does
+not require state or output and validate that exact call shape.
+
 ## 4. Climb the validation ladder
 
 Stop at the highest affordable level and report where you stopped:
@@ -90,6 +98,11 @@ Stop at the highest affordable level and report where you stopped:
 The fifth level is the only proof that a game compatibility claim is true.
 Passing lower levels still provides useful confidence when game access is
 awaiting the maintainer.
+
+Keep level-five app runs in a visible emulator window so the maintainer can
+watch the agent's progress. Automated frame capture and coordinate-based input
+are encouraged for repeatability, but human-observed rendering, interaction,
+orientation, and audio remain distinct evidence.
 
 For database entry, level five must use an Archive content-hash-verified
 artifact against a committed tapHLE revision. Full playability is not required:

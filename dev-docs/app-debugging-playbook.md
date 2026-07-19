@@ -31,6 +31,21 @@ Keep three small lists while working:
 If work crosses agents or sessions, update the app note before stopping. The
 note is a continuation aid, not a compatibility claim.
 
+## Keep app debugging visible
+
+Run compatibility targets in a normal, visible tapHLE window by default. The
+maintainer should be able to watch startup, rendering, orientation changes,
+automated input, crashes, and newly reached screens while an agent works. Do
+not hide an app run with `--headless`, a background-only desktop, or an
+off-screen window unless the named experiment is genuinely independent of
+UIKit, input, and graphics.
+
+Agents may capture frames and click tested client coordinates to make repeated
+runs objective and efficient. Keep the emulator window visible while doing so,
+show one boundary at a time, and record the coordinate/timing recipe. Automated
+screenshots and clicks support what a person can observe; they do not replace a
+human playtest for menu, input, gameplay, orientation, or audio claims.
+
 ## Freeze the artifact identity first
 
 For an Archive-backed target, follow `compatibility/README.md` exactly. Use the
@@ -450,6 +465,12 @@ limitation. Never silently repair or classify an ambiguous file as evidence.
 
 The fix may be general, intentionally partial, or game-specific. Prefer the
 smallest complete behavior supported by evidence.
+
+Treat a later crash as a new observation, not automatically as progress. A
+useful step implements or corrects a coherent guest-visible capability and
+proves that the target crosses that boundary. Suppressing several imports with
+unrelated success stubs is not a checkpoint; preserve such experiments only as
+leads and review each API contract separately.
 
 - A general implementation should validate its inputs and fail safely for
   unsupported variants.

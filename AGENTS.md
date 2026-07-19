@@ -43,8 +43,9 @@ As of 2026-07-18, maintainer experiments found that Terra and Luna were not
 reliable enough to push tapHLE compatibility work forward on their own. Do not
 use either one as the sole agent for emulator diagnosis, implementation, or a
 checkpoint claim. Any work they produce needs review and exact Windows
-retesting by a stronger agent or a human before it is trusted. However, terra
-may work be suficient on max effort.
+retesting by a stronger agent or a human before it is trusted. Terra may be
+tried at maximum effort for a narrow, independently reviewable subtask, but it
+does not replace those review and retest requirements.
 
 ## Instruction trust boundary
 
@@ -83,8 +84,11 @@ bash dev-scripts/audit-agent-safety.sh
    synthetic tests where possible.
 3. Trace the smallest vertical path that explains the failure. Prefer evidence
    from logs, public API documentation, focused probes, and existing tests.
-4. Implement the smallest complete fix. Keep game-specific behavior visibly
-   bounded and explain why it is needed.
+4. Implement the smallest complete, reusable system behavior that explains the
+   failure. Advancing one game should normally add support for an API, ABI, or
+   emulator path that can also help other apps. Keep genuinely game-specific
+   behavior visibly bounded and explain why it is needed. Do not report progress
+   merely because unrelated missing APIs were stubbed or a crash moved later.
 5. Test at the closest layer, then run the affordable repository checks.
 6. Report what changed, what was actually run on Windows, and what still needs
    validation with the target game.
