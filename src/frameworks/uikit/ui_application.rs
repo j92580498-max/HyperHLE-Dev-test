@@ -7,6 +7,7 @@
 
 use super::ui_device::*;
 use crate::dyld::{export_c_func, ConstantExports, FunctionExports, HostConstant};
+use crate::frameworks::core_graphics::{CGPoint, CGRect, CGSize};
 use crate::frameworks::foundation::ns_string::{from_rust_string, get_static_str};
 use crate::frameworks::foundation::{ns_array, ns_string, NSInteger, NSUInteger};
 use crate::mem::MutPtr;
@@ -42,6 +43,56 @@ pub const UIInterfaceOrientationLandscapeLeft: UIInterfaceOrientation =
     UIDeviceOrientationLandscapeRight;
 pub const UIInterfaceOrientationLandscapeRight: UIInterfaceOrientation =
     UIDeviceOrientationLandscapeLeft;
+
+const STATUS_BAR_HEIGHT: f32 = 20.0;
+
+fn status_bar_frame(
+    portrait_width: f32,
+    portrait_height: f32,
+    hidden: bool,
+    orientation: DeviceOrientation,
+) -> CGRect {
+    if hidden {
+        return CGRect::default();
+    }
+
+    match orientation {
+        DeviceOrientation::Portrait => CGRect {
+            origin: CGPoint { x: 0.0, y: 0.0 },
+            size: CGSize {
+                width: portrait_width,
+                height: STATUS_BAR_HEIGHT,
+            },
+        },
+        DeviceOrientation::PortraitUpsideDown => CGRect {
+            origin: CGPoint {
+                x: 0.0,
+                y: portrait_height - STATUS_BAR_HEIGHT,
+            },
+            size: CGSize {
+                width: portrait_width,
+                height: STATUS_BAR_HEIGHT,
+            },
+        },
+        DeviceOrientation::LandscapeLeft => CGRect {
+            origin: CGPoint {
+                x: portrait_width - STATUS_BAR_HEIGHT,
+                y: 0.0,
+            },
+            size: CGSize {
+                width: STATUS_BAR_HEIGHT,
+                height: portrait_height,
+            },
+        },
+        DeviceOrientation::LandscapeRight => CGRect {
+            origin: CGPoint { x: 0.0, y: 0.0 },
+            size: CGSize {
+                width: STATUS_BAR_HEIGHT,
+                height: portrait_height,
+            },
+        },
+    }
+}
 
 type UIRemoteNotificationType = NSUInteger;
 type UIStatusBarAnimation = NSInteger;
@@ -127,6 +178,17 @@ pub const CLASSES: ClassExports = objc_classes! {
         DeviceOrientation::LandscapeRight => UIDeviceOrientationLandscapeRight
     }
 }
+
+- (CGRect)statusBarFrame {
+    let (width, height) = env.window().device_family().portrait_size();
+    status_bar_frame(
+        width as f32,
+        height as f32,
+        env.framework_state.uikit.ui_application.status_bar_hidden,
+        env.window().current_rotation(),
+    )
+}
+
 - (())setStatusBarOrientation:(UIInterfaceOrientation)orientation {
     env.on_parent_stack_in_coroutine(|window, _| {window.rotate_device(match orientation {
         UIDeviceOrientationPortrait => DeviceOrientation::Portrait,
@@ -515,3 +577,36 @@ pub const CONSTANTS: ConstantExports = &[
 ];
 
 pub const FUNCTIONS: FunctionExports = &[export_c_func!(UIApplicationMain(_, _, _, _))];
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn status_bar_frame_uses_portrait_screen_coordinates() {
+        assert_eq!(
+            status_bar_frame(320.0, 480.0, true, DeviceOrientation::Portrait),
+            CGRect::default()
+        );
+        assert_eq!(
+            status_bar_frame(320.0, 480.0, false, DeviceOrientation::Portrait),
+            CGRect {
+                origin: CGPoint { x: 0.0, y: 0.0 },
+                size: CGSize {
+                    width: 320.0,
+                    height: 20.0,
+                },
+            }
+        );
+        assert_eq!(
+            status_bar_frame(320.0, 480.0, false, DeviceOrientation::LandscapeLeft),
+            CGRect {
+                origin: CGPoint { x: 300.0, y: 0.0 },
+                size: CGSize {
+                    width: 20.0,
+                    height: 480.0,
+                },
+            }
+        );
+    }
+}
