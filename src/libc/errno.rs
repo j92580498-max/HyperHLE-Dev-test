@@ -21,6 +21,7 @@ pub const ENXIO: i32 = 6;
 pub const EBADF: i32 = 9;
 pub const ECHILD: i32 = 10;
 pub const EDEADLK: i32 = 11;
+pub const ENOMEM: i32 = 12;
 pub const EACCES: i32 = 13;
 pub const EFAULT: i32 = 14;
 pub const EBUSY: i32 = 16;
@@ -109,6 +110,7 @@ fn strerror(env: &mut Environment, err_num: i32) -> ConstPtr<u8> {
             EBADF => "Bad file descriptor",
             ECHILD => "No child processes",
             EDEADLK => "Resource deadlock avoided",
+            ENOMEM => "Cannot allocate memory",
             EACCES => "Permission denied",
             EFAULT => "Bad address",
             EBUSY => "Resource busy",
