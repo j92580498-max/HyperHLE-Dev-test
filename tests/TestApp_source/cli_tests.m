@@ -5893,6 +5893,17 @@ int test_NSKeyedArchiver_encodeDoubleForKey() {
   return 0;
 }
 
+int test_CFURLCreateStringByAddingPercentEscapes() {
+  CFStringRef escaped = CFURLCreateStringByAddingPercentEscapes(
+      NULL, CFSTR("hello world/path?x=1"), NULL, CFSTR("/?"),
+      kCFStringEncodingUTF8);
+  if (escaped == NULL)
+    return -1;
+  bool matches = CFEqual(escaped, CFSTR("hello%20world%2Fpath%3Fx=1"));
+  CFRelease(escaped);
+  return matches ? 0 : -2;
+}
+
 int test_NSKeyedArchiver_encodeIntForKey() {
   NSAutoreleasePool *pool = [NSAutoreleasePool new];
 
@@ -6606,6 +6617,7 @@ struct {
     FUNC_DEF(test_inet_ntop),
     FUNC_DEF(test_inet_pton),
     FUNC_DEF(test_CFURL),
+    FUNC_DEF(test_CFURLCreateStringByAddingPercentEscapes),
     FUNC_DEF(test_CFNumberCompare_simple),
     FUNC_DEF(test_CFNumberCompare_extended),
     FUNC_DEF(test_memset_pattern),
