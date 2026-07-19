@@ -17,6 +17,7 @@ pub mod crypto;
 pub mod ctype;
 pub mod cxxabi;
 pub mod dirent;
+pub mod dispatch;
 pub mod dlfcn;
 pub mod dns_sd;
 pub mod errno;
@@ -58,6 +59,7 @@ pub const DYLIB: crate::dyld::HostDylib = crate::dyld::HostDylib {
         cxxabi::FUNCTIONS,
         crypto::FUNCTIONS,
         dirent::FUNCTIONS,
+        dispatch::FUNCTIONS,
         dlfcn::FUNCTIONS,
         dns_sd::FUNCTIONS,
         errno::FUNCTIONS,
