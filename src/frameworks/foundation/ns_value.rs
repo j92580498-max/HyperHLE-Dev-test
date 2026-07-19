@@ -10,8 +10,9 @@ use super::{
     _nib_archive_decoder, ns_keyed_unarchiver, NSComparisonResult, NSOrderedSame, NSUInteger,
 };
 use crate::frameworks::core_foundation::cf_number::{
-    kCFNumberCharType, kCFNumberFloat32Type, kCFNumberFloatType, kCFNumberIntType,
-    kCFNumberSInt16Type, kCFNumberSInt32Type, kCFNumberSInt8Type, kCFNumberShortType, CFNumberType,
+    kCFNumberCharType, kCFNumberDoubleType, kCFNumberFloat32Type, kCFNumberFloat64Type,
+    kCFNumberFloatType, kCFNumberIntType, kCFNumberLongLongType, kCFNumberSInt16Type,
+    kCFNumberSInt32Type, kCFNumberSInt64Type, kCFNumberSInt8Type, kCFNumberShortType, CFNumberType,
 };
 use crate::frameworks::core_graphics::{CGPoint, CGRect, CGSize};
 use crate::frameworks::foundation::ns_keyed_archiver::get_value_to_encode_for_current_key;
@@ -598,6 +599,14 @@ pub fn is_conversion_lossless(env: &mut Environment, this: id, type_: CFNumberTy
         kCFNumberSInt8Type | kCFNumberCharType => {
             let val: i8 = num.as_char();
             msg_class![env; NSNumber numberWithChar:val]
+        }
+        kCFNumberSInt64Type | kCFNumberLongLongType => {
+            let val: i64 = num.as_long_long();
+            msg_class![env; NSNumber numberWithLongLong:val]
+        }
+        kCFNumberFloat64Type | kCFNumberDoubleType => {
+            let val: f64 = num.as_double();
+            msg_class![env; NSNumber numberWithDouble:val]
         }
         _ => unimplemented!("is_conversion_lossless for {}", type_),
     };

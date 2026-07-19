@@ -5852,6 +5852,32 @@ int test_NSInvocation_pointer() {
 @public
   double value;
 }
+
+int test_CFNumberGetValue_wide_types() {
+  int64_t inputLongLong = -9000000001LL;
+  CFNumberRef longLongNumber =
+      CFNumberCreate(NULL, kCFNumberLongLongType, &inputLongLong);
+  int64_t outputLongLong = 0;
+  if (!CFNumberGetValue(longLongNumber, kCFNumberLongLongType,
+                        &outputLongLong) ||
+      outputLongLong != inputLongLong) {
+    CFRelease(longLongNumber);
+    return -1;
+  }
+  CFRelease(longLongNumber);
+
+  double inputDouble = 123.25;
+  CFNumberRef doubleNumber =
+      CFNumberCreate(NULL, kCFNumberDoubleType, &inputDouble);
+  double outputDouble = 0;
+  if (!CFNumberGetValue(doubleNumber, kCFNumberDoubleType, &outputDouble) ||
+      outputDouble != inputDouble) {
+    CFRelease(doubleNumber);
+    return -2;
+  }
+  CFRelease(doubleNumber);
+  return 0;
+}
 @end
 
 @implementation DoubleCoderObject
@@ -6647,6 +6673,7 @@ struct {
     FUNC_DEF(test_CFURL),
     FUNC_DEF(test_CFURLCreateStringByAddingPercentEscapes),
     FUNC_DEF(test_CFNumberCompare_simple),
+    FUNC_DEF(test_CFNumberGetValue_wide_types),
     FUNC_DEF(test_CFNumberCompare_extended),
     FUNC_DEF(test_memset_pattern),
     FUNC_DEF(test_CGGeometry),
