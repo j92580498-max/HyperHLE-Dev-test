@@ -9,9 +9,11 @@ use super::ui_graphics::UIGraphicsGetCurrentContext;
 use crate::font::{Font, TextAlignment, WrapMode};
 use crate::frameworks::core_graphics::cg_bitmap_context::CGBitmapContextDrawer;
 use crate::frameworks::core_graphics::{CGFloat, CGPoint, CGRect, CGSize};
-use crate::frameworks::foundation::ns_string::to_rust_string;
+use crate::frameworks::foundation::ns_string::{get_static_str, to_rust_string};
 use crate::frameworks::foundation::NSInteger;
-use crate::objc::{autorelease, id, msg, objc_classes, ClassExports, HostObject};
+use crate::objc::{
+    autorelease, id, msg, msg_class, objc_classes, release, retain, ClassExports, HostObject,
+};
 use crate::Environment;
 use std::collections::HashMap;
 use std::ops::Range;
@@ -145,6 +147,20 @@ pub const CLASSES: ClassExports = objc_classes! {
     };
     let new = env.objc.alloc_object(this, Box::new(host_object), &mut env.mem);
     autorelease(env, new)
+}
+
+// NSCoding implementation used by Interface Builder archives.
+- (id)initWithCoder:(id)coder {
+    let name_key = get_static_str(env, "UIFontName");
+    let size_key = get_static_str(env, "UIFontPointSize");
+    let font_name: id = msg![env; coder decodeObjectForKey:name_key];
+    let font_size: CGFloat = msg![env; coder decodeFloatForKey:size_key];
+
+    // UIFont is a class cluster here: replace the placeholder allocated by
+    // NSObject with the concrete font produced by the normal factory path.
+    release(env, this);
+    let font: id = msg_class![env; UIFont fontWithName:font_name size:font_size];
+    retain(env, font)
 }
 
 - (CGFloat)ascender {

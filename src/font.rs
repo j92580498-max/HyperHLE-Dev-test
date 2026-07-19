@@ -18,7 +18,16 @@ use crate::frameworks::core_graphics::{CGPoint, CGRect, CGSize};
 use crate::paths;
 use owned_ttf_parser::AsFaceRef;
 use rusttype::{vector, GlyphId, Point, Scale};
+use std::borrow::Cow;
 use std::io::Read;
+
+fn expand_tabs(text: &str) -> Cow<'_, str> {
+    if text.contains('\t') {
+        Cow::Owned(text.replace('\t', "    "))
+    } else {
+        Cow::Borrowed(text)
+    }
+}
 
 pub struct Font {
     font: rusttype::Font<'static>,
@@ -226,12 +235,13 @@ impl Font {
 
     /// Calculate the width of a line. This does not handle newlines!
     fn calculate_line_width(&self, font_size: f32, line: &str) -> f32 {
+        let line = expand_tabs(line);
         let mut line_x_min: f32 = 0.0;
         let mut line_x_max: f32 = 0.0;
 
         for glyph in self
             .font
-            .layout(line, self.scale(font_size), Default::default())
+            .layout(&line, self.scale(font_size), Default::default())
         {
             let position = glyph.position();
             let h_metrics = glyph.unpositioned().h_metrics();
@@ -423,13 +433,14 @@ impl Font {
         let mut glyph_bitmap: Vec<f32> = Vec::new();
 
         for (line_width, line_text) in lines {
+            let line_text = expand_tabs(line_text);
             let line_x_offset = match alignment {
                 TextAlignment::Left => 0.0,
                 TextAlignment::Center => -line_width / 2.0,
                 TextAlignment::Right => -line_width,
             };
             for glyph in self.font.layout(
-                line_text,
+                &line_text,
                 self.scale(font_size),
                 Point {
                     x: origin.0 + line_x_offset,
@@ -628,5 +639,16 @@ impl Font {
 
             draw_glyph(raster_glyph);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::expand_tabs;
+
+    #[test]
+    fn tabs_expand_to_renderable_spacing() {
+        assert_eq!(expand_tabs("\u{2022}\tEnsure"), "\u{2022}    Ensure");
+        assert_eq!(expand_tabs("No tabs"), "No tabs");
     }
 }

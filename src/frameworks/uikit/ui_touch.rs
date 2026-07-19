@@ -27,6 +27,9 @@ pub const UITouchPhaseEnded: UITouchPhase = 3;
 #[derive(Default)]
 pub struct State {
     current_touches: HashMap<FingerId, id>,
+    /// `UIEvent*`, retained for the lifetime of the active touch sequence.
+    /// UIKit delivers the same event object to touchesBegan/Moved/Ended.
+    active_event: id,
 }
 
 pub(super) struct UITouchHostObject {
@@ -123,6 +126,34 @@ pub fn handle_event(env: &mut Environment, event: Event) {
     }
 }
 
+/// Return the single UIKit event associated with the current touch sequence.
+/// The `all_touches` set is a fresh snapshot and its ownership is transferred
+/// to the event, which replaces and releases its previous snapshot.
+fn event_for_current_touches(env: &mut Environment, all_touches: id) -> id {
+    let active_event = env.framework_state.uikit.ui_touch.active_event;
+    if active_event == nil {
+        let event = ui_event::new_event(env, all_touches);
+        env.framework_state.uikit.ui_touch.active_event = event;
+        event
+    } else {
+        ui_event::update_event(env, active_event, all_touches);
+        active_event
+    }
+}
+
+fn release_event_if_no_touches_remain(env: &mut Environment) {
+    if env
+        .framework_state
+        .uikit
+        .ui_touch
+        .current_touches
+        .is_empty()
+    {
+        let event = std::mem::replace(&mut env.framework_state.uikit.ui_touch.active_event, nil);
+        release(env, event);
+    }
+}
+
 fn handle_touches_down(env: &mut Environment, map: HashMap<FingerId, Coords>) {
     // UIKit creates and drains autorelease pools when handling events.
     let pool: id = msg_class![env; NSAutoreleasePool new];
@@ -195,8 +226,7 @@ fn handle_touches_down(env: &mut Environment, map: HashMap<FingerId, Coords>) {
         let _: () = msg![env; all_touches addObject:touch];
     }
 
-    let event = ui_event::new_event(env, all_touches);
-    autorelease(env, event);
+    let event = event_for_current_touches(env, all_touches);
 
     // views with existing touches (see isMultipleTouchEnabled check below)
     let views_with_existing_touches: HashSet<id> = env
@@ -385,8 +415,7 @@ fn handle_touches_move(env: &mut Environment, map: HashMap<FingerId, Coords>) {
         let _: () = msg![env; all_touches addObject:touch];
     }
 
-    let event = ui_event::new_event(env, all_touches);
-    autorelease(env, event);
+    let event = event_for_current_touches(env, all_touches);
 
     for (view, touches) in view_touches {
         log_dbg!(
@@ -476,8 +505,7 @@ fn handle_touches_up(env: &mut Environment, map: HashMap<FingerId, Coords>) {
         release(env, touch); // only owner now should be the NSSet
     }
 
-    let event = ui_event::new_event(env, all_touches);
-    autorelease(env, event);
+    let event = event_for_current_touches(env, all_touches);
 
     for (view, touches) in view_touches {
         log_dbg!(
@@ -488,6 +516,8 @@ fn handle_touches_up(env: &mut Environment, map: HashMap<FingerId, Coords>) {
         );
         let _: () = msg![env; view touchesEnded:touches withEvent:event];
     }
+
+    release_event_if_no_touches_remain(env);
 
     release(env, pool);
 }

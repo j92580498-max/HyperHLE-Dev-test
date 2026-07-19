@@ -33,6 +33,9 @@ use crate::Environment;
 const kNumberBuffers: usize = 3;
 
 struct AVAudioPlayerHostObject {
+    /// AVAudioPlayer's delegate is assign/non-retaining on this iPhone OS
+    /// generation.
+    delegate: id,
     audio_file_url: id,
     output_callback: AudioQueueOutputCallback,
     audio_file_id: Option<AudioFileID>,
@@ -64,6 +67,7 @@ pub const CLASSES: ClassExports = objc_classes! {
         .create_guest_function(&mut env.mem, symb, hf);
 
     let host_object = Box::new(AVAudioPlayerHostObject {
+        delegate: nil,
         audio_file_url: nil,
         output_callback: callback,
         audio_file_id: None,
@@ -141,8 +145,11 @@ pub const CLASSES: ClassExports = objc_classes! {
     }
 }
 
+- (id)delegate {
+    env.objc.borrow::<AVAudioPlayerHostObject>(this).delegate
+}
 - (())setDelegate:(id)delegate {
-    todo_objc_setter!(this, delegate);
+    env.objc.borrow_mut::<AVAudioPlayerHostObject>(this).delegate = delegate;
 }
 - (())setMeteringEnabled:(bool)enabled {
     todo_objc_setter!(this, enabled);
@@ -277,8 +284,16 @@ pub const CLASSES: ClassExports = objc_classes! {
     AudioQueueDispose(env, audio_queue.unwrap(), true);
     env.mem.free(audio_queue_buffers.unwrap().cast());
 
-    let &AVAudioPlayerHostObject { audio_file_url, output_callback, num_of_loops, audio_file_id, .. } = env.objc.borrow(this);
+    let &AVAudioPlayerHostObject {
+        delegate,
+        audio_file_url,
+        output_callback,
+        num_of_loops,
+        audio_file_id,
+        ..
+    } = env.objc.borrow(this);
     *env.objc.borrow_mut::<AVAudioPlayerHostObject>(this) = AVAudioPlayerHostObject {
+        delegate,
         audio_file_url,
         output_callback,
         num_of_loops,

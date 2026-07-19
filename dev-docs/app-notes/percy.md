@@ -18,13 +18,17 @@ the same rule: keep them local, ignored by Git, and do not redistribute them.
 
 ## Current checkpoint
 
-The last clean committed Percy milestone reaches live gameplay on Windows. The navigation-controller NIB
-stack is restored, modal presentation and dismissal work through the level
-intro, C++ object constructors/destructors run in the required order, and the
-game creates drawable storage. An internal guest-frame capture shows the
-portrait pipe board, textured background, grid, and OPEN control. A controlled
-tile tap reaches the game, but visible pipe rotation still needs manual
-confirmation.
+The current Percy work reaches live gameplay on Windows. The
+navigation-controller NIB stack is restored, modal presentation and dismissal
+work through the level intro, C++ object constructors/destructors run in the
+required order, and the game creates drawable storage. Same-process captures
+before and after a controlled tap at `(148,172)` show the selected tile changing
+from a vertical segment to a horizontal segment while the randomized board
+stays fixed.
+
+The Instructions screen now decodes and renders its archived text, font, color,
+and bullet spacing. Its **Main Menu** button pops the view controller without a
+crash and returns to a framebuffer identical to the known-good menu.
 
 The CAF/AIFF audio paths now decode Percy's PCM effects, including the CAF
 asset whose data chunk has a nonzero edit-count field. Sound was confirmed in
@@ -40,9 +44,8 @@ broader validation.
   including all menu labels. The earlier black result is therefore intermittent
   or launch/build-specific, not a missing menu or failed image decode. Confirm
   the route again from a clean release build before calling a checkpoint.
-- The current string, font, text-view, navigation-pop, and touch-event work is
-  still dirty. Correct-IPA manual checks of Instructions text/back navigation
-  and visible pipe rotation remain required.
+- The compatibility changes still need an exact clean-commit release build and
+  final Windows replay before the database report can move to that commit.
 - Full-session stability, saving, and every game mode are not yet validated;
   the custom-level crash belongs to the separate Ricky investigation, not
   Percy.
@@ -58,11 +61,14 @@ broader validation.
 From the repository root, run the release executable with no path to use the
 picker, or pass the exact verified IPA path directly. For the current route:
 
-1. Pick Percy and tap **Play** on the main menu.
-2. Select **Level 1**.
-3. Tap **Play** on the level-intro screen.
+1. Pick Percy and tap **Play** on the main menu (near `(35,300)`).
+2. Select **Level 1** (client coordinate near `(58,135)`).
+3. Tap **Play** on the level-intro screen (near `(420,120)`).
 4. Wait for the board, then tap a pipe tile (the deterministic harness uses
    portrait client coordinates near `(148,172)`).
+
+The main-menu **Instructions** button is near `(150,299)`. On that screen,
+**Main Menu** is near `(240,289)`.
 
 Use a title-bar click first when automating Windows input so the first client
 click is not consumed solely by focus activation. Record the exact Archive

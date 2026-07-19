@@ -429,13 +429,23 @@ pub fn decode_current_data(env: &mut Environment, unarchiver: id, is_mutable: bo
 /// Shortcut for use by `[NSString initWithCoder:]`.
 /// TODO: mutability
 pub fn decode_current_string(env: &mut Environment, unarchiver: id) -> id {
-    let key = get_static_str(env, "NS.bytes");
-    // TODO: avoid copying (twice!)
-    let bytes = get_value_to_decode_for_key(env, unarchiver, key)
-        .unwrap()
-        .as_data()
-        .unwrap()
-        .to_vec();
+    let bytes_key = get_static_str(env, "NS.bytes");
+    let Some(bytes) = get_value_to_decode_for_key(env, unarchiver, bytes_key)
+        .and_then(|value| value.as_data())
+        .map(|data| data.to_vec())
+    else {
+        // Interface Builder can archive an NSString/NSMutableString under
+        // `NS.string` rather than as UTF-8 `NS.bytes`. It may be either an
+        // inline plist string or a UID referencing another archived object.
+        let string_key = get_static_str(env, "NS.string");
+        if let Some(string) = get_value_to_decode_for_key(env, unarchiver, string_key)
+            .and_then(|value| value.as_string())
+            .map(str::to_owned)
+        {
+            return from_rust_string(env, string);
+        }
+        return msg![env; unarchiver decodeObjectForKey:string_key];
+    };
 
     let len: GuestUSize = bytes.len().try_into().unwrap();
     let guest_bytes: ConstPtr<u8> = env.mem.alloc(len).cast().cast_const();

@@ -428,6 +428,24 @@ pub const CLASSES: ClassExports = objc_classes! {
     NSUTF8StringEncoding
 }
 
+// NSCoding is a property of the NSString class cluster, not only of the
+// immutable concrete class. Archived UITextView content can be an
+// NSMutableString, which must decode through this inherited implementation.
+- (id)initWithCoder:(id)coder {
+    let class: Class = msg![env; coder class];
+    let keyed_unarch_class: Class = msg_class![env; NSKeyedUnarchiver class];
+    let nib_archive_class: Class = msg_class![env; _tapHLE_NIBArchiveDecoder class];
+    let new_str = if env.objc.class_is_subclass_of(class, keyed_unarch_class) {
+        ns_keyed_unarchiver::decode_current_string(env, coder)
+    } else if env.objc.class_is_subclass_of(class, nib_archive_class) {
+        _nib_archive_decoder::decode_current_string(env, coder)
+    } else {
+        unimplemented!();
+    };
+    release(env, this);
+    new_str
+}
+
 - (id)initWithUTF8String:(ConstPtr<u8>)utf8_string {
     msg![env; this initWithCString:utf8_string encoding:NSUTF8StringEncoding]
 }
@@ -1327,21 +1345,6 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 // TODO: more init methods
 
-// NSCoding implementation
-- (id)initWithCoder:(id)coder {
-    let class: Class = msg![env; coder class];
-    let keyed_unarch_class: Class = msg_class![env; NSKeyedUnarchiver class];
-    let nib_archive_class: Class = msg_class![env; _tapHLE_NIBArchiveDecoder class];
-    let new_str = if env.objc.class_is_subclass_of(class, keyed_unarch_class) {
-        ns_keyed_unarchiver::decode_current_string(env, coder)
-    } else if env.objc.class_is_subclass_of(class, nib_archive_class) {
-        _nib_archive_decoder::decode_current_string(env, coder)
-    } else {
-        unimplemented!();
-    };
-    release(env, this);
-    new_str
-}
 - (())encodeWithCoder:(id)coder {
     let string = to_rust_string(env, this);
     assert!(string.as_bytes().iter().all(|byte| byte.is_ascii())); // TODO
