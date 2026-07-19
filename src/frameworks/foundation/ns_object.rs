@@ -308,6 +308,34 @@ forUndefinedKey:(id)key { // NSString*
     add_perform_request(env, run_loop, this, sel, arg, Some(delay), false);
 }
 
+- (())performSelector:(SEL)sel
+              onThread:(id)thread // NSThread*
+             withObject:(id)arg
+          waitUntilDone:(bool)wait {
+    assert!(!sel.is_null());
+    let current_thread: id = msg_class![env; NSThread currentThread];
+    if thread != current_thread {
+        // tapHLE cannot yet map an arbitrary NSThread object back to its run
+        // loop. Running the selector immediately preserves forward progress
+        // and matches the existing inline dispatch compatibility
+        // model, though it does not provide true cross-thread scheduling.
+        log_once!("TODO: performSelector:onThread: is executing immediately instead of switching NSThread");
+    }
+    log_dbg!(
+        "performSelector:{} onThread:{:?} withObject:{:?} waitUntilDone:{}",
+        sel.as_str(&env.mem),
+        thread,
+        arg,
+        wait,
+    );
+    if sel.as_str(&env.mem).ends_with(':') {
+        () = msg_send(env, (this, sel, arg));
+    } else {
+        assert!(arg.is_null());
+        () = msg_send(env, (this, sel));
+    }
+}
+
 - (())performSelectorOnMainThread:(SEL)sel withObject:(id)arg waitUntilDone:(bool)wait {
     log_dbg!("performSelectorOnMainThread:{} withObject:{:?} waitUntilDone:{}", sel.as_str(&env.mem), arg, wait);
     if wait && env.current_thread == 0 {

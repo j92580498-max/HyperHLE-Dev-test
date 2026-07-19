@@ -22,7 +22,9 @@ use crate::frameworks::uikit::ui_device::{
     UIDeviceOrientationLandscapeLeft, UIDeviceOrientationLandscapeRight,
     UIDeviceOrientationPortraitUpsideDown,
 };
-use crate::objc::{id, msg, msg_class, msg_super, nil, objc_classes, ClassExports};
+use crate::objc::{
+    id, msg, msg_class, msg_super, nil, objc_classes, release, retain, ClassExports,
+};
 
 #[derive(Default)]
 pub struct State {
@@ -33,6 +35,9 @@ pub struct State {
     /// The most recent window which received `makeKeyAndVisible` message.
     /// Non-retaining!
     pub key_window: Option<id>,
+    /// Root view controller owned by each window. The controller references
+    /// are retained; window keys are non-retaining and removed on dealloc.
+    root_view_controllers: Vec<(id, id)>,
 }
 
 pub const CLASSES: ClassExports = objc_classes! {
@@ -94,6 +99,12 @@ pub const CLASSES: ClassExports = objc_classes! {
         this,
         list,
     );
+
+    let roots = &mut env.framework_state.uikit.ui_view.ui_window.root_view_controllers;
+    if let Some(idx) = roots.iter().position(|&(window, _)| window == this) {
+        let (_, root_view_controller) = roots.remove(idx);
+        release(env, root_view_controller);
+    }
     msg_super![env; this dealloc]
 }
 
@@ -128,6 +139,48 @@ pub const CLASSES: ClassExports = objc_classes! {
 
     // TODO: post UIWindowDidBecomeVisibleNotification
     () = msg![env; this setHidden:false];
+}
+
+- (id)rootViewController {
+    env.framework_state
+        .uikit
+        .ui_view
+        .ui_window
+        .root_view_controllers
+        .iter()
+        .find_map(|&(window, controller)| (window == this).then_some(controller))
+        .unwrap_or(nil)
+}
+
+- (())setRootViewController:(id)new_controller {
+    let old_controller: id = msg![env; this rootViewController];
+    if old_controller == new_controller {
+        return;
+    }
+
+    retain(env, new_controller);
+
+    if old_controller != nil {
+        let old_view: id = msg![env; old_controller view];
+        let old_superview: id = msg![env; old_view superview];
+        if old_superview == this {
+            () = msg![env; old_view removeFromSuperview];
+        }
+    }
+
+    let roots = &mut env.framework_state.uikit.ui_view.ui_window.root_view_controllers;
+    if let Some((_, controller)) = roots.iter_mut().find(|(window, _)| *window == this) {
+        *controller = new_controller;
+    } else {
+        roots.push((this, new_controller));
+    }
+
+    if new_controller != nil {
+        let new_view: id = msg![env; new_controller view];
+        () = msg![env; this addSubview:new_view];
+    }
+
+    release(env, old_controller);
 }
 
 // We only model the single main screen
