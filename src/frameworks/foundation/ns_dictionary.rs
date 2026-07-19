@@ -355,6 +355,25 @@ fn init_with_objects_for_keys_common(env: &mut Environment, this: id, objects: i
     this
 }
 
+fn init_with_object_key_buffers(
+    env: &mut Environment,
+    this: id,
+    objects: ConstPtr<id>,
+    keys: ConstPtr<id>,
+    count: NSUInteger,
+) -> id {
+    let mut host_object = <DictionaryHostObject as Default>::default();
+    for index in 0..count {
+        let object = env.mem.read(objects + index);
+        let key = env.mem.read(keys + index);
+        assert_ne!(object, nil); // TODO: raise NSInvalidArgumentException
+        assert_ne!(key, nil); // TODO: raise NSInvalidArgumentException
+        host_object.insert(env, key, object, /* copy_key: */ true);
+    }
+    *env.objc.borrow_mut(this) = host_object;
+    this
+}
+
 /// Helper function to share `allKeys` implementations
 fn all_keys_common(env: &mut Environment, this: id) -> id {
     let host_obj: DictionaryHostObject = std::mem::take(env.objc.borrow_mut(this));
@@ -427,6 +446,14 @@ pub const CLASSES: ClassExports = objc_classes! {
                     forKeys:(id)keys { //NSArray *
     let new_dict: id = msg![env; this alloc];
     let new_dict: id = msg![env; new_dict initWithObjects:objects forKeys:keys];
+    autorelease(env, new_dict)
+}
+
++ (id)dictionaryWithObjects:(ConstPtr<id>)objects
+                    forKeys:(ConstPtr<id>)keys
+                      count:(NSUInteger)count {
+    let new_dict: id = msg![env; this alloc];
+    let new_dict: id = msg![env; new_dict initWithObjects:objects forKeys:keys count:count];
     autorelease(env, new_dict)
 }
 
@@ -667,6 +694,12 @@ pub const CLASSES: ClassExports = objc_classes! {
     init_with_objects_for_keys_common(env, this, objects, keys)
 }
 
+- (id)initWithObjects:(ConstPtr<id>)objects
+              forKeys:(ConstPtr<id>)keys
+                count:(NSUInteger)count {
+    init_with_object_key_buffers(env, this, objects, keys, count)
+}
+
 // TODO: enumeration, more init methods, etc
 
 - (NSUInteger)count {
@@ -774,6 +807,12 @@ pub const CLASSES: ClassExports = objc_classes! {
 - (id)initWithObjects:(id)objects //NSArray *
               forKeys:(id)keys { //NSArray *
     init_with_objects_for_keys_common(env, this, objects, keys)
+}
+
+- (id)initWithObjects:(ConstPtr<id>)objects
+              forKeys:(ConstPtr<id>)keys
+                count:(NSUInteger)count {
+    init_with_object_key_buffers(env, this, objects, keys, count)
 }
 
 // TODO: enumeration, more init methods, etc

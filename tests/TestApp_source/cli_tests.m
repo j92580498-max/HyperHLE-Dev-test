@@ -6493,6 +6493,20 @@ int test_NSDictionary_keysSortedByValueUsingSelector() {
   return [sorted isEqualToArray:expected] ? 0 : -1;
 }
 
+int test_NSDictionary_dictionaryWithObjects_forKeys_count() {
+  id objects[] = {@"first value", @"second value"};
+  id keys[] = {@"first key", @"second key"};
+  NSDictionary *dictionary =
+      [NSDictionary dictionaryWithObjects:objects forKeys:keys count:2];
+  if ([dictionary count] != 2)
+    return -1;
+  if (![[dictionary objectForKey:@"first key"] isEqual:@"first value"])
+    return -2;
+  if (![[dictionary objectForKey:@"second key"] isEqual:@"second value"])
+    return -3;
+  return 0;
+}
+
 int test_if_nametoindex() {
   if (if_nametoindex("lo0") != 1)
     return -1;
@@ -6625,6 +6639,7 @@ struct {
     FUNC_DEF(test_malloc_zone_basic),
     FUNC_DEF(test_malloc_zone_struct_dispatch),
     FUNC_DEF(test_NSDictionary_keysSortedByValueUsingSelector),
+    FUNC_DEF(test_NSDictionary_dictionaryWithObjects_forKeys_count),
     FUNC_DEF(test_if_nametoindex),
 };
 // clang-format on
