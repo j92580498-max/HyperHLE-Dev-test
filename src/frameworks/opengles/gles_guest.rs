@@ -1344,6 +1344,127 @@ fn glGenerateMipmapOES(env: &mut Environment, target: GLenum) {
     with_ctx_and_mem(env, |gles, _mem| unsafe { gles.GenerateMipmapOES(target) })
 }
 
+// These iOS extension entry points are imported by several ES2-era games.
+// Native VAOs are used when the host driver exposes OES_vertex_array_object;
+// the GLES backend supplies a compatibility fallback otherwise.
+fn glGenVertexArraysOES(env: &mut Environment, n: GLsizei, arrays: MutPtr<GLuint>) {
+    with_ctx_and_mem(env, |gles, mem| {
+        let n_usize: GuestUSize = n.try_into().unwrap();
+        let arrays = mem.ptr_at_mut(arrays, n_usize);
+        unsafe { gles.GenVertexArraysOES(n, arrays) }
+    })
+}
+fn glBindVertexArrayOES(env: &mut Environment, array: GLuint) {
+    with_ctx_and_mem(env, |gles, _mem| unsafe { gles.BindVertexArrayOES(array) })
+}
+fn glDeleteVertexArraysOES(env: &mut Environment, n: GLsizei, arrays: ConstPtr<GLuint>) {
+    with_ctx_and_mem(env, |gles, mem| {
+        let n_usize: GuestUSize = n.try_into().unwrap();
+        let arrays = mem.ptr_at(arrays, n_usize);
+        unsafe { gles.DeleteVertexArraysOES(n, arrays) }
+    })
+}
+fn glIsVertexArrayOES(env: &mut Environment, array: GLuint) -> GLboolean {
+    with_ctx_and_mem(env, |gles, _mem| unsafe { gles.IsVertexArrayOES(array) })
+}
+
+fn glRenderbufferStorageMultisampleAPPLE(
+    env: &mut Environment,
+    target: GLenum,
+    _samples: GLsizei,
+    internalformat: GLenum,
+    width: GLsizei,
+    height: GLsizei,
+) {
+    // ES2 hosts do not consistently expose Apple's multisample extension.
+    // Allocate a single-sample buffer so apps can continue rendering.
+    glRenderbufferStorageOES(env, target, internalformat, width, height);
+}
+fn glResolveMultisampleFramebufferAPPLE(_env: &mut Environment) {}
+fn glDiscardFramebufferEXT(
+    _env: &mut Environment,
+    _target: GLenum,
+    _num_attachments: GLsizei,
+    _attachments: ConstPtr<GLenum>,
+) {
+}
+
+fn glGenFramebuffers(env: &mut Environment, n: GLsizei, framebuffers: MutPtr<GLuint>) {
+    glGenFramebuffersOES(env, n, framebuffers)
+}
+fn glGenRenderbuffers(env: &mut Environment, n: GLsizei, renderbuffers: MutPtr<GLuint>) {
+    glGenRenderbuffersOES(env, n, renderbuffers)
+}
+fn glIsFramebuffer(env: &mut Environment, framebuffer: GLuint) -> GLboolean {
+    glIsFramebufferOES(env, framebuffer)
+}
+fn glIsRenderbuffer(env: &mut Environment, renderbuffer: GLuint) -> GLboolean {
+    glIsRenderbufferOES(env, renderbuffer)
+}
+fn glBindFramebuffer(env: &mut Environment, target: GLenum, framebuffer: GLuint) {
+    glBindFramebufferOES(env, target, framebuffer)
+}
+fn glBindRenderbuffer(env: &mut Environment, target: GLenum, renderbuffer: GLuint) {
+    glBindRenderbufferOES(env, target, renderbuffer)
+}
+fn glRenderbufferStorage(
+    env: &mut Environment,
+    target: GLenum,
+    internalformat: GLenum,
+    width: GLsizei,
+    height: GLsizei,
+) {
+    glRenderbufferStorageOES(env, target, internalformat, width, height)
+}
+fn glFramebufferRenderbuffer(
+    env: &mut Environment,
+    target: GLenum,
+    attachment: GLenum,
+    renderbuffertarget: GLenum,
+    renderbuffer: GLuint,
+) {
+    glFramebufferRenderbufferOES(env, target, attachment, renderbuffertarget, renderbuffer)
+}
+fn glFramebufferTexture2D(
+    env: &mut Environment,
+    target: GLenum,
+    attachment: GLenum,
+    textarget: GLenum,
+    texture: GLuint,
+    level: i32,
+) {
+    glFramebufferTexture2DOES(env, target, attachment, textarget, texture, level)
+}
+fn glGetFramebufferAttachmentParameteriv(
+    env: &mut Environment,
+    target: GLenum,
+    attachment: GLenum,
+    pname: GLenum,
+    params: MutPtr<GLint>,
+) {
+    glGetFramebufferAttachmentParameterivOES(env, target, attachment, pname, params)
+}
+fn glGetRenderbufferParameteriv(
+    env: &mut Environment,
+    target: GLenum,
+    pname: GLenum,
+    params: MutPtr<GLint>,
+) {
+    glGetRenderbufferParameterivOES(env, target, pname, params)
+}
+fn glCheckFramebufferStatus(env: &mut Environment, target: GLenum) -> GLenum {
+    glCheckFramebufferStatusOES(env, target)
+}
+fn glDeleteFramebuffers(env: &mut Environment, n: GLsizei, framebuffers: ConstPtr<GLuint>) {
+    glDeleteFramebuffersOES(env, n, framebuffers)
+}
+fn glDeleteRenderbuffers(env: &mut Environment, n: GLsizei, renderbuffers: ConstPtr<GLuint>) {
+    glDeleteRenderbuffersOES(env, n, renderbuffers)
+}
+fn glGenerateMipmap(env: &mut Environment, target: GLenum) {
+    glGenerateMipmapOES(env, target)
+}
+
 fn glGetBufferParameteriv(
     env: &mut Environment,
     target: GLenum,
@@ -1438,9 +1559,496 @@ fn glUnmapBufferOES(env: &mut Environment, target: GLenum) -> GLboolean {
     with_ctx_and_mem(env, |gles, _mem| unsafe { gles.UnmapBufferOES(target) })
 }
 
+// OpenGL ES 2.0 entry points.
+//
+// These wrap the [crate::gles::GLES] trait's ES 2.0 methods, which are
+// implemented by the active GLES backend. EAGL creates an ES 2.0 context
+// before these are called, so the trait methods are real implementations.
+//
+// Strings (shader sources, attribute/uniform names) need to be copied out of
+// the guest's address space before being passed to host GL.
+// =====================================================================
+
+fn read_guest_cstring(mem: &Mem, ptr: ConstPtr<GLubyte>) -> std::ffi::CString {
+    if ptr.is_null() {
+        return std::ffi::CString::default();
+    }
+    let bytes = mem.cstr_at(ptr);
+    std::ffi::CString::new(bytes).unwrap_or_default()
+}
+
+fn glCreateProgram(env: &mut Environment) -> GLuint {
+    with_ctx_and_mem(env, |gles, _mem| unsafe { gles.CreateProgram() })
+}
+fn glCreateShader(env: &mut Environment, type_: GLenum) -> GLuint {
+    with_ctx_and_mem(env, |gles, _mem| unsafe { gles.CreateShader(type_) })
+}
+fn glBindAttribLocation(
+    env: &mut Environment,
+    program: GLuint,
+    index: GLuint,
+    name: ConstPtr<GLubyte>,
+) {
+    with_ctx_and_mem(env, |gles, mem| unsafe {
+        let cstr = read_guest_cstring(mem, name);
+        gles.BindAttribLocation(program, index, cstr.as_ptr());
+    });
+}
+fn glGetAttribLocation(env: &mut Environment, program: GLuint, name: ConstPtr<GLubyte>) -> GLint {
+    with_ctx_and_mem_no_skip(env, |gles, mem| unsafe {
+        let cstr = read_guest_cstring(mem, name);
+        gles.GetAttribLocation(program, cstr.as_ptr())
+    })
+}
+fn glGetUniformLocation(env: &mut Environment, program: GLuint, name: ConstPtr<GLubyte>) -> GLint {
+    with_ctx_and_mem_no_skip(env, |gles, mem| unsafe {
+        let cstr = read_guest_cstring(mem, name);
+        gles.GetUniformLocation(program, cstr.as_ptr())
+    })
+}
+fn glUniformMatrix2fv(
+    env: &mut Environment,
+    location: GLint,
+    count: GLsizei,
+    transpose: GLboolean,
+    value: ConstPtr<GLfloat>,
+) {
+    with_ctx_and_mem(env, |gles, mem| unsafe {
+        let n = (count as usize) * 4;
+        let ptr = mem.ptr_at(value, n.try_into().unwrap_or(0));
+        gles.UniformMatrix2fv(location, count, transpose, ptr);
+    });
+}
+fn glUniformMatrix3fv(
+    env: &mut Environment,
+    location: GLint,
+    count: GLsizei,
+    transpose: GLboolean,
+    value: ConstPtr<GLfloat>,
+) {
+    with_ctx_and_mem(env, |gles, mem| unsafe {
+        let n = (count as usize) * 9;
+        let ptr = mem.ptr_at(value, n.try_into().unwrap_or(0));
+        gles.UniformMatrix3fv(location, count, transpose, ptr);
+    });
+}
+fn glUniformMatrix4fv(
+    env: &mut Environment,
+    location: GLint,
+    count: GLsizei,
+    transpose: GLboolean,
+    value: ConstPtr<GLfloat>,
+) {
+    with_ctx_and_mem(env, |gles, mem| unsafe {
+        let n = (count as usize) * 16;
+        let ptr = mem.ptr_at(value, n.try_into().unwrap_or(0));
+        gles.UniformMatrix4fv(location, count, transpose, ptr);
+    });
+}
+fn glUseProgram(env: &mut Environment, program: GLuint) {
+    with_ctx_and_mem(env, |gles, _mem| unsafe { gles.UseProgram(program) });
+}
+fn glDeleteProgram(env: &mut Environment, program: GLuint) {
+    with_ctx_and_mem(env, |gles, _mem| unsafe { gles.DeleteProgram(program) });
+}
+fn glDeleteShader(env: &mut Environment, shader: GLuint) {
+    with_ctx_and_mem(env, |gles, _mem| unsafe { gles.DeleteShader(shader) });
+}
+fn glCompileShader(env: &mut Environment, shader: GLuint) {
+    with_ctx_and_mem(env, |gles, _mem| unsafe {
+        gles.CompileShader(shader);
+        let mut ok: GLint = 0;
+        gles.GetShaderiv(shader, 0x8B81 /* GL_COMPILE_STATUS */, &mut ok);
+        if ok == 0 {
+            let mut buf = [0u8; 1024];
+            let mut len: GLsizei = 0;
+            gles.GetShaderInfoLog(shader, 1024, &mut len, buf.as_mut_ptr() as *mut _);
+            let s = std::str::from_utf8(std::slice::from_raw_parts(
+                buf.as_ptr() as *const u8,
+                len as usize,
+            ))
+            .unwrap_or("?");
+            log!("Shader {} compile failed: {}", shader, s);
+        }
+    });
+}
+fn glAttachShader(env: &mut Environment, program: GLuint, shader: GLuint) {
+    with_ctx_and_mem(env, |gles, _mem| unsafe {
+        gles.AttachShader(program, shader)
+    });
+}
+fn glDetachShader(env: &mut Environment, program: GLuint, shader: GLuint) {
+    with_ctx_and_mem(env, |gles, _mem| unsafe {
+        gles.DetachShader(program, shader)
+    });
+}
+fn glLinkProgram(env: &mut Environment, program: GLuint) {
+    with_ctx_and_mem(env, |gles, _mem| unsafe {
+        gles.LinkProgram(program);
+        let mut ok: GLint = 0;
+        gles.GetProgramiv(program, 0x8B82 /* GL_LINK_STATUS */, &mut ok);
+        if ok == 0 {
+            let mut buf = [0u8; 1024];
+            let mut len: GLsizei = 0;
+            gles.GetProgramInfoLog(program, 1024, &mut len, buf.as_mut_ptr() as *mut _);
+            let s = std::str::from_utf8(std::slice::from_raw_parts(
+                buf.as_ptr() as *const u8,
+                len as usize,
+            ))
+            .unwrap_or("?");
+            log!("Program {} link failed: {}", program, s);
+        }
+    });
+}
+fn glValidateProgram(env: &mut Environment, program: GLuint) {
+    with_ctx_and_mem(env, |gles, _mem| unsafe { gles.ValidateProgram(program) });
+}
+fn glIsShader(env: &mut Environment, shader: GLuint) -> GLboolean {
+    with_ctx_and_mem(env, |gles, _mem| unsafe { gles.IsShader(shader) })
+}
+fn glIsProgram(env: &mut Environment, program: GLuint) -> GLboolean {
+    with_ctx_and_mem(env, |gles, _mem| unsafe { gles.IsProgram(program) })
+}
+fn glGetShaderiv(env: &mut Environment, shader: GLuint, pname: GLenum, params: MutPtr<GLint>) {
+    with_ctx_and_mem(env, |gles, mem| unsafe {
+        let mut val: GLint = 0;
+        gles.GetShaderiv(shader, pname, &mut val);
+        if !params.is_null() {
+            mem.write(params, val);
+        }
+    });
+}
+fn glGetShaderInfoLog(
+    env: &mut Environment,
+    shader: GLuint,
+    bufSize: GLsizei,
+    length: MutPtr<GLsizei>,
+    infoLog: MutPtr<GLubyte>,
+) {
+    with_ctx_and_mem(env, |gles, mem| unsafe {
+        if bufSize <= 0 {
+            if !length.is_null() {
+                mem.write(length, 0);
+            }
+            return;
+        }
+        let mut buf: Vec<u8> = vec![0u8; bufSize as usize];
+        let mut written: GLsizei = 0;
+        gles.GetShaderInfoLog(shader, bufSize, &mut written, buf.as_mut_ptr().cast());
+        if !length.is_null() {
+            mem.write(length, written);
+        }
+        if !infoLog.is_null() && written >= 0 {
+            let count = written as usize + 1; // include trailing NUL
+            let count = count.min(buf.len()).min(bufSize as usize);
+            let dst = mem.ptr_at_mut(infoLog, count.try_into().unwrap_or(0));
+            std::ptr::copy_nonoverlapping(buf.as_ptr(), dst, count);
+        }
+    });
+}
+fn glGetProgramiv(env: &mut Environment, program: GLuint, pname: GLenum, params: MutPtr<GLint>) {
+    with_ctx_and_mem(env, |gles, mem| unsafe {
+        let mut val: GLint = 0;
+        gles.GetProgramiv(program, pname, &mut val);
+        if !params.is_null() {
+            mem.write(params, val);
+        }
+    });
+}
+fn glGetProgramInfoLog(
+    env: &mut Environment,
+    program: GLuint,
+    bufSize: GLsizei,
+    length: MutPtr<GLsizei>,
+    infoLog: MutPtr<GLubyte>,
+) {
+    with_ctx_and_mem(env, |gles, mem| unsafe {
+        if bufSize <= 0 {
+            if !length.is_null() {
+                mem.write(length, 0);
+            }
+            return;
+        }
+        let mut buf: Vec<u8> = vec![0u8; bufSize as usize];
+        let mut written: GLsizei = 0;
+        gles.GetProgramInfoLog(program, bufSize, &mut written, buf.as_mut_ptr().cast());
+        if !length.is_null() {
+            mem.write(length, written);
+        }
+        if !infoLog.is_null() && written >= 0 {
+            let count = written as usize + 1;
+            let count = count.min(buf.len()).min(bufSize as usize);
+            let dst = mem.ptr_at_mut(infoLog, count.try_into().unwrap_or(0));
+            std::ptr::copy_nonoverlapping(buf.as_ptr(), dst, count);
+        }
+    });
+}
+fn glShaderSource(
+    env: &mut Environment,
+    shader: GLuint,
+    count: GLsizei,
+    string: ConstPtr<ConstPtr<GLubyte>>,
+    length: ConstPtr<GLint>,
+) {
+    if count <= 0 {
+        return;
+    }
+    // Copy each source string out of the guest's memory into a host-side
+    // buffer so we can pass real host pointers to the GLES implementation.
+    let mut owned: Vec<std::ffi::CString> = Vec::with_capacity(count as usize);
+    for i in 0..count {
+        let str_ptr_ptr: ConstPtr<ConstPtr<GLubyte>> = string + (i as GuestUSize);
+        let str_ptr: ConstPtr<GLubyte> = env.mem.read(str_ptr_ptr);
+        if str_ptr.is_null() {
+            owned.push(std::ffi::CString::default());
+            continue;
+        }
+        // Check if explicit lengths were provided.
+        let len_opt: Option<i32> = if length.is_null() {
+            None
+        } else {
+            let len_ptr: ConstPtr<GLint> = length + (i as GuestUSize);
+            let l: GLint = env.mem.read(len_ptr);
+            if l < 0 {
+                None
+            } else {
+                Some(l)
+            }
+        };
+        let bytes_vec: Vec<u8> = if let Some(len) = len_opt {
+            let slice = env
+                .mem
+                .bytes_at(str_ptr.cast(), len.try_into().unwrap_or(0));
+            slice.to_vec()
+        } else {
+            env.mem.cstr_at(str_ptr).to_vec()
+        };
+        let cs = std::ffi::CString::new(bytes_vec).unwrap_or_default();
+        owned.push(cs);
+    }
+    let ptrs: Vec<*const std::os::raw::c_char> = owned.iter().map(|s| s.as_ptr()).collect();
+    with_ctx_and_mem(env, |gles, _mem| unsafe {
+        gles.ShaderSource(shader, count, ptrs.as_ptr(), std::ptr::null());
+    });
+}
+fn glEnableVertexAttribArray(env: &mut Environment, index: GLuint) {
+    with_ctx_and_mem(env, |gles, _mem| unsafe {
+        gles.EnableVertexAttribArray(index)
+    });
+}
+fn glDisableVertexAttribArray(env: &mut Environment, index: GLuint) {
+    with_ctx_and_mem(env, |gles, _mem| unsafe {
+        gles.DisableVertexAttribArray(index)
+    });
+}
+fn glVertexAttribPointer(
+    env: &mut Environment,
+    index: GLuint,
+    size: GLint,
+    type_: GLenum,
+    normalized: GLboolean,
+    stride: GLsizei,
+    pointer: ConstVoidPtr,
+) {
+    // If a buffer is bound, `pointer` is treated as an offset within that
+    // buffer (not as a pointer into client memory) and we can pass it through
+    // as-is. Otherwise we need to translate the guest pointer to a host
+    // pointer.
+    with_ctx_and_mem(env, |gles, mem| unsafe {
+        let mut bound: GLint = 0;
+        gles.GetIntegerv(gles11::ARRAY_BUFFER_BINDING, &mut bound);
+        let host_ptr = if bound == 0 {
+            if pointer.is_null() {
+                std::ptr::null()
+            } else {
+                mem.ptr_at(pointer.cast::<u8>(), 1) as *const _
+            }
+        } else {
+            pointer.to_bits() as usize as *const _
+        };
+        gles.VertexAttribPointer(index, size, type_, normalized, stride, host_ptr);
+    });
+}
+fn glVertexAttrib1f(env: &mut Environment, index: GLuint, x: GLfloat) {
+    with_ctx_and_mem(env, |gles, _mem| unsafe { gles.VertexAttrib1f(index, x) });
+}
+fn glVertexAttrib2f(env: &mut Environment, index: GLuint, x: GLfloat, y: GLfloat) {
+    with_ctx_and_mem(env, |gles, _mem| unsafe {
+        gles.VertexAttrib2f(index, x, y)
+    });
+}
+fn glVertexAttrib3f(env: &mut Environment, index: GLuint, x: GLfloat, y: GLfloat, z: GLfloat) {
+    with_ctx_and_mem(env, |gles, _mem| unsafe {
+        gles.VertexAttrib3f(index, x, y, z)
+    });
+}
+fn glVertexAttrib4f(
+    env: &mut Environment,
+    index: GLuint,
+    x: GLfloat,
+    y: GLfloat,
+    z: GLfloat,
+    w: GLfloat,
+) {
+    with_ctx_and_mem(env, |gles, _mem| unsafe {
+        gles.VertexAttrib4f(index, x, y, z, w)
+    });
+}
+fn glUniform1i(env: &mut Environment, location: GLint, v0: GLint) {
+    with_ctx_and_mem(env, |gles, _mem| unsafe { gles.Uniform1i(location, v0) });
+}
+fn glUniform2i(env: &mut Environment, location: GLint, v0: GLint, v1: GLint) {
+    with_ctx_and_mem(env, |gles, _mem| unsafe {
+        gles.Uniform2i(location, v0, v1)
+    });
+}
+fn glUniform3i(env: &mut Environment, location: GLint, v0: GLint, v1: GLint, v2: GLint) {
+    with_ctx_and_mem(env, |gles, _mem| unsafe {
+        gles.Uniform3i(location, v0, v1, v2)
+    });
+}
+fn glUniform4i(env: &mut Environment, location: GLint, v0: GLint, v1: GLint, v2: GLint, v3: GLint) {
+    with_ctx_and_mem(env, |gles, _mem| unsafe {
+        gles.Uniform4i(location, v0, v1, v2, v3)
+    });
+}
+fn glUniform1f(env: &mut Environment, location: GLint, v0: GLfloat) {
+    with_ctx_and_mem(env, |gles, _mem| unsafe { gles.Uniform1f(location, v0) });
+}
+fn glUniform2f(env: &mut Environment, location: GLint, v0: GLfloat, v1: GLfloat) {
+    with_ctx_and_mem(env, |gles, _mem| unsafe {
+        gles.Uniform2f(location, v0, v1)
+    });
+}
+fn glUniform3f(env: &mut Environment, location: GLint, v0: GLfloat, v1: GLfloat, v2: GLfloat) {
+    with_ctx_and_mem(env, |gles, _mem| unsafe {
+        gles.Uniform3f(location, v0, v1, v2)
+    });
+}
+fn glUniform4f(
+    env: &mut Environment,
+    location: GLint,
+    v0: GLfloat,
+    v1: GLfloat,
+    v2: GLfloat,
+    v3: GLfloat,
+) {
+    with_ctx_and_mem(env, |gles, _mem| unsafe {
+        gles.Uniform4f(location, v0, v1, v2, v3)
+    });
+}
+fn glUniform1iv(env: &mut Environment, location: GLint, count: GLsizei, value: ConstPtr<GLint>) {
+    with_ctx_and_mem(env, |gles, mem| unsafe {
+        let n = (count as usize).max(0);
+        let ptr = mem.ptr_at(value, n.try_into().unwrap_or(0));
+        gles.Uniform1iv(location, count, ptr);
+    });
+}
+fn glUniform2iv(env: &mut Environment, location: GLint, count: GLsizei, value: ConstPtr<GLint>) {
+    with_ctx_and_mem(env, |gles, mem| unsafe {
+        let n = (count as usize) * 2;
+        let ptr = mem.ptr_at(value, n.try_into().unwrap_or(0));
+        gles.Uniform2iv(location, count, ptr);
+    });
+}
+fn glUniform3iv(env: &mut Environment, location: GLint, count: GLsizei, value: ConstPtr<GLint>) {
+    with_ctx_and_mem(env, |gles, mem| unsafe {
+        let n = (count as usize) * 3;
+        let ptr = mem.ptr_at(value, n.try_into().unwrap_or(0));
+        gles.Uniform3iv(location, count, ptr);
+    });
+}
+fn glUniform4iv(env: &mut Environment, location: GLint, count: GLsizei, value: ConstPtr<GLint>) {
+    with_ctx_and_mem(env, |gles, mem| unsafe {
+        let n = (count as usize) * 4;
+        let ptr = mem.ptr_at(value, n.try_into().unwrap_or(0));
+        gles.Uniform4iv(location, count, ptr);
+    });
+}
+fn glUniform1fv(env: &mut Environment, location: GLint, count: GLsizei, value: ConstPtr<GLfloat>) {
+    with_ctx_and_mem(env, |gles, mem| unsafe {
+        let n = count as usize;
+        let ptr = mem.ptr_at(value, n.try_into().unwrap_or(0));
+        gles.Uniform1fv(location, count, ptr);
+    });
+}
+fn glUniform2fv(env: &mut Environment, location: GLint, count: GLsizei, value: ConstPtr<GLfloat>) {
+    with_ctx_and_mem(env, |gles, mem| unsafe {
+        let n = (count as usize) * 2;
+        let ptr = mem.ptr_at(value, n.try_into().unwrap_or(0));
+        gles.Uniform2fv(location, count, ptr);
+    });
+}
+fn glUniform3fv(env: &mut Environment, location: GLint, count: GLsizei, value: ConstPtr<GLfloat>) {
+    with_ctx_and_mem(env, |gles, mem| unsafe {
+        let n = (count as usize) * 3;
+        let ptr = mem.ptr_at(value, n.try_into().unwrap_or(0));
+        gles.Uniform3fv(location, count, ptr);
+    });
+}
+fn glUniform4fv(env: &mut Environment, location: GLint, count: GLsizei, value: ConstPtr<GLfloat>) {
+    with_ctx_and_mem(env, |gles, mem| unsafe {
+        let n = (count as usize) * 4;
+        let ptr = mem.ptr_at(value, n.try_into().unwrap_or(0));
+        gles.Uniform4fv(location, count, ptr);
+    });
+}
+fn glReleaseShaderCompiler(env: &mut Environment) {
+    with_ctx_and_mem(env, |gles, _mem| unsafe { gles.ReleaseShaderCompiler() });
+}
+fn glBlendColor(env: &mut Environment, r: GLclampf, g: GLclampf, b: GLclampf, a: GLclampf) {
+    with_ctx_and_mem(env, |gles, _mem| unsafe { gles.BlendColor(r, g, b, a) });
+}
+fn glBlendEquation(env: &mut Environment, mode: GLenum) {
+    with_ctx_and_mem(env, |gles, _mem| unsafe { gles.BlendEquation(mode) });
+}
+fn glBlendEquationSeparate(env: &mut Environment, modeRGB: GLenum, modeAlpha: GLenum) {
+    with_ctx_and_mem(env, |gles, _mem| unsafe {
+        gles.BlendEquationSeparate(modeRGB, modeAlpha)
+    });
+}
+fn glBlendFuncSeparate(
+    env: &mut Environment,
+    srcRGB: GLenum,
+    dstRGB: GLenum,
+    srcAlpha: GLenum,
+    dstAlpha: GLenum,
+) {
+    with_ctx_and_mem(env, |gles, _mem| unsafe {
+        gles.BlendFuncSeparate(srcRGB, dstRGB, srcAlpha, dstAlpha)
+    });
+}
+fn glStencilFuncSeparate(
+    env: &mut Environment,
+    face: GLenum,
+    func: GLenum,
+    ref_: GLint,
+    mask: GLuint,
+) {
+    with_ctx_and_mem(env, |gles, _mem| unsafe {
+        gles.StencilFuncSeparate(face, func, ref_, mask)
+    });
+}
+fn glStencilOpSeparate(
+    env: &mut Environment,
+    face: GLenum,
+    sfail: GLenum,
+    dpfail: GLenum,
+    dppass: GLenum,
+) {
+    with_ctx_and_mem(env, |gles, _mem| unsafe {
+        gles.StencilOpSeparate(face, sfail, dpfail, dppass)
+    });
+}
+fn glStencilMaskSeparate(env: &mut Environment, face: GLenum, mask: GLuint) {
+    with_ctx_and_mem(env, |gles, _mem| unsafe {
+        gles.StencilMaskSeparate(face, mask)
+    });
+}
+
 /// If fog is enabled, check if the values for start and end distances
-/// are equal. Apple platforms (even modern Mac OS) seem to handle that
-/// gracefully, however, both Windows and Android have issues in those cases.
+/// are equal. Apple platforms (even modern macOS) seem to handle that
+/// gracefully, while the Windows drivers tested by tapHLE do not.
 /// This workaround is required so Doom 2 RPG renders correctly.
 /// It prevents divisions by zero in levels where fog is used and both
 /// values are set to 10000.
@@ -1627,9 +2235,86 @@ pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(glDeleteFramebuffersOES(_, _)),
     export_c_func!(glDeleteRenderbuffersOES(_, _)),
     export_c_func!(glGenerateMipmapOES(_)),
+    export_c_func!(glRenderbufferStorageMultisampleAPPLE(_, _, _, _, _)),
+    export_c_func!(glResolveMultisampleFramebufferAPPLE()),
+    export_c_func!(glDiscardFramebufferEXT(_, _, _)),
+    export_c_func!(glBindVertexArrayOES(_)),
+    export_c_func!(glDeleteVertexArraysOES(_, _)),
+    export_c_func!(glGenVertexArraysOES(_, _)),
+    export_c_func!(glIsVertexArrayOES(_)),
+    export_c_func!(glGenFramebuffers(_, _)),
+    export_c_func!(glGenRenderbuffers(_, _)),
+    export_c_func!(glIsFramebuffer(_)),
+    export_c_func!(glIsRenderbuffer(_)),
+    export_c_func!(glBindFramebuffer(_, _)),
+    export_c_func!(glBindRenderbuffer(_, _)),
+    export_c_func!(glRenderbufferStorage(_, _, _, _)),
+    export_c_func!(glFramebufferRenderbuffer(_, _, _, _)),
+    export_c_func!(glFramebufferTexture2D(_, _, _, _, _)),
+    export_c_func!(glGetFramebufferAttachmentParameteriv(_, _, _, _)),
+    export_c_func!(glGetRenderbufferParameteriv(_, _, _)),
+    export_c_func!(glCheckFramebufferStatus(_)),
+    export_c_func!(glDeleteFramebuffers(_, _)),
+    export_c_func!(glDeleteRenderbuffers(_, _)),
+    export_c_func!(glGenerateMipmap(_)),
     export_c_func!(glGetBufferParameteriv(_, _, _)),
     export_c_func!(glMapBufferOES(_, _)),
     export_c_func!(glUnmapBufferOES(_)),
+    // OpenGL ES 2.0 entry points
+    export_c_func!(glCreateProgram()),
+    export_c_func!(glCreateShader(_)),
+    export_c_func!(glBindAttribLocation(_, _, _)),
+    export_c_func!(glGetAttribLocation(_, _)),
+    export_c_func!(glGetUniformLocation(_, _)),
+    export_c_func!(glUniformMatrix2fv(_, _, _, _)),
+    export_c_func!(glUniformMatrix3fv(_, _, _, _)),
+    export_c_func!(glUniformMatrix4fv(_, _, _, _)),
+    export_c_func!(glUseProgram(_)),
+    export_c_func!(glDeleteProgram(_)),
+    export_c_func!(glDeleteShader(_)),
+    export_c_func!(glCompileShader(_)),
+    export_c_func!(glAttachShader(_, _)),
+    export_c_func!(glDetachShader(_, _)),
+    export_c_func!(glLinkProgram(_)),
+    export_c_func!(glValidateProgram(_)),
+    export_c_func!(glIsShader(_)),
+    export_c_func!(glIsProgram(_)),
+    export_c_func!(glGetShaderiv(_, _, _)),
+    export_c_func!(glGetShaderInfoLog(_, _, _, _)),
+    export_c_func!(glGetProgramiv(_, _, _)),
+    export_c_func!(glGetProgramInfoLog(_, _, _, _)),
+    export_c_func!(glShaderSource(_, _, _, _)),
+    export_c_func!(glEnableVertexAttribArray(_)),
+    export_c_func!(glDisableVertexAttribArray(_)),
+    export_c_func!(glVertexAttribPointer(_, _, _, _, _, _)),
+    export_c_func!(glVertexAttrib1f(_, _)),
+    export_c_func!(glVertexAttrib2f(_, _, _)),
+    export_c_func!(glVertexAttrib3f(_, _, _, _)),
+    export_c_func!(glVertexAttrib4f(_, _, _, _, _)),
+    export_c_func!(glUniform1i(_, _)),
+    export_c_func!(glUniform2i(_, _, _)),
+    export_c_func!(glUniform3i(_, _, _, _)),
+    export_c_func!(glUniform4i(_, _, _, _, _)),
+    export_c_func!(glUniform1f(_, _)),
+    export_c_func!(glUniform2f(_, _, _)),
+    export_c_func!(glUniform3f(_, _, _, _)),
+    export_c_func!(glUniform4f(_, _, _, _, _)),
+    export_c_func!(glUniform1iv(_, _, _)),
+    export_c_func!(glUniform2iv(_, _, _)),
+    export_c_func!(glUniform3iv(_, _, _)),
+    export_c_func!(glUniform4iv(_, _, _)),
+    export_c_func!(glUniform1fv(_, _, _)),
+    export_c_func!(glUniform2fv(_, _, _)),
+    export_c_func!(glUniform3fv(_, _, _)),
+    export_c_func!(glUniform4fv(_, _, _)),
+    export_c_func!(glReleaseShaderCompiler()),
+    export_c_func!(glBlendColor(_, _, _, _)),
+    export_c_func!(glBlendEquation(_)),
+    export_c_func!(glBlendEquationSeparate(_, _)),
+    export_c_func!(glBlendFuncSeparate(_, _, _, _)),
+    export_c_func!(glStencilFuncSeparate(_, _, _, _)),
+    export_c_func!(glStencilOpSeparate(_, _, _, _)),
+    export_c_func!(glStencilMaskSeparate(_, _)),
 ];
 
 fn _get_currently_bound_buffer_object_name(env: &mut Environment, target: GLenum) -> GLuint {
