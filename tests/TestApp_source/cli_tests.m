@@ -5852,6 +5852,39 @@ int test_NSInvocation_pointer() {
 @public
   double value;
 }
+@end
+
+@implementation DoubleCoderObject
+- (instancetype)initWithValue:(double)v {
+  self = [super init];
+  value = v;
+  return self;
+}
+
+- (void)encodeWithCoder:(NSCoder *)coder {
+  [coder encodeDouble:value forKey:[NSString stringWithUTF8String:"value"]];
+}
+
+- (instancetype)initWithCoder:(NSCoder *)coder {
+  self = [super init];
+  value = [coder decodeDoubleForKey:[NSString stringWithUTF8String:"value"]];
+  return self;
+}
+@end
+
+int test_printf_float_sign_flag() {
+  char buffer[32];
+  snprintf(buffer, sizeof(buffer), "%+.2f", 1.5);
+  if (strcmp(buffer, "+1.50") != 0)
+    return -1;
+  snprintf(buffer, sizeof(buffer), "%+08.2f", 1.5);
+  if (strcmp(buffer, "+0001.50") != 0)
+    return -2;
+  snprintf(buffer, sizeof(buffer), "%+08.2f", -1.5);
+  if (strcmp(buffer, "-0001.50") != 0)
+    return -3;
+  return 0;
+}
 
 int test_CFNumberGetValue_wide_types() {
   int64_t inputLongLong = -9000000001LL;
@@ -5878,25 +5911,6 @@ int test_CFNumberGetValue_wide_types() {
   CFRelease(doubleNumber);
   return 0;
 }
-@end
-
-@implementation DoubleCoderObject
-- (instancetype)initWithValue:(double)v {
-  self = [super init];
-  value = v;
-  return self;
-}
-
-- (void)encodeWithCoder:(NSCoder *)coder {
-  [coder encodeDouble:value forKey:[NSString stringWithUTF8String:"value"]];
-}
-
-- (instancetype)initWithCoder:(NSCoder *)coder {
-  self = [super init];
-  value = [coder decodeDoubleForKey:[NSString stringWithUTF8String:"value"]];
-  return self;
-}
-@end
 
 int test_NSKeyedArchiver_encodeDoubleForKey() {
   NSAutoreleasePool *pool = [NSAutoreleasePool new];
@@ -6602,6 +6616,7 @@ struct {
 #endif
     FUNC_DEF(test_qsort),
     FUNC_DEF(test_vsnprintf),
+    FUNC_DEF(test_printf_float_sign_flag),
     FUNC_DEF(test_sscanf),
     FUNC_DEF(test_swscanf),
     FUNC_DEF(test_realloc),

@@ -420,27 +420,24 @@ pub fn printf_inner<const NS_LOG: bool, F: Fn(&Mem, GuestUSize) -> u8>(
             }
             // Float specifiers
             b'f' => {
-                assert!(!prepend_sign);
                 assert!(!left_justified);
                 let float: f64 = args.next(env);
                 let pad_width = pad_width as usize;
                 let precision = precision.unwrap_or(6);
 
-                let formatted = f_format(float, pad_width, pad_char, precision);
+                let formatted = f_format(float, pad_width, pad_char, precision, prepend_sign);
                 res.extend_from_slice(formatted.as_bytes());
             }
             b'e' => {
-                assert!(!prepend_sign);
                 assert!(!left_justified);
                 let float: f64 = args.next(env);
                 let pad_width = pad_width as usize;
                 let precision = precision.unwrap_or(6);
 
-                let formatted = e_format(float, pad_width, pad_char, precision);
+                let formatted = e_format(float, pad_width, pad_char, precision, prepend_sign);
                 res.extend_from_slice(formatted.as_bytes());
             }
             b'g' => {
-                assert!(!prepend_sign);
                 assert!(!left_justified);
                 let float: f64 = args.next(env);
                 let pad_width = pad_width as usize;
@@ -471,7 +468,7 @@ pub fn printf_inner<const NS_LOG: bool, F: Fn(&Mem, GuestUSize) -> u8>(
                 if P > X && X >= -4 {
                     let precision: usize = (P - X - 1).try_into().unwrap();
 
-                    let result = f_format(float, pad_width, pad_char, precision);
+                    let result = f_format(float, 0, pad_char, precision, prepend_sign);
 
                     // TODO: skip if alternative representation is requested
                     let trimmed_result = if result.contains('.') {
@@ -480,21 +477,14 @@ pub fn printf_inner<const NS_LOG: bool, F: Fn(&Mem, GuestUSize) -> u8>(
                         &result
                     };
 
-                    let trimmed_result = if pad_width > 0 && trimmed_result.len() < pad_width {
-                        if pad_char == '0' {
-                            format!("{trimmed_result:0>pad_width$}")
-                        } else {
-                            format!("{trimmed_result:>pad_width$}")
-                        }
-                    } else {
-                        trimmed_result.to_string()
-                    };
+                    let trimmed_result =
+                        pad_float(trimmed_result.to_string(), pad_width, pad_char, false);
 
                     res.extend_from_slice(trimmed_result.as_bytes());
                 } else {
                     let precision: usize = (P - 1).try_into().unwrap();
 
-                    let formatted = e_format(float, pad_width, pad_char, precision);
+                    let formatted = e_format(float, pad_width, pad_char, precision, prepend_sign);
                     res.extend_from_slice(formatted.as_bytes());
                 }
             }
@@ -512,16 +502,60 @@ pub fn printf_inner<const NS_LOG: bool, F: Fn(&Mem, GuestUSize) -> u8>(
     res
 }
 
-fn f_format(float: f64, pad_width: usize, pad_char: char, precision: usize) -> String {
-    if pad_char == '0' {
-        format!("{float:0pad_width$.precision$}")
-    } else {
-        assert!(pad_char == ' '); // TODO
-        format!("{float:pad_width$.precision$}")
+fn pad_float(
+    mut formatted: String,
+    pad_width: usize,
+    pad_char: char,
+    prepend_sign: bool,
+) -> String {
+    if prepend_sign && !formatted.starts_with('-') && !formatted.starts_with('+') {
+        formatted.insert(0, '+');
+    }
+    if formatted.len() >= pad_width {
+        return formatted;
+    }
+
+    let padding = pad_width - formatted.len();
+    match pad_char {
+        ' ' => format!("{}{formatted}", " ".repeat(padding)),
+        '0' => {
+            if formatted.starts_with(['-', '+']) {
+                format!(
+                    "{}{}{}",
+                    &formatted[..1],
+                    "0".repeat(padding),
+                    &formatted[1..]
+                )
+            } else {
+                format!("{}{formatted}", "0".repeat(padding))
+            }
+        }
+        _ => unreachable!(),
     }
 }
 
-fn e_format(float: f64, pad_width: usize, pad_char: char, precision: usize) -> String {
+fn f_format(
+    float: f64,
+    pad_width: usize,
+    pad_char: char,
+    precision: usize,
+    prepend_sign: bool,
+) -> String {
+    pad_float(
+        format!("{float:.precision$}"),
+        pad_width,
+        pad_char,
+        prepend_sign,
+    )
+}
+
+fn e_format(
+    float: f64,
+    pad_width: usize,
+    pad_char: char,
+    precision: usize,
+    prepend_sign: bool,
+) -> String {
     let exponent = if float == 0.0 {
         0.0
     } else {
@@ -529,19 +563,8 @@ fn e_format(float: f64, pad_width: usize, pad_char: char, precision: usize) -> S
     };
     let mantissa = float.abs() / 10f64.powf(exponent);
     let sign = if float.is_sign_negative() { "-" } else { "" };
-    if pad_char == '0' {
-        let float_exp_notation = format!("{mantissa:.precision$}e{exponent:+03}");
-        format!(
-            "{0}{1:0>2$}",
-            sign,
-            float_exp_notation,
-            pad_width.saturating_sub(sign.len())
-        )
-    } else {
-        assert!(pad_char == ' '); // TODO
-        let float_exp_notation = format!("{sign}{mantissa:.precision$}e{exponent:+03}");
-        format!("{float_exp_notation:>pad_width$}")
-    }
+    let float_exp_notation = format!("{sign}{mantissa:.precision$}e{exponent:+03}");
+    pad_float(float_exp_notation, pad_width, pad_char, prepend_sign)
 }
 
 fn snprintf(
@@ -1320,4 +1343,21 @@ pub fn isspace(env: &mut Environment, src: ConstPtr<u8>) -> bool {
 pub fn isspace_inner(c: u8) -> bool {
     // Rust's definition of whitespace excludes vertical tab, unlike C's
     c.is_ascii_whitespace() || c == b'\x0b'
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{e_format, f_format};
+
+    #[test]
+    fn float_sign_flag_respects_space_and_zero_padding() {
+        assert_eq!(f_format(12.5, 8, ' ', 2, true), "  +12.50");
+        assert_eq!(f_format(12.5, 8, '0', 2, true), "+0012.50");
+        assert_eq!(f_format(-12.5, 8, '0', 2, true), "-0012.50");
+    }
+
+    #[test]
+    fn exponent_sign_flag_is_applied_to_mantissa() {
+        assert_eq!(e_format(12.5, 0, ' ', 1, true), "+1.2e+01");
+    }
 }
