@@ -60,6 +60,11 @@ pub const CLASSES: ClassExports = objc_classes! {
     PHYSICAL_MEMORY.into()
 }
 
+- (id)environment {
+    assert_process_info_singleton(env, this); // TODO
+    msg_class![env; NSDictionary dictionary]
+}
+
 - (id)processName {
     // This function probably just needs to return a unique value
     // Testing on macOS appears CFBundleName is used
