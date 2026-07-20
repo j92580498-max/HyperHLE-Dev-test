@@ -420,7 +420,10 @@ pub const CLASSES: ClassExports = objc_classes! {
 + (id)dictionaryWithObject:(id)object forKey:(id)key {
     assert_ne!(key, nil); // TODO: raise proper exception
 
-    let new_dict = dict_from_keys_and_objects(env, &[(key, object)]);
+    // The return type is instancetype and this method is inherited by
+    // NSMutableDictionary, so allocate through the receiving class.
+    let new_dict: id = msg![env; this alloc];
+    let new_dict = init_dict_from_keys_and_objects(env, new_dict, &[(key, object)]);
     autorelease(env, new_dict)
 }
 
@@ -1034,6 +1037,14 @@ pub const CLASSES: ClassExports = objc_classes! {
 pub fn dict_from_keys_and_objects(env: &mut Environment, keys_and_objects: &[(id, id)]) -> id {
     let dict: id = msg_class![env; NSDictionary alloc];
 
+    init_dict_from_keys_and_objects(env, dict, keys_and_objects)
+}
+
+fn init_dict_from_keys_and_objects(
+    env: &mut Environment,
+    dict: id,
+    keys_and_objects: &[(id, id)],
+) -> id {
     let mut host_object = <DictionaryHostObject as Default>::default();
     for &(key, object) in keys_and_objects {
         host_object.insert(env, key, object, /* copy_key: */ true);
@@ -1053,13 +1064,7 @@ pub fn mutable_dict_from_keys_and_objects(
 ) -> id {
     let dict: id = msg_class![env; NSMutableDictionary alloc];
 
-    let mut host_object = <DictionaryHostObject as Default>::default();
-    for &(key, object) in keys_and_objects {
-        host_object.insert(env, key, object, /* copy_key: */ true);
-    }
-    *env.objc.borrow_mut(dict) = host_object;
-
-    dict
+    init_dict_from_keys_and_objects(env, dict, keys_and_objects)
 }
 
 /// A helper to build a description NSString

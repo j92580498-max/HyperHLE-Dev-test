@@ -54,11 +54,21 @@ which maps to the unresolved `_NSLocaleLanguageCode` import. The containing
 guest method is `-[CBNetwork makeRequest:params:]`; it calls
 `[NSLocale currentLocale]` and then asks it for that key.
 
-The current branch now exports `_NSLocaleLanguageCode` as an NSString constant
-and returns the stored locale language for both the Foundation and Core
-Foundation language-code keys. The focused export test and all 78 release
-library tests pass. `cargo check --release` also passes with only the existing
-unused GLES-method warning group. This implementation still needs an exact
+Commit `7dffbc97` exports `_NSLocaleLanguageCode` as an NSString constant and
+returns the stored locale language for both the Foundation and Core Foundation
+language-code keys. Its exact release build passed PC `0xc1010`, constructed
+the Chartboost install/get requests, and reached Flurry startup. The language
+symbol is no longer unresolved.
+
+The next crash sends `setObject:forKey:` to an immutable
+`_tapHLE_NSDictionary`. The app reached this state because
+`+[NSDictionary dictionaryWithObject:forKey:]` is inherited by
+`NSMutableDictionary` and returns `instancetype`, but tapHLE's implementation
+forced allocation through the immutable NSDictionary concrete class. The
+current branch allocates through the receiving class and shares the existing
+key/value initialization path, so a call through NSMutableDictionary produces
+the mutable concrete class. All 78 release library tests and
+`cargo check --release` pass. This class-cluster correction still needs an exact
 committed release build and visible canonical-IPA launch before the next
 runtime frontier is claimed.
 
@@ -86,12 +96,12 @@ published tapHLE commit.
 
 ## Next discriminator
 
-1. Commit the reviewed locale-key implementation.
+1. Commit the reviewed dictionary class-cluster correction.
 2. Build that exact commit in release mode.
 3. Recalculate the canonical IPA hash and launch it visibly from an isolated
    Windows run directory.
-4. Confirm that `_NSLocaleLanguageCode` is no longer unresolved and that guest
-   PC `0xc1010` is passed.
+4. Confirm that the mutable dictionary no longer has immutable concrete class
+   `_tapHLE_NSDictionary` and that `setObject:forKey:` succeeds.
 5. Resolve only the next evidenced API, ABI, lifetime, or rendering boundary.
 
 Do not use `--headless`: UIKit/EAGL startup needs a real tapHLE window and a
@@ -108,6 +118,8 @@ build using these exact canonical bytes.
 - Static armv7 disassembly, indirect symbols, and runtime registers all agree
   on the `_NSLocaleLanguageCode` null dereference.
 - The focused locale export test passes.
+- The exact `7dffbc97` windowed run passes the locale dereference and reaches
+  the dictionary class-cluster error described above.
 - The release library test binary passes all 78 tests.
 - `cargo check --release` passes with the existing GLES dead-code warning
   group.
