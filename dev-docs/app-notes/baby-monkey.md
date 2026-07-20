@@ -5,104 +5,112 @@ Last updated: 2026-07-19.
 ## Identity and source
 
 - Work branch: `compat/baby-monkey`.
-- Provisional Archive item:
+- Canonical Archive item:
   <https://archive.org/details/ios-ipa-com.kihon.babymonkey>.
-- Tested filename:
+- Maintainer-designated newest filename:
   `Baby Monkey (going backwards on a pig) (v1.3.5) [Decrypted].ipa`.
-- SHA-256:
-  `c1879dc8177f57ae0587847e2d0aadad264c0a4bf502bb77bdb74a6d3f654693`.
-- MD5: `d4f6a78d5e31722384ea4cddcd25acda`.
-- SHA-1: `cbbcc206434347f6851b7b0aa0066e0bd7d9c6a3`.
-- Size: 21,978,076 bytes.
-- Bundle: `com.kihon.babymonkey`, version/build `1.3.5`, minimum OS
+- Archive original size: 9,947,604 bytes.
+- Archive MD5: `cf3eaa2326db3d2614b589f4e438312b`.
+- Archive SHA-1: `02d70acdac7c8cd79640dab2336a1eaaf1382a5f`.
+- Locally calculated SHA-256:
+  `5ae6373838f9cff4a8a2001bc30253be88f0fb05f707af8c7bf8259330cd3346`.
+- Embedded bundle: `com.kihon.babymonkey`, version/build `1.01`, minimum OS
   `4.2`.
 
-The maintainer supplied this newest known decrypted IPA from their local
-upload inventory. The Archive identifier and filename are inferred from that
-inventory, but Archive.org was unavailable during intake. Do not call this an
-Archive-verified artifact and do not create a compatibility report until live
-metadata confirms the exact original filename, MD5 and SHA-1. Keep the local
-IPA in ignored `tapHLE_apps`; never add it to Git.
+Archive metadata was live-verified on 2026-07-19 and the downloaded bytes
+match its exact original size, MD5, and SHA-1. `tapHLE --info` identifies the
+embedded app version as `1.01`, not `1.3.5`. The Archive originals named
+`v1.01`, `v1.2.3`, and `v1.3.5` are byte-for-byte identical. The local upload
+manifest explains the mistake: all three destination names point to the same
+`BabyMonkey (v1.01) [Decrypted].ipa` source. Keep the requested highest-version
+Archive filename as the canonical source filename, but report the embedded
+version as authoritative and do not claim that these bytes contain 1.3.5.
 
-## Current checkpoint
+An earlier local file at the same picker path was 21,978,076 bytes with
+SHA-256 `c1879dc8177f57ae0587847e2d0aadad264c0a4bf502bb77bdb74a6d3f654693`.
+It did not match any decrypted Archive original. It is preserved with a
+non-IPA extension under ignored `tapHLE_apps/_quarantine` and must not be run
+or cited as compatibility evidence.
 
-The branch now passes the former ES 2.0 frontier and reaches the game's display
-loop. Commit `2ddbfc29` supplies compiler stack-protector symbols, basic Grand
-Central Dispatch queues, and useful register/stack diagnostics. Commit
-`fd543d42` adds the reviewed native ES 2.0 slice and iOS GL extension entry
-points. Commit `3fbcb0e9` adds `UIWindow.rootViewController` ownership/mounting
-and `performSelector:onThread:withObject:waitUntilDone:` compatibility.
+Availability was checked on 2026-07-19. Apple's public Lookup API returned no
+result for App Store ID `447960108` in the United States and 23 other sampled
+storefronts, and the former US product URL returned HTTP 404. Kihon's surviving
+games page is historical and its app-specific site was unavailable. No current
+official purchase or download route was found. This is a bounded availability
+observation, not proof of legal abandonment or universal unavailability.
 
-On Windows, the exact hash-checked IPA now creates two native OpenGL ES 2.0
-contexts using the Intel Iris Xe driver. It proceeds through Cocos2D graphics
-setup, mounts its root controller, performs its initial orientation decision,
-and begins display-loop setup. With CADisplayLink and Caches directory mapped, the current stop is
-`-[NSProcessInfo environment]`, which is not implemented.
+## Current canonical checkpoint
 
-This is still not a compatibility-database milestone or rating. No human menu,
-presented frame, input, gameplay or audio result has been established.
+The release build for commit `ee21050a` was launched in a normal Windows
+window with the exact hash-verified Archive bytes. It loads the armv7 slice,
+selects landscape orientation, creates an OpenGL ES 1.1 context through the
+GLES1-on-GL2 layer, creates the app's EAGL context, and obtains the host country
+and preferred language. No app-rendered frame was established before it
+exited.
 
-## Fixes that moved the frontier
+The canonical stop was a null-page read at guest PC `0xc1010`. Static Mach-O
+analysis proved that the preceding instructions load non-lazy slot `0xf4688`,
+which maps to the unresolved `_NSLocaleLanguageCode` import. The containing
+guest method is `-[CBNetwork makeRequest:params:]`; it calls
+`[NSLocale currentLocale]` and then asks it for that key.
 
-- Synchronous `dispatch_once`.
-- In-memory named and persistent UIKit pasteboards.
-- `CFMakeCollectable` identity behavior.
-- Dictionary sorting by guest values and dictionary construction from C
-  arrays.
-- Process-unique Foundation strings and date keyed-archive encoding.
-- Deterministic `if_nametoindex` and an iPhone-style link-route `sysctl`
-  response.
-- Core Foundation URL percent escaping.
-- `NSNumber` Objective-C type encodings and wide `CFNumberGetValue` output.
-- Explicit signs in float formatting.
-- ABI-compatible stack, global and heap Objective-C blocks, including copy,
-  release, captured object/block handling and `__block` forwarding storage.
-- Class initialization for compiler-created Objective-C-compatible objects.
-- Stateful `NSOperationQueue` maximum concurrency accessors.
-- Guest IMP lookup through `+[NSObject instanceMethodForSelector:]`.
-- Compiler stack canary imports (`___stack_chk_guard` and
-  `__stack_chk_fail`).
-- Basic dispatch queue creation, main-queue lookup, inline async/sync block
-  invocation, and dispatch-object release compatibility.
-- Native Windows OpenGL ES 2.0 contexts, EAGL API 2 selection, shader/program
-  calls, ES2 renderbuffer presentation, and native OES vertex arrays.
-- Imported Apple multisample and discard entry points with conservative
-  single-sample/no-op fallbacks when the Windows driver lacks those exact
-  Apple extensions.
-- Retained `UIWindow.rootViewController` mounting and immediate
-  `performSelector:onThread:withObject:waitUntilDone:` compatibility.
+The current branch now exports `_NSLocaleLanguageCode` as an NSString constant
+and returns the stored locale language for both the Foundation and Core
+Foundation language-code keys. The focused export test and all 78 release
+library tests pass. `cargo check --release` also passes with only the existing
+unused GLES-method warning group. This implementation still needs an exact
+committed release build and visible canonical-IPA launch before the next
+runtime frontier is claimed.
+
+## Earlier noncanonical work
+
+The branch also contains reusable emulator work developed while the mismatched
+21.9 MB local file was mistakenly treated as the target. That work includes
+Foundation/Core Foundation behavior, Objective-C blocks and initialization,
+dispatch queues, native ES2 and iOS GL extension support, UIKit controller
+mounting, standard-stream routing, `NSProcessInfo.environment`, and Darwin
+`sigaltstack` behavior.
+
+The implementations have their own automated checks, and the signal-stack
+work received a focused ABI/semantics review. However, the old file's progress
+through display-loop setup and `_sigaltstack` is not Baby Monkey compatibility
+evidence. Revalidate relevant milestones against the canonical Archive bytes
+instead of continuing from the discarded file's last log.
+
+The native ES2 provenance recorded in older branch documentation was also too
+imprecise: HyperHLE commit `ec06f12b` is a later tree snapshot, not the
+originating ES2 change. The implementation first appears in HyperHLE commit
+`d640dd4ddba1deb4c5eac9761239921bb3245601`, authored by Бусик and co-authored
+by Devin AI. Preserve this correction prospectively without rewriting the
+published tapHLE commit.
 
 ## Next discriminator
 
-Do not continue adding unrelated missing constants from the startup warning
-list. Implement and test `-[NSProcessInfo environment]` which is where the game
-currently crashes. Determine what environment variables the game expects from
-this dictionary (e.g. system properties) to proceed further towards a presented frame.
+1. Commit the reviewed locale-key implementation.
+2. Build that exact commit in release mode.
+3. Recalculate the canonical IPA hash and launch it visibly from an isolated
+   Windows run directory.
+4. Confirm that `_NSLocaleLanguageCode` is no longer unresolved and that guest
+   PC `0xc1010` is passed.
+5. Resolve only the next evidenced API, ABI, lifetime, or rendering boundary.
 
-The native ES 2.0 work was adapted from the smaller HyperHLE snapshot at
-`ec06f12b886a166b220df94d44861a2de78299b3`, with authorship retained in the
-port commit. This result supports the existing decision to review and port
-coherent subsystems rather than switching tapHLE's base. It is not the whole
-of HyperHLE's later ES 2.0/3.0 stack.
-
-Do not use `--headless` for this test. Baby Monkey enters UIKit/window code
-that requires a real tapHLE window, so headless mode creates an unrelated
-window unwrap failure before the useful graphics frontier.
+Do not use `--headless`: UIKit/EAGL startup needs a real tapHLE window and a
+headless unwrap failure would be unrelated. Do not add a compatibility report
+or star rating until a human-visible milestone is reproduced from a committed
+build using these exact canonical bytes.
 
 ## Verification performed
 
-- `cargo check --release` passes with one dead-code warning group for GLES
-  trait methods that are not exported yet.
-- A full Windows release build succeeded after each runtime-facing checkpoint.
-- The exact SHA-256 was recalculated before every launch.
-- Successive bounded windowed runs proved these former stops were passed:
-  EAGL API 2 rejection, null stack-canary import, missing
-  `_dispatch_queue_create`, missing `_glGenVertexArraysOES`, missing
-  `-[UIWindow setRootViewController:]`, and missing
-  `performSelector:onThread:withObject:waitUntilDone:`.
-- The most recent run reached the `CADisplayLink timestamp` stop described
-  above. Its raw log remains temporary evidence and is not committed.
-
-Before claiming an exact committed runtime result, rebuild the current branch
-tip and repeat the windowed launch. Before adding a database record, also
-complete live Archive verification and a human-visible playtest.
+- Archive metadata and the exact downloaded original agree on filename, size,
+  MD5, and SHA-1; SHA-256 was calculated locally.
+- `tapHLE ee21050a --info` reports version `1.01`, bundle
+  `com.kihon.babymonkey`, minimum OS `4.2`, and iPhone device family.
+- Static armv7 disassembly, indirect symbols, and runtime registers all agree
+  on the `_NSLocaleLanguageCode` null dereference.
+- The focused locale export test passes.
+- The release library test binary passes all 78 tests.
+- `cargo check --release` passes with the existing GLES dead-code warning
+  group.
+- The full integration test remains unavailable because the reviewed custom
+  test SDK and `tests/llvm/bin/clang.exe` are not installed; the failure is an
+  environment prerequisite, not an app result.

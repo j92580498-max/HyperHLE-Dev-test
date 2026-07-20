@@ -7,7 +7,9 @@
 
 use super::{ns_array, ns_string};
 use crate::dyld::{ConstantExports, HostConstant};
-use crate::frameworks::core_foundation::cf_locale::{kCFLocaleCountryCode, kCFLocaleIdentifier};
+use crate::frameworks::core_foundation::cf_locale::{
+    kCFLocaleCountryCode, kCFLocaleIdentifier, kCFLocaleLanguageCode,
+};
 use crate::objc::{
     autorelease, id, msg, nil, objc_classes, release, retain, ClassExports, HostObject, NSZonePtr,
 };
@@ -16,6 +18,7 @@ use crate::Environment;
 
 const NSLocaleCountryCode: &str = "NSLocaleCountryCode";
 const NSLocaleIdentifier: &str = "NSLocaleIdentifier";
+const NSLocaleLanguageCode: &str = "NSLocaleLanguageCode";
 
 pub const CONSTANTS: ConstantExports = &[
     (
@@ -25,6 +28,10 @@ pub const CONSTANTS: ConstantExports = &[
     (
         "_NSLocaleIdentifier",
         HostConstant::NSString(NSLocaleIdentifier),
+    ),
+    (
+        "_NSLocaleLanguageCode",
+        HostConstant::NSString(NSLocaleLanguageCode),
     ),
 ];
 
@@ -198,6 +205,11 @@ pub const CLASSES: ClassExports = objc_classes! {
             let &NSLocaleHostObject { country_code, .. } = env.objc.borrow(this);
             country_code
         },
+        // TODO: Define NSLocaleLanguageCode _as_ kCFLocaleLanguageCode
+        NSLocaleLanguageCode | kCFLocaleLanguageCode => {
+            let &NSLocaleHostObject { language_code, .. } = env.objc.borrow(this);
+            language_code
+        },
         // TODO: Define NSLocaleIdentifier _as_ kCFLocaleIdentifier
         NSLocaleIdentifier | kCFLocaleIdentifier => {
             let &NSLocaleHostObject { country_code, language_code } = env.objc.borrow(this);
@@ -218,3 +230,21 @@ pub const CLASSES: ClassExports = objc_classes! {
 @end
 
 };
+
+#[cfg(test)]
+mod tests {
+    use super::{HostConstant, NSLocaleLanguageCode, CONSTANTS};
+
+    #[test]
+    fn exports_language_code_key() {
+        let (_, constant) = CONSTANTS
+            .iter()
+            .find(|(name, _)| *name == "_NSLocaleLanguageCode")
+            .expect("NSLocaleLanguageCode export is missing");
+
+        match constant {
+            HostConstant::NSString(value) => assert_eq!(*value, NSLocaleLanguageCode),
+            _ => panic!("NSLocaleLanguageCode must be an NSString constant"),
+        }
+    }
+}
