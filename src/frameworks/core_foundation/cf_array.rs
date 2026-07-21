@@ -9,10 +9,15 @@
 //! implementation. Here they are the same types.
 
 use super::cf_allocator::{kCFAllocatorDefault, CFAllocatorRef};
-use super::CFIndex;
-use crate::dyld::{export_c_func, FunctionExports};
+use super::cf_string::CFStringRef;
+use super::cf_type::CFEqual;
+use super::{kCFNotFound, CFIndex, CFRange, CFRelease, CFRetain};
+use crate::abi::GuestFunction;
+use crate::dyld::{
+    export_c_func, ConstantExports, Dyld, FunctionExports, HostConstant, HostFunction,
+};
 use crate::frameworks::foundation::NSUInteger;
-use crate::mem::ConstVoidPtr;
+use crate::mem::{ConstPtr, ConstVoidPtr, Mem, SafeRead};
 use crate::objc::{id, msg, msg_class};
 use crate::Environment;
 
@@ -20,17 +25,44 @@ use crate::Environment;
 pub type CFArrayRef = super::CFTypeRef;
 pub type CFMutableArrayRef = super::CFTypeRef;
 
+/// The layout of `CFArrayCallBacks` in guest memory. This is the same shape as
+/// `CFDictionaryValueCallBacks`.
+#[repr(C, packed)]
+pub struct CFArrayCallBacks {
+    pub version: CFIndex,         // version
+    pub retain: GuestFunction,    // const void *(*retain)(CFAllocatorRef, const void *value)
+    pub release: GuestFunction,   // void (*release)(CFAllocatorRef alloc, const void *val)
+    pub copy_desc: GuestFunction, // CFStringRef (*copy_desc)(const void *val)
+    pub equal: GuestFunction,     // Boolean (*equal)(const void *val1, const void *val2)
+}
+unsafe impl SafeRead for CFArrayCallBacks {}
+
 fn CFArrayCreateMutable(
     env: &mut Environment,
     allocator: CFAllocatorRef,
     capacity: CFIndex,
-    callbacks: ConstVoidPtr, // TODO, should be `const CFArrayCallBacks*`
+    callbacks: ConstPtr<CFArrayCallBacks>,
 ) -> CFMutableArrayRef {
     assert!(allocator == kCFAllocatorDefault || env.mem.read(allocator).is_system_default()); // unimplemented
     assert!(capacity == 0); // TODO: fixed capacity support
-    assert!(callbacks.is_null()); // TODO: support retaining etc
 
-    msg_class![env; _tapHLE_NSMutableArray_non_retaining new]
+    // A NULL callbacks pointer means the array does not retain/release its
+    // values (they need not even be objects). A callbacks struct with a
+    // non-NULL retain callback (e.g. `kCFTypeArrayCallBacks`) means the array
+    // retains its values as CF/Objective-C objects, which we model with the
+    // ordinary retaining `_tapHLE_NSMutableArray`.
+    let retaining = if callbacks.is_null() {
+        false
+    } else {
+        let retain = env.mem.read(callbacks).retain;
+        !retain.to_ptr().is_null()
+    };
+
+    if retaining {
+        msg_class![env; _tapHLE_NSMutableArray new]
+    } else {
+        msg_class![env; _tapHLE_NSMutableArray_non_retaining new]
+    }
 }
 
 fn CFArrayGetCount(env: &mut Environment, array: CFArrayRef) -> CFIndex {
@@ -44,6 +76,33 @@ fn CFArrayGetValueAtIndex(env: &mut Environment, array: CFArrayRef, idx: CFIndex
     value.cast().cast_const()
 }
 
+fn CFArrayGetFirstIndexOfValue(
+    env: &mut Environment,
+    array: CFArrayRef,
+    range: CFRange,
+    value: ConstVoidPtr,
+) -> CFIndex {
+    let count: NSUInteger = msg![env; array count];
+    let start = range.location;
+    let end = range.location.checked_add(range.length).unwrap();
+    assert!(start >= 0 && end >= 0 && (end as NSUInteger) <= count); // range must be valid
+
+    let value: id = value.cast().cast_mut();
+    for i in start..end {
+        let idx: NSUInteger = i.try_into().unwrap();
+        let curr: id = msg![env; array objectAtIndex:idx];
+        // CF's default equal callback compares by pointer identity, then by the
+        // value's equality. NSObject's isEqual: is pointer identity and CF-typed
+        // subclasses (NSString, NSNumber, ...) override it, so this mirrors both
+        // the CF semantics and the sibling `NSArray indexOfObject:`.
+        let equal: bool = msg![env; value isEqual:curr];
+        if equal {
+            return i;
+        }
+    }
+    kCFNotFound
+}
+
 fn CFArrayAppendValue(env: &mut Environment, array: CFMutableArrayRef, value: ConstVoidPtr) {
     let value: id = value.cast().cast_mut();
     msg![env; array addObject:value]
@@ -54,10 +113,65 @@ fn CFArrayRemoveValueAtIndex(env: &mut Environment, array: CFMutableArrayRef, id
     msg![env; array removeObjectAtIndex:idx]
 }
 
+// Default CFArray callbacks, matching `kCFTypeArrayCallBacks`. tapHLE does not
+// call these itself (retaining is handled by the chosen array class), but the
+// guest may read the struct or invoke the callbacks directly, so they behave as
+// CF-type retain/release/equal.
+fn _tapHLE_CFArray_retain(
+    env: &mut Environment,
+    allocator: CFAllocatorRef,
+    value: ConstVoidPtr,
+) -> ConstVoidPtr {
+    assert!(allocator == kCFAllocatorDefault || env.mem.read(allocator).is_system_default()); // unimplemented
+    CFRetain(env, value.cast_mut().cast()).cast_const().cast()
+}
+fn _tapHLE_CFArray_release(env: &mut Environment, allocator: CFAllocatorRef, value: ConstVoidPtr) {
+    assert!(allocator == kCFAllocatorDefault || env.mem.read(allocator).is_system_default()); // unimplemented
+    CFRelease(env, value.cast_mut().cast());
+}
+fn _tapHLE_CFArray_copyDescription(_env: &mut Environment, _value: ConstVoidPtr) -> CFStringRef {
+    todo!()
+}
+fn _tapHLE_CFArray_equal(env: &mut Environment, value1: ConstVoidPtr, value2: ConstVoidPtr) -> bool {
+    CFEqual(env, value1.cast_mut().cast(), value2.cast_mut().cast())
+}
+
+fn create_default_callbacks(mem: &mut Mem, dyld: &mut Dyld) -> CFArrayCallBacks {
+    let retain_hf: HostFunction = &(_tapHLE_CFArray_retain as fn(&mut Environment, _, _) -> _);
+    let retain = dyld.create_guest_function(mem, "__tapHLE_CFArray_retain", retain_hf);
+
+    let release_hf: HostFunction = &(_tapHLE_CFArray_release as fn(&mut Environment, _, _));
+    let release = dyld.create_guest_function(mem, "__tapHLE_CFArray_release", release_hf);
+
+    let copy_desc_hf: HostFunction =
+        &(_tapHLE_CFArray_copyDescription as fn(&mut Environment, _) -> _);
+    let copy_desc = dyld.create_guest_function(mem, "__tapHLE_CFArray_copyDescription", copy_desc_hf);
+
+    let equal_hf: HostFunction = &(_tapHLE_CFArray_equal as fn(&mut Environment, _, _) -> _);
+    let equal = dyld.create_guest_function(mem, "__tapHLE_CFArray_equal", equal_hf);
+
+    CFArrayCallBacks {
+        version: 0, // always 0
+        retain,
+        release,
+        copy_desc,
+        equal,
+    }
+}
+
+pub const CONSTANTS: ConstantExports = &[(
+    "_kCFTypeArrayCallBacks",
+    HostConstant::Custom(|env| {
+        let callbacks = create_default_callbacks(&mut env.mem, &mut env.dyld);
+        env.mem.alloc_and_write(callbacks).cast_void().cast_const()
+    }),
+)];
+
 pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(CFArrayCreateMutable(_, _, _)),
     export_c_func!(CFArrayGetCount(_)),
     export_c_func!(CFArrayGetValueAtIndex(_, _)),
+    export_c_func!(CFArrayGetFirstIndexOfValue(_, _, _)),
     export_c_func!(CFArrayAppendValue(_, _)),
     export_c_func!(CFArrayRemoveValueAtIndex(_, _)),
 ];
