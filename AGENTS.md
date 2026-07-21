@@ -229,6 +229,15 @@ refactors, mass formatting, dependency upgrades, or platform work unrelated to
 the target game. Keep commits and pull requests small enough to test and
 revert. Never add a proprietary game to a test fixture.
 
+Clean up after yourself. Transient artifacts an agent creates while working —
+run logs, captured console output, disassembly dumps, extracted binaries,
+throwaway scripts, patch files, screenshots — must be deleted before you
+commit, not merely added to `.gitignore`. Ignoring a scratch file only hides it
+from Git; it still litters every working tree and invites confusion. Prefer to
+write throwaway artifacts outside the checkout, in an OS temporary directory, so
+they never risk entering the repository. A commit and a clean `git status`
+should contain only files that carry lasting value.
+
 Credit material coding-agent authorship in every commit the agent creates.
 Use a standard `Co-authored-by:` trailer with the agent or tool identity; Codex
 commits use `Co-authored-by: OpenAI Codex <codex@openai.com>`. Do not add an
@@ -257,6 +266,17 @@ Correct the relevant agent guide or playbook in the same work, stating the
 intended rule clearly enough that another context-free agent will not repeat
 the mistake. Keep that documentation correction separate from unfinished app
 runtime code when their publication scopes differ.
+
+Treat a correction from the maintainer the same way, and treat capturing it as
+a standing responsibility rather than an optional courtesy. When the maintainer
+corrects a misconception, overrules an assumption, or states an expectation you
+did not infer, record that rule in the canonical documentation during the same
+session — not only in your reply, which the next agent never sees. Write it
+where a context-free agent will find it: a project-wide expectation belongs in
+this guide or the relevant playbook, phrased as a general rule for all agents
+rather than a note about the single incident that prompted it. The measure of a
+correction is not that this session complied, but that no future agent has to be
+corrected again.
 
 Keep app identity, exact runtime evidence, unresolved hypotheses, and the next
 app-specific discriminator in that app's `compat/<app-slug>` continuation note.
