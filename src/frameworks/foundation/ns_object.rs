@@ -24,6 +24,7 @@ use crate::objc::{
     autorelease, id, msg, msg_class, msg_send, msg_send_no_type_checking, nil, objc_classes,
     retain, Class, ClassExports, NSZonePtr, ObjC, TrivialHostObject, IMP, SEL,
 };
+use crate::Environment;
 
 pub const CLASSES: ClassExports = objc_classes! {
 
@@ -189,27 +190,38 @@ pub const CLASSES: ClassExports = objc_classes! {
     // checked. If it's non-object type, invoke setNilValueForKey:
     assert!(value != nil);
 
-    // TODO: If value is a NSNumber or NSValue, it must be unwrapped
+    // When the value is a boxed scalar (NSNumber/NSValue) but the target
+    // accessor takes a plain scalar (e.g. -[... setVolume:(double)]), KVC
+    // unwraps the box and passes the scalar by value. `kvc_set_unwrapped_scalar`
+    // consults the setter's type encoding and handles that; an object-typed
+    // setter falls through to receive the boxed value unchanged.
     let value_class = msg![env; value class];
     let ns_value_class = env.objc.get_known_class("NSValue", &mut env.mem);
-    assert!(!env.objc.class_is_subclass_of(value_class, ns_value_class));
+    let value_is_boxed_scalar = env.objc.class_is_subclass_of(value_class, ns_value_class);
 
     // Look for the first accessor named set<Key>: or _set<Key>, in that order.
     // If found, invoke it with the input value (or unwrapped value, as needed)
     // and finish.
-    if let Some(sel) = env.objc.lookup_selector(&format!("set{camel_case_key_string}:")) {
-        if env.objc.class_has_method(class, sel) {
-            () = msg_send(env, (this, sel, value));
+    let setter = env
+        .objc
+        .lookup_selector(&format!("set{camel_case_key_string}:"))
+        .filter(|&sel| env.objc.class_has_method(class, sel))
+        .or_else(|| {
+            env.objc
+                .lookup_selector(&format!("_set{camel_case_key_string}:"))
+                .filter(|&sel| env.objc.class_has_method(class, sel))
+        });
+    if let Some(sel) = setter {
+        if value_is_boxed_scalar && kvc_set_unwrapped_scalar(env, this, sel, value) {
             return;
         }
+        () = msg_send(env, (this, sel, value));
+        return;
     }
 
-    if let Some(sel) = env.objc.lookup_selector(&format!("_set{camel_case_key_string}:")) {
-        if env.objc.class_has_method(class, sel) {
-            () = msg_send(env, (this, sel, value));
-            return;
-        }
-    }
+    // TODO: a boxed scalar written into a scalar ivar directly (no accessor)
+    // still needs unwrapping via the ivar's type encoding; the direct-ivar path
+    // below only handles object-typed ivars.
 
     // If no simple accessor is found, and if the class method
     // accessInstanceVariablesDirectly returns YES, look for an instance
@@ -407,3 +419,74 @@ forUndefinedKey:(id)key { // NSString*
 @end
 
 };
+
+/// Key-Value Coding helper: if `setter` takes a plain scalar argument, unwrap
+/// the boxed scalar `value` (an `NSNumber`/`NSValue`) to that type and invoke
+/// the setter, returning `true`. Returns `false` when the setter takes an object
+/// (or a type we do not unwrap yet), so the caller passes the boxed value
+/// through unchanged.
+///
+/// The argument type comes from the setter's Objective-C method type encoding,
+/// which is authoritative for the wire type: e.g. `float` and `double` occupy a
+/// different number of argument registers, so choosing the wrong one would place
+/// the value incorrectly even when the `NSNumber`'s own `objCType` differs.
+fn kvc_set_unwrapped_scalar(env: &mut Environment, this: id, setter: SEL, value: id) -> bool {
+    let class = ObjC::read_isa(this, &env.mem);
+    let Some(&signature) = env.objc.class_get_method_signature(class, setter) else {
+        return false;
+    };
+    let Ok(signature) = env.mem.cstr_at_utf8(signature) else {
+        return false;
+    };
+    // A method type encoding is <return><self@><cmd:><arg…> with a numeric byte
+    // offset after each type. Dropping the digits leaves the ordered type
+    // tokens; a unary setter's value argument is the fourth token (return, self,
+    // _cmd, value).
+    let tokens: Vec<u8> = signature.bytes().filter(|b| !b.is_ascii_digit()).collect();
+    let mut i = 3;
+    // Skip any type qualifiers (const, in, out, …) that may precede the type.
+    while tokens
+        .get(i)
+        .is_some_and(|b| matches!(b, b'r' | b'n' | b'N' | b'o' | b'O' | b'R' | b'V'))
+    {
+        i += 1;
+    }
+    let Some(&arg_type) = tokens.get(i) else {
+        return false;
+    };
+
+    // See `impl GuestArg` in abi.rs: scalar arguments (including `f32`/`f64`) are
+    // passed in the core argument registers, so unwrapping to the matching Rust
+    // type places the value the same way the guest compiler emitted the call.
+    match arg_type {
+        b'f' => {
+            let v: f32 = msg![env; value floatValue];
+            () = msg_send(env, (this, setter, v));
+        }
+        b'd' => {
+            let v: f64 = msg![env; value doubleValue];
+            () = msg_send(env, (this, setter, v));
+        }
+        // `c`/`B` cover BOOL/char/_Bool; a boxed 0/1 is the common case.
+        b'c' | b'B' => {
+            let v: bool = msg![env; value boolValue];
+            () = msg_send(env, (this, setter, v));
+        }
+        b'i' | b'l' | b's' => {
+            let v: i32 = msg![env; value intValue];
+            () = msg_send(env, (this, setter, v));
+        }
+        b'I' | b'L' | b'S' => {
+            let v: u32 = msg![env; value unsignedIntValue];
+            () = msg_send(env, (this, setter, v));
+        }
+        b'q' | b'Q' => {
+            let v: i64 = msg![env; value longLongValue];
+            () = msg_send(env, (this, setter, v));
+        }
+        // '@' (object), '{' (struct), '^' (pointer), etc.: not a scalar we
+        // unwrap; let the caller pass the boxed value through.
+        _ => return false,
+    }
+    true
+}
