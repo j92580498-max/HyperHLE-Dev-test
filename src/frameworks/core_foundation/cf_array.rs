@@ -108,6 +108,28 @@ fn CFArrayAppendValue(env: &mut Environment, array: CFMutableArrayRef, value: Co
     msg![env; array addObject:value]
 }
 
+fn CFArrayInsertValueAtIndex(
+    env: &mut Environment,
+    array: CFMutableArrayRef,
+    idx: CFIndex,
+    value: ConstVoidPtr,
+) {
+    let idx: NSUInteger = idx.try_into().unwrap();
+    let value: id = value.cast().cast_mut();
+    msg![env; array insertObject:value atIndex:idx]
+}
+
+fn CFArraySetValueAtIndex(
+    env: &mut Environment,
+    array: CFMutableArrayRef,
+    idx: CFIndex,
+    value: ConstVoidPtr,
+) {
+    let idx: NSUInteger = idx.try_into().unwrap();
+    let value: id = value.cast().cast_mut();
+    msg![env; array replaceObjectAtIndex:idx withObject:value]
+}
+
 fn CFArrayRemoveValueAtIndex(env: &mut Environment, array: CFMutableArrayRef, idx: CFIndex) {
     let idx: NSUInteger = idx.try_into().unwrap();
     msg![env; array removeObjectAtIndex:idx]
@@ -173,5 +195,7 @@ pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(CFArrayGetValueAtIndex(_, _)),
     export_c_func!(CFArrayGetFirstIndexOfValue(_, _, _)),
     export_c_func!(CFArrayAppendValue(_, _)),
+    export_c_func!(CFArrayInsertValueAtIndex(_, _, _)),
+    export_c_func!(CFArraySetValueAtIndex(_, _, _)),
     export_c_func!(CFArrayRemoveValueAtIndex(_, _)),
 ];
