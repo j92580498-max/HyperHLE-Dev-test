@@ -317,6 +317,16 @@ pub fn init_with_objects_and_keys(
 
 /// Helper function to share `initWithDictionary:` implementations
 fn init_with_dictionary_common(env: &mut Environment, this: id, other_dict: id) -> id {
+    // Foundation tolerates a nil source dictionary, producing an empty
+    // dictionary instead of raising. Baby Monkey's Cocos2D command dispatch
+    // (`onCommandDispatch:` for kCCInitializeUserModelNotification) relies on
+    // `[[NSMutableDictionary alloc] initWithDictionary:nil]` returning an empty
+    // dictionary; sending count/getObjects to a nil dictionary on-device yields
+    // nothing, so the result is empty.
+    if other_dict == nil {
+        *env.objc.borrow_mut(this) = <DictionaryHostObject as Default>::default();
+        return this;
+    }
     let other_host_object: DictionaryHostObject = std::mem::take(env.objc.borrow_mut(other_dict));
 
     let mut host_object = <DictionaryHostObject as Default>::default();
@@ -900,6 +910,13 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (())addEntriesFromDictionary:(id)other { // NSDictionary *
+    // Foundation enumerates the source dictionary's entries, so a nil source is
+    // a no-op rather than a raise. This also covers `registerDefaults:nil`,
+    // which forwards its argument here unguarded (e.g. when the guest passes a
+    // `dictionaryWithContentsOfFile:` result for a missing plist).
+    if other == nil {
+        return;
+    }
     let host_obj: DictionaryHostObject = std::mem::take(env.objc.borrow_mut(other));
     for (k, v) in host_obj.map.values().flatten() {
         () = msg![env; this setObject:(*v) forKey:(*k)];
