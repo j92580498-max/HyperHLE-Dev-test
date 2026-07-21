@@ -109,6 +109,49 @@ Two known limitations at this checkpoint:
   working directory (`/`). Menu audio is therefore silent. This relative-path
   resolution against the app bundle is the next evidenced frontier.
 
+## Gameplay-load investigation (2026-07-21)
+
+Clicking the rendered menu's Play button (via process-scoped foreground input)
+dismisses the menu and begins loading the gameplay scene. That load hit a
+sequence of frontiers, each fixed with a reusable behavior:
+
+1. `-[NSMutableSet objectsPassingTest:]` was unimplemented. Now implemented via
+   a new reusable `objc::blocks::block_invoke_function` helper.
+2. `CGRectFromString(nil)` panicked in `to_rust_string`. The `*FromString`
+   geometry parsers now return zeroes for a nil string, matching Apple's
+   documented not-well-formed behavior.
+3. `CFArrayInsertValueAtIndex` was unimplemented (added, with
+   `CFArraySetValueAtIndex`).
+4. Current frontier: the game dispatches its custom `onTouchesBegan:` selector
+   to a responder list that contains an `NSString`, which panics. `respondsTo
+   Selector:` is correct, so the game is not filtering — the list is genuinely
+   corrupt.
+
+Root cause (evidence-backed, not yet fixed): the gameplay scene is a black
+screen because its object graph is being decoded with missing/wrong values. The
+game is a **custom engine** whose `.prefab`/`.scene` files are **XML property
+lists that are `NSKeyedArchiver` archives**, decoded through `NSKeyedUnarchiver`
++ guest `initWithCoder:` (all of `NSKeyedUnarchiver`, `unarchiveObjectWith...`,
+`initWithCoder`, `NSCoding` appear in the binary). tapHLE has an
+`NSKeyedUnarchiver`, and the simpler `MainMenu.prefab` decodes well enough to
+render the menu, but the richer gameplay prefab exposes decoding gaps that yield
+`nil` rects and `NSString`s where game objects belong — producing both the nil
+`CGRectFromString` and the `NSString`-in-responders panic. The next
+discriminator is to instrument the keyed-unarchiver decode path and find which
+`decodeObjectForKey:`/reference resolution returns the wrong value for the
+gameplay archive.
+
+Separately (non-fatal): the game's engine locates audio correctly under
+`bm/audio/` (an existence probe for `.../BabyMonkey.app/bm/audio/YaYaYaYa.wav`
+returns true), but the sound engine loads via a `pathForResource`-style lookup
+that searches `<resourcePath>/audio/` (bundle root, not `bm/`) and misses, so
+every sound fails with `FileReadError`. The game survives without audio. This is
+a genuine engine/path quirk of this build, not the fatal blocker.
+
+Rating at this checkpoint remains **★★☆☆☆ (2/5) Starts** — an interactive menu
+works, gameplay does not yet render. Reaching 3/5 In game requires completing
+the keyed-unarchiver decoding of the gameplay object graph.
+
 ## Earlier noncanonical work
 
 The branch also contains reusable emulator work developed while the mismatched
