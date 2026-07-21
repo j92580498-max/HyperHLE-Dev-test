@@ -145,6 +145,37 @@ state and known limitations, and passes normal regression checks should be
 merged to `trunk`. Full playability is not required. Provisional dirty worktree
 results never enter the compatibility database.
 
+## Branch naming
+
+Every branch uses exactly one root from the closed set below. This set is
+deliberately exhaustive: do not invent a new root. If a change seems not to fit,
+it almost always belongs in an existing root — classify it by the branch's
+primary deliverable. Keeping the set small is the point; an unbounded set of
+ad-hoc prefixes is the sprawl this rule exists to prevent.
+
+- `trunk` — the single integration mainline. Everything lands here by merge.
+  Do not develop a game, feature, or fix directly on `trunk`; use a typed
+  branch and merge it in.
+- `compat/<app-slug>` — work whose goal is advancing one game, such as
+  `compat/baby-monkey`. Reusable fixes discovered here graduate to `trunk`;
+  the game's runtime continuation note stays on the branch.
+- `feat/<slug>` — a new emulator capability or subsystem that is not driven by a
+  single game, such as a framework implementation or a graphics-backend port.
+- `fix/<slug>` — a correction to existing behavior that is not scoped to one
+  game: a bug, a regression, a lint failure, or a dependency or toolchain
+  repair.
+- `infra/<slug>` — repository plumbing: CI, build scripts, developer tooling,
+  the compatibility-database machinery, versioning, and release preparation.
+- `docs/<slug>` — documentation-only changes not tied to a single game.
+  Project-wide agent guidance lives here on its way to `trunk`; a game's own
+  continuation note lives on that game's `compat/` branch instead.
+
+Use a short, hyphenated slug after the root. When a change spans categories,
+name the branch for its primary deliverable and split genuinely independent
+deliverables into separate branches rather than widening one. Releases are tags
+on `trunk` (`dev-docs/releases.md`), not a branch root. Delete a branch once it
+has merged; do not leave merged or abandoned branches to accumulate.
+
 ## Code map
 
 - `src/bin.rs`, `src/lib.rs`: desktop entry point and main control flow.
