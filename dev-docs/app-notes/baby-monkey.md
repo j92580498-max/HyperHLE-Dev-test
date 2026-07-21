@@ -72,6 +72,43 @@ the mutable concrete class. All 78 release library tests and
 committed release build and visible canonical-IPA launch before the next
 runtime frontier is claimed.
 
+## Menu render checkpoint (2026-07-21)
+
+Building on the dictionary correction, the `compat/baby-monkey` branch advanced
+Baby Monkey through several further boundaries to a fully rendered, human-visible
+main menu. The observed sequence of frontiers and the fix for each:
+
+1. `initWithDictionary:nil` / `addEntriesFromDictionary:nil` panicked. Commit
+   `e74f836f` treats a nil source dictionary as empty.
+2. The unresolved non-lazy import `kCFTypeArrayCallBacks` dereferenced null.
+   Commit `efdd1394` exports it as a real callbacks struct, makes
+   `CFArrayCreateMutable` honour the callbacks' retain slot, and adds
+   `CFArrayGetFirstIndexOfValue` (the subsequent unimplemented import).
+3. `setValue:@(volume)forKey:@"volume"` on `KataCCBackgroundMusicBehavior` hit a
+   hard NSNumber assert. Commit `56ce209d` unwraps a boxed scalar into the
+   setter's encoded primitive type during key-value coding.
+4. The metaclass received the single-argument
+   `cancelPreviousPerformRequestsWithTarget:`. Commit `730b0246` adds it,
+   cancelling every queued perform request for the target.
+
+After these, the exact working tree now committed at `f71fbdcd` boots without
+panicking or segfaulting: it creates the GLES1-on-GL2 context, sets up the
+AVAudioSession, initialises the Chartboost/Flurry SDK stubs, opens OpenAL, and
+renders the interactive main menu (Play button, monkey and pig sprites,
+parallax background, and the four bottom-bar buttons). This is the first
+app-rendered frame established for Baby Monkey.
+
+Two known limitations at this checkpoint:
+
+- The menu was observed from a release binary built on the identical source now
+  committed at `f71fbdcd`, but the window title reported the pre-commit dirty
+  tree (`eb6397f7-dirty`). A clean rebuild at `f71fbdcd` should reproduce the
+  menu before any formal compatibility-database entry or star rating is added.
+- `AudioFileOpenURL()` fails to load the menu track: the game passes the
+  relative path `audio/YaYaYaYa.wav`, which does not resolve against the guest
+  working directory (`/`). Menu audio is therefore silent. This relative-path
+  resolution against the app bundle is the next evidenced frontier.
+
 ## Earlier noncanonical work
 
 The branch also contains reusable emulator work developed while the mismatched
