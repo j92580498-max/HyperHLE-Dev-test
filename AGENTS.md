@@ -39,13 +39,15 @@ refactor it unless the maintainer explicitly asks.
 
 ## Agent capability
 
-As of 2026-07-18, maintainer experiments found that Terra and Luna were not
-reliable enough to push tapHLE compatibility work forward on their own. Do not
-use either one as the sole agent for emulator diagnosis, implementation, or a
-checkpoint claim. Any work they produce needs review and exact Windows
-retesting by a stronger agent or a human before it is trusted. Terra may be
-tried at maximum effort for a narrow, independently reviewable subtask, but it
-does not replace those review and retest requirements.
+An early experiment on 2026-07-18 saw Terra and Luna struggle to push tapHLE
+compatibility work forward on their own. Treat that as a single dated
+observation, not a settled verdict: it may reflect insufficiently specific task
+instructions on that run rather than a fixed capability limit, so it is not a
+ban on either agent. The durable rule it points to applies to every agent
+regardless of model — give a narrow, well-specified, independently reviewable
+task, and review and exactly retest agent work on Windows before trusting it.
+Record new dated results in `dev-docs/agent-capability-log.md` so this note can
+be revised as evidence accumulates.
 
 `dev-docs/agent-capability-log.md` records dated, task-specific results for
 models and agent surfaces tried on tapHLE. Read it before choosing an agent and
