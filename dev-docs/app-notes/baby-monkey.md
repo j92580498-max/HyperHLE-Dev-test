@@ -152,6 +152,26 @@ Rating at this checkpoint remains **★★☆☆☆ (2/5) Starts** — an intera
 works, gameplay does not yet render. Reaching 3/5 In game requires completing
 the keyed-unarchiver decoding of the gameplay object graph.
 
+Follow-up (same day): a first, general unarchiver bug was fixed — a UID
+reference to `$objects[0]` (the "$null" placeholder) was being decoded as a real
+`NSString "$null"` instead of nil, corrupting every nil property/element/handler
+in the graph. `unarchive_key` now returns nil for UID 0. That cleared the
+`onTouchesBegan:`-on-`NSString` panic and the process now survives clicking Play
+without that crash, but the gameplay scene is still black and now panics with
+`onTouchesBegan:` sent to an `_tapHLE_NSArray`.
+
+The gameplay scene is `bm/GameScene.scene`, a 56 KB XML-plist keyed archive for
+the game's own component engine ("Kata"): ~85 `KataUserBehaviorBase` behaviors
+plus `KataCCAnimationBehavior`, `KataCC*`, `bm*`, and ~30 `*Alias`
+(`kSpatialBehaviorAlias`, `kImageBehaviorAlias`, `kSpriteBehaviorAlias`)
+instances. The scene crashes during behavior-graph setup before its first frame,
+which is why the screen is black. Getting to 3/5 is therefore a bounded but
+substantial effort: complete the keyed-unarchiver + guest `initWithCoder:`
+decoding of this behavior graph so no behavior slot resolves to a wrong-typed
+object (`NSArray`/etc.). Next discriminator: instrument `unarchive_key` to log
+the decoded class per UID and trace which behavior/alias reference resolves to
+an array where a `Kata*` behavior is expected.
+
 ## Earlier noncanonical work
 
 The branch also contains reusable emulator work developed while the mismatched
