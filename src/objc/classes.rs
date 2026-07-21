@@ -60,6 +60,52 @@ pub(super) enum InitializationStatus {
     Initialized,
 }
 
+fn reconcile_ivar_offsets(
+    mem: &mut Mem,
+    ivars: &HashMap<String, (ConstPtr<GuestUSize>, u32)>,
+    mut diff: GuestUSize,
+) -> GuestUSize {
+    let mut max_alignment: GuestUSize = 1;
+    for (offset, alignment_raw) in ivars.values() {
+        if offset.is_null() {
+            // Anonymous bitfield.
+            continue;
+        }
+        // Objective-C metadata stores log2(alignment), except that UINT32_MAX
+        // means the guest word size. This matches ivar_t::alignment() in
+        // Apple's runtime.
+        let alignment = if *alignment_raw == u32::MAX {
+            guest_size_of::<GuestUSize>()
+        } else {
+            1_u32
+                .checked_shl(*alignment_raw)
+                .expect("Invalid Objective-C ivar alignment")
+        };
+        max_alignment = max_alignment.max(alignment);
+    }
+
+    let align_mask = max_alignment - 1;
+    diff = (diff + align_mask) & !align_mask;
+
+    for (offset, _) in ivars.values() {
+        if offset.is_null() {
+            continue;
+        }
+
+        // The compiler-generated getter loads the ivar offset through this
+        // pointer, so reconciliation must update the pointed-to value. Moving
+        // our bookkeeping pointer instead leaves guest code using the stale
+        // offset.
+        let old_offset = mem.read(*offset);
+        let new_offset = old_offset
+            .checked_add(diff)
+            .expect("Objective-C ivar offset overflow");
+        mem.write(offset.cast_mut(), new_offset);
+    }
+
+    diff
+}
+
 /// Placeholder object for classes and metaclasses referenced by the app that
 /// we don't have an implementation for.
 ///
@@ -727,31 +773,12 @@ impl ObjC {
                 let ClassHostObject {
                     ref mut instance_start,
                     ref mut instance_size,
-                    ref mut ivars,
+                    ref ivars,
                     ..
                 } = self.borrow_mut(next);
 
                 if !ivars.is_empty() {
-                    let mut max_alignment: u32 = 1;
-                    for (offset, align) in ivars.values() {
-                        if offset.is_null() {
-                            // anonymous bitfield
-                            continue;
-                        }
-                        max_alignment = max_alignment.max(*align);
-                    }
-
-                    let align_mask = max_alignment - 1;
-                    diff = (diff + align_mask) & !align_mask;
-
-                    for (offset, _) in ivars.values_mut() {
-                        if offset.is_null() {
-                            // anonymous bitfield
-                            continue;
-                        }
-
-                        *offset = Ptr::from_bits((*offset).to_bits() + diff);
-                    }
+                    diff = reconcile_ivar_offsets(mem, ivars, diff);
                 }
 
                 *instance_start += diff;
@@ -1000,6 +1027,81 @@ impl ObjC {
         }
         let host_object = self.get_host_object(class).unwrap();
         matches!(host_object.as_any().downcast_ref(), Some(FakeClass { .. }))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ivar_reconciliation_updates_offset_values_and_preserves_alignment() {
+        let mut mem = Mem::new();
+        mem.set_null_segment_size(0x1000);
+
+        let first_offset: MutPtr<GuestUSize> = Ptr::from_bits(0x1000);
+        let second_offset = first_offset + 1;
+        mem.write(first_offset, 4);
+        mem.write(second_offset, 8);
+
+        let mut ivars = HashMap::new();
+        ivars.insert("first".to_string(), (first_offset.cast_const(), 2));
+        ivars.insert("second".to_string(), (second_offset.cast_const(), 3));
+
+        // Raw alignment values are log2 encoded, so a five-byte displacement
+        // must round up to eight before the stored values move.
+        let diff = reconcile_ivar_offsets(&mut mem, &ivars, 5);
+
+        assert_eq!(diff, 8);
+        assert_eq!(mem.read(first_offset), 12);
+        assert_eq!(mem.read(second_offset), 16);
+        assert_eq!(ivars["first"].0, first_offset.cast_const());
+        assert_eq!(ivars["second"].0, second_offset.cast_const());
+    }
+
+    #[test]
+    fn ivar_reconciliation_treats_max_alignment_as_word_size() {
+        let mut mem = Mem::new();
+        mem.set_null_segment_size(0x1000);
+
+        let offset: MutPtr<GuestUSize> = Ptr::from_bits(0x1000);
+        mem.write(offset, 20);
+
+        let mut ivars = HashMap::new();
+        // u32::MAX encodes "guest word size" (4 bytes here), matching Apple's
+        // ivar_t::alignment(), rather than 1 << u32::MAX.
+        ivars.insert("word".to_string(), (offset.cast_const(), u32::MAX));
+
+        let diff = reconcile_ivar_offsets(&mut mem, &ivars, 5);
+
+        // Word-size alignment rounds the five-byte displacement up to eight.
+        assert_eq!(diff, 8);
+        assert_eq!(mem.read(offset), 28);
+    }
+
+    #[test]
+    fn ivar_reconciliation_skips_anonymous_bitfields() {
+        let mut mem = Mem::new();
+        mem.set_null_segment_size(0x1000);
+
+        let real_offset: MutPtr<GuestUSize> = Ptr::from_bits(0x1000);
+        mem.write(real_offset, 4);
+
+        let null_offset: ConstPtr<GuestUSize> = Ptr::from_bits(0);
+        let mut ivars = HashMap::new();
+        // A null offset pointer marks an anonymous bitfield: it must be skipped
+        // in both the alignment scan and the rewrite, so its large raw
+        // alignment does not inflate the displacement and its null pointer is
+        // never dereferenced.
+        ivars.insert("bitfield".to_string(), (null_offset, 31));
+        ivars.insert("real".to_string(), (real_offset.cast_const(), 0));
+
+        let diff = reconcile_ivar_offsets(&mut mem, &ivars, 3);
+
+        // Only the real ivar (alignment 1) participates, so the displacement
+        // stays three instead of being rounded up by the skipped bitfield.
+        assert_eq!(diff, 3);
+        assert_eq!(mem.read(real_offset), 7);
     }
 }
 
