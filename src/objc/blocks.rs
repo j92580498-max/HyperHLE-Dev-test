@@ -43,6 +43,16 @@ fn word_ptr(ptr: ConstVoidPtr, offset: GuestUSize) -> MutPtr<u32> {
     ptr.cast_mut().cast::<u32>() + offset
 }
 
+/// The guest function that implements a block's body, read from the block
+/// literal (word 3 of the layout). Per the Apple Blocks ABI, call the returned
+/// function with the block literal pointer as the hidden first argument,
+/// followed by the block's own declared arguments.
+pub fn block_invoke_function(env: &Environment, block: id) -> GuestFunction {
+    let block: ConstVoidPtr = block.cast().cast_const();
+    env.mem
+        .read(word_ptr(block, 3).cast::<GuestFunction>().cast_const())
+}
+
 fn block_flags(env: &Environment, block: ConstVoidPtr) -> u32 {
     env.mem.read(word_ptr(block, 1).cast_const())
 }

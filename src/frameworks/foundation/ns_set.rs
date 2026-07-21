@@ -9,11 +9,12 @@ use super::ns_array;
 use super::ns_dictionary::DictionaryHostObject;
 use super::ns_enumerator::{fast_enumeration_helper, NSFastEnumerationState};
 use super::NSUInteger;
-use crate::abi::DotDotDot;
+use crate::abi::{CallFromHost, DotDotDot};
 use crate::environment::Environment;
 use crate::mem::MutPtr;
 use crate::objc::{
-    autorelease, id, msg, msg_class, nil, objc_classes, retain, ClassExports, HostObject, NSZonePtr,
+    autorelease, block_invoke_function, id, msg, msg_class, nil, objc_classes, retain, ClassExports,
+    HostObject, NSZonePtr,
 };
 
 /// Belongs to _tapHLE_NSSet
@@ -111,6 +112,32 @@ pub const CLASSES: ClassExports = objc_classes! {
             return true;
         }
     }
+}
+
+// Returns a new set of the objects for which the predicate block returns YES.
+// The block is `BOOL (^)(id obj, BOOL *stop)`; setting *stop ends enumeration.
+- (id)objectsPassingTest:(id)predicate { // block
+    let result: id = msg_class![env; NSMutableSet set];
+    let stop: MutPtr<u8> = env.mem.alloc_and_write(0u8);
+    let invoke = block_invoke_function(env, predicate);
+    let enumerator: id = msg![env; this objectEnumerator];
+    loop {
+        let obj: id = msg![env; enumerator nextObject];
+        if obj == nil {
+            break;
+        }
+        let passed: bool = invoke.call_from_host(env, (predicate, obj, stop));
+        if passed {
+            () = msg![env; result addObject:obj];
+        }
+        if env.mem.read(stop.cast_const()) != 0 {
+            break;
+        }
+    }
+    env.mem.free(stop.cast());
+    // objectsPassingTest: is documented to return an (immutable) NSSet.
+    let immutable: id = msg![env; result copy];
+    autorelease(env, immutable)
 }
 
 @end
