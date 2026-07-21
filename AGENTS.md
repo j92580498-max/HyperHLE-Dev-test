@@ -161,11 +161,15 @@ ad-hoc prefixes is the sprawl this rule exists to prevent.
   the game's runtime continuation note stays on the branch.
 - `feat/<slug>` — a new emulator capability or subsystem that is not driven by a
   single game, such as a framework implementation or a graphics-backend port.
-- `fix/<slug>` — a correction to existing behavior that is not scoped to one
-  game: a bug, a regression, a lint failure, or a dependency or toolchain
-  repair.
-- `infra/<slug>` — repository plumbing: CI, build scripts, developer tooling,
-  the compatibility-database machinery, versioning, and release preparation.
+- `fix/<slug>` — a correction to a defect in shipped emulator or runtime
+  behavior that a user could hit, not scoped to one game: a bug or a
+  regression. Toolchain, lint, build-script, and dependency repairs are
+  `infra/`, not `fix/`: the test is whether a mistake would break the running
+  emulator (`fix/`) or only the development process (`infra/`).
+- `infra/<slug>` — repository plumbing whose failure breaks development rather
+  than shipped behavior: CI, build scripts, the toolchain and its lints,
+  developer tooling, the compatibility-database machinery, versioning, and
+  release preparation.
 - `docs/<slug>` — documentation-only changes not tied to a single game.
   Project-wide agent guidance lives here on its way to `trunk`; a game's own
   continuation note lives on that game's `compat/` branch instead.
@@ -173,8 +177,27 @@ ad-hoc prefixes is the sprawl this rule exists to prevent.
 Use a short, hyphenated slug after the root. When a change spans categories,
 name the branch for its primary deliverable and split genuinely independent
 deliverables into separate branches rather than widening one. Releases are tags
-on `trunk` (`dev-docs/releases.md`), not a branch root. Delete a branch once it
-has merged; do not leave merged or abandoned branches to accumulate.
+on `trunk` (`dev-docs/releases.md`), not a branch root.
+
+`trunk` is the only permanent branch, and the other roots fall into two
+lifecycles. The single-deliverable roots — `feat/`, `fix/`, `infra/`, and
+`docs/` — are one-shot: each exists to land one change, so once that change is
+fully merged (no commits ahead of `trunk`) the work is finished and the branch
+is deleted, locally and on the remote. Its history is preserved in `trunk`, so
+nothing is lost and it can be recreated from `trunk` if related work resumes.
+
+A `compat/<app-slug>` branch is the deliberate exception. It is the long-lived
+home for an ongoing game target that advances through many checkpoints toward
+fuller compatibility, so it persists even during the stretches when it is fully
+merged into `trunk`. Full compatibility is rarely reached in one pass; deleting
+a merged `compat/` branch would throw away the obvious place to resume. Keep a
+`compat/` branch until its game is abandoned as a target or reaches its final
+supported state with no further work expected — not merely because a checkpoint
+has graduated to `trunk`.
+
+For every root, a branch being *behind* `trunk` is normal and is never by itself
+a reason to act. Do not leave finished one-shot branches or genuinely abandoned
+branches to accumulate.
 
 ## Code map
 
