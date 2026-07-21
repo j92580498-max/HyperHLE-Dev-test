@@ -280,6 +280,15 @@ fn get_value_to_decode_for_key(env: &mut Environment, unarchiver: id, key: id) -
 /// The object returned is retained only by the archiver. Remember to retain and
 /// possibly autorelease it as appropriate.
 fn unarchive_key(env: &mut Environment, unarchiver: id, key: Uid) -> id {
+    // In every NSKeyedArchiver archive, `$objects[0]` is the string "$null" and
+    // a UID reference to index 0 represents nil. Decoding it like any other
+    // string would inject a bogus "$null" NSString wherever the graph stores a
+    // nil (a nil property, a nil element, an absent delegate/handler), which
+    // then fails when the guest treats it as the object it should have been.
+    if key.get() == 0 {
+        return nil;
+    }
+
     let host_obj = borrow_host_obj(env, unarchiver);
     if let Some(existing) = host_obj.already_unarchived[key.get() as usize] {
         return existing;
