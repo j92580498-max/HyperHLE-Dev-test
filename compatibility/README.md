@@ -8,17 +8,22 @@ Archive.org IPA filenames, and an append-only sequence of reports. The root
 
 ## Where the database lives
 
-The compatibility database is moving to a live web application, **tapHLEdb** — a
-fork of [app-compatibility-db](https://github.com/hikari-no-yume/app-compatibility-db),
-the same app that powers touchHLE's database — self-hosted by the maintainer. A
-live application is the right shape for this data: it is edited continuously by
-humans, coding agents and (later) tapHLE telemetry, which does not fit a
-commit-per-edit Git workflow.
+The compatibility database is a live web application, **tapHLEdb** — a fork of
+[app-compatibility-db](https://github.com/hikari-no-yume/app-compatibility-db),
+the same app that powers touchHLE's database — self-hosted by the maintainer at
+**<https://taphle.ephun.net/compatibility>**. Its source is
+[ephun/tapHLEdb](https://github.com/ephun/tapHLEdb). A live application is the
+right shape for this data: it is edited continuously by humans, coding agents
+and (later) tapHLE telemetry, which does not fit a commit-per-edit Git workflow.
 
-Until that deployment exists, the records in `compatibility/apps` remain the
-record of tapHLE compatibility and the rest of this protocol still applies to
-them. Do not start new records here without maintainer direction; they would
-only have to be migrated.
+That deployment is now the record of tapHLE compatibility. Every new result goes
+there. The JSON records still in `compatibility/apps` predate it and remain only
+until the maintainer migrates them; do not add records there.
+
+The rest of this document still applies to both. The Archive.org verification
+protocol, the testing policy, and the rule that a rating requires an actual
+tapHLE run on Windows are properties of how a result is earned, not of where it
+is stored.
 
 What lives where, so the two never duplicate each other:
 
@@ -36,11 +41,16 @@ apps are never listed speculatively.
 
 ## How an agent records a result
 
-Once tapHLEdb is deployed, a coding agent submits through its
-token-authenticated endpoint, `POST /api/report` (documented in `API.md` in the
-tapHLEdb repository), using an agent token supplied by the maintainer.
-Submissions always land unapproved and appear publicly only after the
-maintainer approves them.
+A coding agent submits through tapHLEdb's token-authenticated endpoint:
+
+```
+POST https://taphle.ephun.net/compatibility/api/report
+```
+
+It is documented in `API.md` in the tapHLEdb repository, and needs an agent
+token supplied by the maintainer. Never commit a token or put one in a command
+that gets recorded; ask the maintainer for it. Submissions always land
+unapproved and appear publicly only after the maintainer approves them.
 
 An agent may assign at most **three stars**: two when the app reaches a stable
 screen, and three when the gameplay loop demonstrably starts and persists for a
