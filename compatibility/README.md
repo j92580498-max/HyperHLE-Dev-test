@@ -6,6 +6,47 @@ for exact early iPhone OS app builds. It does not contain apps. Each record in
 Archive.org IPA filenames, and an append-only sequence of reports. The root
 `COMPATIBILITY.md` is generated from those records.
 
+## Where the database lives
+
+The compatibility database is moving to a live web application, **tapHLEdb** — a
+fork of [app-compatibility-db](https://github.com/hikari-no-yume/app-compatibility-db),
+the same app that powers touchHLE's database — self-hosted by the maintainer. A
+live application is the right shape for this data: it is edited continuously by
+humans, coding agents and (later) tapHLE telemetry, which does not fit a
+commit-per-edit Git workflow.
+
+Until that deployment exists, the records in `compatibility/apps` remain the
+record of tapHLE compatibility and the rest of this protocol still applies to
+them. Do not start new records here without maintainer direction; they would
+only have to be migrated.
+
+What lives where, so the two never duplicate each other:
+
+- **tapHLEdb — the database.** Structured data only: an app's identity, its
+  versions, and dated reports carrying a 1–5 rating, the tapHLE version, the
+  Windows host, the source of the result, and the current frontier. It holds no
+  narrative notes. It answers *"where does this app stand?"*
+- **`dev-docs/app-notes/<app>.md` — the notebook.** The debugging narrative:
+  evidence, root causes and the next discriminator. It answers *"how do I push
+  this app further?"* It is explicitly not a compatibility claim.
+
+A record exists only because tapHLE actually ran that app and produced a rating.
+Results from touchHLE or HyperHLE are testing leads, never imported ratings, and
+apps are never listed speculatively.
+
+## How an agent records a result
+
+Once tapHLEdb is deployed, a coding agent submits through its
+token-authenticated endpoint, `POST /api/report` (documented in `API.md` in the
+tapHLEdb repository), using an agent token supplied by the maintainer.
+Submissions always land unapproved and appear publicly only after the
+maintainer approves them.
+
+An agent may assign at most **three stars**: two when the app reaches a stable
+screen, and three when the gameplay loop demonstrably starts and persists for a
+short while. **Four and five stars require human testing**, and an agent must
+never assign them.
+
 ## Simple rating scale
 
 The public list uses five simple levels:
