@@ -307,6 +307,22 @@ into a brand name. Do not guess a model version. The canonical examples and
 fallback for tools without a verified co-author identity are in
 `dev-docs/agent-capability-log.md`.
 
+Format these trailers as one contiguous block — no blank lines between the
+trailer lines — separated from the message body by a single blank line, and
+make `Co-authored-by:` the last line of the block. A blank line between
+trailers stops Git and GitHub from parsing every trailer except the last, so a
+`Co-authored-by:` that is not the final contiguous trailer is silently dropped
+and the co-author is never credited. Keep the co-author identity plain and put
+the model detail in `Agent-model:`; a verbose or parenthesised co-author name
+(for example `Claude Opus 4.8 (1M context)`) can also defeat the co-author
+parser. The correct shape is:
+
+```text
+Agent-model: Opus 4.8 (1M context)
+Agent-surface: Claude Code
+Co-authored-by: Claude <noreply@anthropic.com>
+```
+
 ## Documentation placement
 
 Update documentation whenever a compatibility investigation reveals a durable
