@@ -10,7 +10,8 @@
 //!   explains how reference counting works. Note that we are interested in what
 //!   it calls "manual retain-release", not ARC.
 //! - Apple's [Key-Value Coding Programming Guide](https://developer.apple.com/library/archive/documentation/Cocoa/Conceptual/KeyValueCoding/SearchImplementation.html)
-//!   explains the algorithm `setValue:forKey:` should follow.
+//!   explains the algorithms `setValue:forKey:` and `valueForKey:` should
+//!   follow.
 //!
 //! See also: [crate::objc], especially the `objects` module.
 
@@ -258,6 +259,76 @@ pub const CLASSES: ClassExports = objc_classes! {
     () = msg_send(env, (this, sel, value, key));
 }
 
+- (id)valueForKey:(id)key { // NSString*
+    let key_string = to_rust_string(env, key); // TODO: avoid copy?
+    assert!(key_string.is_ascii()); // TODO: do we have to handle non-ASCII keys?
+    let camel_case_key_string = format!("{}{}", key_string.as_bytes()[0].to_ascii_uppercase() as char, &key_string[1..]);
+
+    let class = msg![env; this class];
+
+    // Look for the first accessor named get<Key>, <key>, is<Key> or _<key>, in
+    // that order. If found, invoke it and return its result, boxed in an
+    // NSNumber if the accessor does not return an object.
+    let getter = [
+        format!("get{camel_case_key_string}"),
+        key_string.to_string(),
+        format!("is{camel_case_key_string}"),
+        format!("_{key_string}"),
+    ]
+    .iter()
+    .find_map(|name| {
+        env.objc
+            .lookup_selector(name)
+            .filter(|&sel| env.objc.class_has_method(class, sel))
+    });
+    if let Some(sel) = getter {
+        return kvc_get_boxed_value(env, this, sel);
+    }
+
+    // TODO: the to-many accessor patterns (countOf<Key> together with
+    // objectIn<Key>AtIndex: or <key>AtIndexes:, and countOf<Key> together with
+    // enumeratorOf<Key> and memberOf<Key>:), which return a proxy collection.
+
+    // If no simple accessor is found, and if the class method
+    // accessInstanceVariablesDirectly returns YES, look for an instance
+    // variable with a name like _<key>, _is<Key>, <key>, or is<Key>,
+    // in that order, and return its value.
+    let sel = env.objc.lookup_selector("accessInstanceVariablesDirectly").unwrap();
+    let accessInstanceVariablesDirectly = msg_send(env, (class, sel));
+    if accessInstanceVariablesDirectly {
+        // TODO: ivar type encodings are not recorded (see `ivar_t` handling in
+        // objc::properties), so a scalar ivar cannot be boxed here and is read
+        // as if it were an object. `setValue:forKey:` has the same limitation
+        // in the same position.
+        if let Some(ivar_ptr) = env.objc.object_lookup_ivar(&env.mem, this, &format!("_{key_string}"))
+            .or_else(|| env.objc.object_lookup_ivar(&env.mem, this, &format!("_is{camel_case_key_string}")))
+            .or_else(|| env.objc.object_lookup_ivar(&env.mem, this, &format!("{key_string}")))
+            .or_else(|| env.objc.object_lookup_ivar(&env.mem, this, &format!("is{camel_case_key_string}"))
+        ) {
+            return env.mem.read(ivar_ptr.cast());
+        }
+    }
+
+    // Upon finding no accessor or instance variable,
+    // invoke valueForUndefinedKey:.
+    // This raises an exception by default, but a subclass of NSObject
+    // may provide key-specific behavior.
+    let sel = env.objc.lookup_selector("valueForUndefinedKey:").unwrap();
+    msg_send(env, (this, sel, key))
+}
+
+- (id)valueForUndefinedKey:(id)key { // NSString*
+    // TODO: Raise NSUnknownKeyException
+    let class: Class = ObjC::read_isa(this, &env.mem);
+    let class_name_string = env.objc.get_class_name(class).to_owned(); // TODO: Avoid copying
+    let key_string = to_rust_string(env, key);
+    panic!("Object {:?} of class {:?} ({:?}) does not have a getter for {} ({:?})\
+        \nAvailable selectors: {}\nAvailable ivars: {}",
+        this, class_name_string, class, key_string, key,
+        env.objc.debug_all_class_selectors_as_strings(&env.mem, class).join(", "),
+        env.objc.debug_all_class_ivars_as_strings(class).join(", "));
+}
+
 - (())setValue:(id)_value
 forUndefinedKey:(id)key { // NSString*
     // TODO: Raise NSUnknownKeyException
@@ -496,4 +567,82 @@ fn kvc_set_unwrapped_scalar(env: &mut Environment, this: id, setter: SEL, value:
         _ => return false,
     }
     true
+}
+
+/// Key-Value Coding helper: invoke `getter` and return its result as an object,
+/// boxing it in an `NSNumber` when the accessor returns a plain scalar.
+///
+/// This is the inverse of [kvc_set_unwrapped_scalar] and reads the return type
+/// from the same authoritative source, the method's Objective-C type encoding.
+/// A missing or unreadable encoding means a host-implemented method, which
+/// returns an object.
+fn kvc_get_boxed_value(env: &mut Environment, this: id, getter: SEL) -> id {
+    let class = ObjC::read_isa(this, &env.mem);
+    let return_type = env
+        .objc
+        .class_get_method_signature(class, getter)
+        .copied()
+        .and_then(|signature| env.mem.cstr_at_utf8(signature).ok())
+        .and_then(|signature| {
+            // A method type encoding is <return><self@><cmd:><arg…> with a
+            // numeric byte offset after each type. Dropping the digits leaves
+            // the ordered type tokens, the first of which is the return type.
+            let tokens: Vec<u8> = signature.bytes().filter(|b| !b.is_ascii_digit()).collect();
+            let mut i = 0;
+            // Skip any type qualifiers (const, in, out, …) that may precede it.
+            while tokens
+                .get(i)
+                .is_some_and(|b| matches!(b, b'r' | b'n' | b'N' | b'o' | b'O' | b'R' | b'V'))
+            {
+                i += 1;
+            }
+            tokens.get(i).copied()
+        })
+        // Host methods have no recorded signature (see
+        // `class_get_method_signature`), and a KVC accessor implemented in the
+        // host is an object-returning Foundation getter.
+        .unwrap_or(b'@');
+
+    // See `impl GuestRet` in abi.rs: scalar results (including `f32`/`f64`)
+    // come back in the core result registers, so reading the matching Rust type
+    // takes the value from where the guest compiler put it.
+    match return_type {
+        b'@' | b'#' => msg_send(env, (this, getter)),
+        b'f' => {
+            let v: f32 = msg_send(env, (this, getter));
+            msg_class![env; NSNumber numberWithFloat:v]
+        }
+        b'd' => {
+            let v: f64 = msg_send(env, (this, getter));
+            msg_class![env; NSNumber numberWithDouble:v]
+        }
+        // `c`/`B` cover BOOL/char/_Bool. A signed char that is not a BOOL is
+        // indistinguishable here; Apple's KVC boxes it the same way.
+        b'c' | b'B' => {
+            let v: bool = msg_send(env, (this, getter));
+            msg_class![env; NSNumber numberWithBool:v]
+        }
+        b'i' | b'l' | b's' => {
+            let v: i32 = msg_send(env, (this, getter));
+            msg_class![env; NSNumber numberWithInt:v]
+        }
+        b'I' | b'L' | b'S' => {
+            let v: u32 = msg_send(env, (this, getter));
+            msg_class![env; NSNumber numberWithUnsignedInt:v]
+        }
+        b'q' | b'Q' => {
+            let v: i64 = msg_send(env, (this, getter));
+            msg_class![env; NSNumber numberWithLongLong:v]
+        }
+        b'v' => nil,
+        // '{' (struct) would need NSValue boxing through the struct-return
+        // calling convention, and '^' (pointer) needs valueWithPointer:.
+        // Neither is reached yet, and guessing would corrupt the result.
+        _ => unimplemented!(
+            "Key-value coding getter {:?} on class {:?} returns unsupported type {:?}",
+            getter.as_str(&env.mem),
+            env.objc.get_class_name(class),
+            return_type as char,
+        ),
+    }
 }

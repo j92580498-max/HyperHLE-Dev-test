@@ -60,6 +60,9 @@ static inline NSRange NSMakeRange(NSUInteger loc, NSUInteger len) {
 - (void *)methodForSelector:(SEL)selector;
 - (id)performSelector:(SEL)selector;
 - (BOOL)respondsToSelector:(SEL)selector;
+// NSKeyValueCoding. NSString is not declared yet, so the key is typed as id.
+- (id)valueForKey:(id)key;
+- (void)setValue:(id)value forKey:(id)key;
 @end
 
 @interface NSAutoreleasePool : NSObject
@@ -152,6 +155,9 @@ typedef enum {
 @interface NSNumber : NSValue
 + (NSNumber *)numberWithFloat:(float)value;
 + (NSNumber *)numberWithBool:(bool)value;
+- (float)floatValue;
+- (int)intValue;
+- (BOOL)boolValue;
 @end
 
 NSString *NSStringFromClass(Class);

@@ -6570,6 +6570,72 @@ int test_NSNotificationCenter_removeObserver_duringPost() {
   return result;
 }
 
+@interface KVCGetterTarget : NSObject {
+@public
+  // Reached only through the instance-variable fallback: neither has an
+  // accessor of any of the searched names.
+  id _hidden;
+  id plain;
+}
+- (NSString *)name;
+- (float)ratio;
+- (int)tally;
+- (BOOL)isEnabled;
+- (id)getPrefixed;
+@end
+
+@implementation KVCGetterTarget
+- (NSString *)name {
+  return @"monkey";
+}
+- (float)ratio {
+  return 1.5f;
+}
+- (int)tally {
+  return -7;
+}
+- (BOOL)isEnabled {
+  return YES;
+}
+- (id)getPrefixed {
+  return @"prefixed";
+}
+@end
+
+// valueForKey: searches for an accessor named get<Key>, <key>, is<Key> or
+// _<key>, then for an instance variable named _<key>, _is<Key>, <key> or
+// is<Key>. An accessor that does not return an object has its result boxed, and
+// the encoded return type decides which box, since that is what says where the
+// value was returned.
+int test_NSObject_valueForKey() {
+  NSAutoreleasePool *pool = [NSAutoreleasePool new];
+
+  KVCGetterTarget *target = [KVCGetterTarget new];
+  target->_hidden = @"hidden";
+  target->plain = @"plain";
+
+  int result = 0;
+  if (![[target valueForKey:@"name"] isEqual:@"monkey"]) {
+    result = -1;
+  } else if ([[target valueForKey:@"ratio"] floatValue] != 1.5f) {
+    result = -2;
+  } else if ([[target valueForKey:@"tally"] intValue] != -7) {
+    result = -3;
+  } else if ([[target valueForKey:@"enabled"] boolValue] != YES) {
+    result = -4;
+  } else if (![[target valueForKey:@"prefixed"] isEqual:@"prefixed"]) {
+    result = -5;
+  } else if (![[target valueForKey:@"hidden"] isEqual:@"hidden"]) {
+    result = -6;
+  } else if (![[target valueForKey:@"plain"] isEqual:@"plain"]) {
+    result = -7;
+  }
+
+  [target release];
+  [pool drain];
+  return result;
+}
+
 int test_malloc_zone_basic() {
   malloc_zone_t *zone = malloc_create_zone(0, 0);
   unsigned char *p = malloc_zone_malloc(zone, 128);
@@ -6839,6 +6905,7 @@ struct {
     FUNC_DEF(test_NSNotificationCenter_addObserver_nilName_withObject),
     FUNC_DEF(test_NSNotificationCenter_addObserver_nilName_removeObserver),
     FUNC_DEF(test_NSNotificationCenter_removeObserver_duringPost),
+    FUNC_DEF(test_NSObject_valueForKey),
     FUNC_DEF(test_malloc_zone_basic),
     FUNC_DEF(test_malloc_zone_struct_dispatch),
     FUNC_DEF(test_NSDictionary_keysSortedByValueUsingSelector),
