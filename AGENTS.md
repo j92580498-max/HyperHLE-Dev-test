@@ -143,6 +143,13 @@ An agent may assign at most three stars (two for reaching a stable screen, three
 for a gameplay loop that starts and persists); four and five stars require human
 testing.
 
+A report separates **who submitted it** from **what produced it**, and both must
+be truthful. The submitter is the GitHub account or API token that posted it. The
+producer is `source_type`: use `agent` for any result an agent produced, even
+when a human pastes it into the web form on the agent's behalf. Never record an
+agent's result as `human` — a human submitting is not a human testing, and that
+distinction is the reason the field exists.
+
 Submit a report when the rating changes — in either direction, because a
 regression is a result worth publishing. Do not submit when a rerun merely
 reproduces a rating already recorded for that tapHLE revision: the endpoint

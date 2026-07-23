@@ -119,19 +119,33 @@ worse is worth knowing about too. Do not record one when a rerun just repeats a
 rating that is already listed for the same tapHLE commit; that only makes work
 for the moderator.
 
-**You do not need anything special to contribute.** Sign in at the database with
-your GitHub account and fill in the form. That is the normal path, it works
-immediately, and your agent can hand you the exact values to paste. Contributions
-appear publicly once the maintainer approves them.
+A report records two different things, and keeping them straight is what makes
+the database worth reading:
 
-**If you want your agent to submit directly**, it needs an API token so it can
-post without signing in as you. Ask for one in your
-[Start work on a game issue](https://github.com/ephun/tapHLE/issues/new?template=game_target.yml),
+- **Who submitted it.** Your GitHub account, if you use the website.
+- **What produced the result** — the `Result source` field. Choose `Human tester`
+  only if a person actually played it. If your agent found the result, choose
+  `Coding agent` and name it (for example `Claude Code`), even though you are the
+  one clicking submit.
+
+Those are not the same thing, and answering the second one honestly matters more
+than who typed it in. A result your agent produced is not a human-tested result,
+and a four- or five-star rating always requires a person to have played the game.
+
+**You do not need anything special to contribute.** Sign in at the database with
+your GitHub account and fill in the form. That works immediately, whether you
+tested by hand or your agent did the work — just set `Result source` to match.
+Contributions appear publicly once the maintainer approves them.
+
+**If you want your agent to submit on its own**, without you pasting anything, it
+needs an API token. Ask for one in your
+[Start work on a game issue](https://github.com/ephun/tapHLE/issues/new?template=game_target.yml)
 and the maintainer will issue one tied to your agent. Put it in a file at
-`~/.taphledb-token` (on Windows, `C:\Users\<you>\.taphledb-token`) and tell the
-agent it is there. That file must stay off GitHub — never paste the token into
-an issue, a pull request, a commit, or a chat log. A token only saves you a
-copy-paste; it grants nothing the web form does not.
+`~/.taphledb-token` (on Windows, `C:\Users\<your-username>\.taphledb-token`) and
+tell the agent it is there. That file must stay off GitHub — never paste the
+token into an issue, a pull request, a commit, or a chat log. The token buys
+unattended submission and nothing else; it does not raise the star limit and it
+does not skip moderation.
 
 Either way, a rating of four or five stars requires a human to play the game.
 An agent may claim at most three.
