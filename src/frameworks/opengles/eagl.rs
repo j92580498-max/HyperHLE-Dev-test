@@ -5,7 +5,7 @@
  */
 //! EAGL.
 
-use crate::dyld::{ConstantExports, HostConstant};
+use crate::dyld::{export_c_func, ConstantExports, FunctionExports, HostConstant};
 use crate::frameworks::core_animation::ca_eagl_layer::{
     find_fullscreen_eagl_layer, get_pixels_vec_for_presenting, present_pixels,
 };
@@ -1179,3 +1179,21 @@ unsafe fn present_renderbuffer(env: &mut Environment) {
 
     // { let err = gles.GetError(); if err != 0 { panic!("{:#x}", err); } }
 }
+
+/// Undocumented, but present in the EAGL headers of the iPhone OS SDKs this
+/// emulator targets, and called by apps of that era before they create a
+/// context.
+///
+/// The version it reports is not documented anywhere public. EAGL had exactly
+/// one API version across the iPhone OS releases tapHLE covers, so this reports
+/// 1.0. Revisit if an app is seen branching on a higher one.
+fn EAGLGetVersion(env: &mut Environment, major: MutPtr<NSUInteger>, minor: MutPtr<NSUInteger>) {
+    if !major.is_null() {
+        env.mem.write(major, 1);
+    }
+    if !minor.is_null() {
+        env.mem.write(minor, 0);
+    }
+}
+
+pub const FUNCTIONS: FunctionExports = &[export_c_func!(EAGLGetVersion(_, _))];
