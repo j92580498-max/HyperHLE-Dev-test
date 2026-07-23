@@ -47,10 +47,32 @@ A coding agent submits through tapHLEdb's token-authenticated endpoint:
 POST https://taphle.ephun.net/compatibility/api/report
 ```
 
-It is documented in `API.md` in the tapHLEdb repository, and needs an agent
-token supplied by the maintainer. Never commit a token or put one in a command
-that gets recorded; ask the maintainer for it. Submissions always land
-unapproved and appear publicly only after the maintainer approves them.
+It is documented in `API.md` in the tapHLEdb repository. The agent token lives
+at `~/.taphledb-token` and nowhere else: read it inline as
+`$(cat ~/.taphledb-token)` at the moment of use, never echo it, and never copy
+it into this repository, a commit message, an app note, or any command whose
+output is recorded. If it is missing, say so and keep working. Submissions
+always land unapproved and appear publicly only after the maintainer approves
+them.
+
+Crossing a star threshold does two things, not one: the reusable fix graduates
+to `trunk` *and* the report goes to the database. Do only the first and a real
+result stays invisible; do only the second and the claim cannot be reproduced.
+
+Submit when the rating changes, in either direction — a regression is a result.
+Do not submit a rerun that reproduces a rating already recorded for the same
+tapHLE revision; the endpoint does not deduplicate, so that is pure moderation
+noise.
+
+To choose what to work on, read the list:
+
+```
+GET https://taphle.ephun.net/compatibility/api/apps
+```
+
+No credential is needed. The lowest-rated apps need the most help, and an app
+listed there with no `compat/<slug>` branch is unclaimed work an agent may start
+without being asked.
 
 An agent may assign at most **three stars**: two when the app reaches a stable
 screen, and three when the gameplay loop demonstrably starts and persists for a
