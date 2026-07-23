@@ -1,6 +1,7 @@
 # Baby Monkey compatibility work note
 
-Last updated: 2026-07-19.
+Last updated: 2026-07-23. Rating: ★★★☆☆ (3/5) In game — see the last section
+for what works, what does not, and where to resume.
 
 ## Identity and source
 
@@ -194,15 +195,7 @@ originating ES2 change. The implementation first appears in HyperHLE commit
 by Devin AI. Preserve this correction prospectively without rewriting the
 published tapHLE commit.
 
-## Next discriminator
-
-1. Commit the reviewed dictionary class-cluster correction.
-2. Build that exact commit in release mode.
-3. Recalculate the canonical IPA hash and launch it visibly from an isolated
-   Windows run directory.
-4. Confirm that the mutable dictionary no longer has immutable concrete class
-   `_tapHLE_NSDictionary` and that `setObject:forKey:` succeeds.
-5. Resolve only the next evidenced API, ABI, lifetime, or rendering boundary.
+## Standing run rules
 
 Do not use `--headless`: UIKit/EAGL startup needs a real tapHLE window and a
 headless unwrap failure would be unrelated. Do not add a compatibility report
@@ -284,7 +277,8 @@ container to perform), not a double release.
   dictionary keys.
 - `+load` is implemented and dispatched from `environment.rs`.
 - `removeObserver:` with a nil name and object removes every matching
-  registration; the touch path does not use `NSNotificationCenter` anyway.
+  registration. **The second half of this bullet was wrong** — it said the touch
+  path does not use `NSNotificationCenter`. It does; see the 2026-07-23 section.
 - The autorelease pool in `ui_touch.rs` correctly wraps the whole
   `touchesBegan:` delivery and drains only after every view has been messaged.
 
@@ -351,3 +345,85 @@ A private debugging cache lives outside the checkout at
 disassembly (addresses match the guest `PC`/`LR` in tapHLE's register dumps), a
 menu screenshot, and a PowerShell harness that launches the app, clicks Play,
 and prints the failure. None of it may enter the repository.
+
+## Gameplay reached: ★★★☆☆ (3/5) In game (2026-07-23)
+
+Baby Monkey now starts, renders and sustains its gameplay loop. Reproduced from
+the clean committed release build of `59d4d97b` against the canonical
+hash-verified bytes, in a normal visible window from an isolated `%TEMP%` run
+directory: the menu appears, clicking Play loads `bm/GameScene.scene`, the
+monkey-on-pig scene renders with its parallax hills, trees, grass and HUD, the
+world scrolls, the tutorial ("Tap [monkey] to grab the [banana]") appears on its
+own timer, collectible bananas spawn, an in-game tap on the monkey button is
+accepted, and the process is still running and animating after about a minute.
+No panic, no forced exit before the harness stopped it.
+
+### The 2026-07-22 root cause was right about "use-after-free", wrong about where
+
+That section concluded the defect was "a retain that iOS performs and tapHLE
+does not, in whatever **owns** the button". It is not. Static disassembly of the
+app settles what the "touch dispatcher" actually is:
+
+- `-[KataEntityBase addObserver:selector:name:]` is a wrapper over
+  `[[NSNotificationCenter defaultCenter] addObserver:… selector:… name:…
+  object:self]`.
+- `-[KataEntityBase dispatch:payload:]` is a wrapper over
+  `postNotificationName:object:userInfo:`. Guest `LR 0x78b95`, recorded in that
+  section as "the dispatcher's send site", is the return address inside it.
+- `-[KataCCButtonBehavior onAwake]` registers `onTouchesBegan:` that way, and
+  `onAsleep` removes it with `removeObserver:name:object:`.
+
+So the retain/release pair that bracketed the send, and that the note read as
+proof the dispatcher holds no reference, was tapHLE's own `retain`/`release`
+around the delivery in `postNotification:` — not guest code at all. The engine's
+teardown was correct the whole time.
+
+The real defect was in tapHLE. `postNotification:` copied the matching observer
+lists and then iterated the copy blindly. Tapping Play delivers to the Play
+button first; its handler tears down the menu scene, which puts all five menu
+buttons to sleep — each unregistering itself — and frees them. The stale copy
+then sent `onTouchesBegan:` to the freed buttons. That is exactly why four runs
+of one build reported four different receiver classes at the same point. Fixed
+in `165c873d`: every registration carries an identity, and a copied entry is
+re-checked against the live list before its observer is messaged. Real
+`NSNotificationCenter` makes the same guarantee, which is what makes the
+unretained-observer contract usable at all.
+
+### The rest of the gameplay load
+
+With the touch crash gone, the scene load ran to completion through three more
+missing Foundation behaviours, each a general gap rather than anything specific
+to this game:
+
+1. `-[NSObject valueForKey:]` did not exist (`2f9c07b5`). The scene load needs
+   it in `-[KataCCPrefabController applyInstance:toPrefab:]`, which reads each
+   overridden property off a behavior before writing the instance's value.
+2. `setValue:forKey:` asserted the value was non-nil (`6a0e77aa`). The same
+   round-trip writes back the nil an unset object property reads as. Non-object
+   targets now go to `setNilValueForKey:` as documented.
+3. `NSMutableSet` had no `setSet:` or `intersectSet:` (`59d4d97b`). Every
+   in-game tap needs them: `-[KataCCButtonBehavior getValidTouches:]` keeps a
+   `currentTouches` set and reconciles it against each event.
+
+### Known limitations at this rating
+
+- **No audio.** Every `AudioFileOpenURL()` fails with `FileReadError`. The
+  engine asks for `audio/<name>.wav`, which does not resolve: the files are at
+  `<bundle>/bm/audio/`, and the sound engine's lookup searches the bundle root.
+  This is the largest remaining gap and the obvious next piece of work.
+- Chartboost and Flurry are faked, and `NSURLConnection` is a TODO stub, so the
+  ad/analytics paths do nothing. This does not affect gameplay.
+- Only the first level segment and the tutorial were observed. Scoring, death,
+  game-over, pause and resume are untested. Four and five stars need human
+  testing anyway.
+- The in-game tap was verified as "accepted without crashing and the loop
+  continues". Whether the monkey actually grabs a banana is a gameplay-outcome
+  claim that needs a human playtest.
+
+### Next discriminator
+
+Fix bundle-relative resource lookup so `audio/YaYaYaYa.wav` resolves against
+`<bundle>/bm/`, then re-run and confirm menu music and at least one gameplay
+sound effect through the OpenAL Soft wave-writer capture described in the
+playbook. After that, play through to a death and a game-over screen to find the
+next frontier.
