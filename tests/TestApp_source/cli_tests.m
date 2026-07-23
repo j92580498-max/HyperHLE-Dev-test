@@ -6772,6 +6772,60 @@ int test_NSMutableSet_setAlgebra() {
   return result;
 }
 
+// A nil counterpart in the co-ordinate conversion methods means the window's
+// space, but it must not require the receiver to actually be in a window: a view
+// built from a nib converts before it is ever mounted. With no window, the
+// conversion resolves against the top of the view's own hierarchy.
+int test_UIView_convert_nilView_withoutWindow() {
+  NSAutoreleasePool *pool = [NSAutoreleasePool new];
+
+  UIView *parent =
+      [[UIView alloc] initWithFrame:CGRectMake(10.0f, 20.0f, 100.0f, 100.0f)];
+  UIView *child =
+      [[UIView alloc] initWithFrame:CGRectMake(5.0f, 7.0f, 10.0f, 10.0f)];
+  [parent addSubview:child];
+
+  int result = 0;
+  CGPoint zero = CGPointMake(0.0f, 0.0f);
+
+  // Neither of these may crash: that is the regression.
+  CGPoint childInTop = [child convertPoint:zero toView:nil];
+  CGPoint parentInTop = [parent convertPoint:zero toView:nil];
+
+  // The child's offset from its parent is 5,7 whatever space the top is in, so
+  // this holds without assuming where the conversion bottoms out.
+  if (fabsf((childInTop.x - parentInTop.x) - 5.0f) > 0.001f ||
+      fabsf((childInTop.y - parentInTop.y) - 7.0f) > 0.001f) {
+    result = -1;
+  }
+
+  // Converting to the nil view and back must round-trip.
+  if (result == 0) {
+    CGPoint roundTrip = [child convertPoint:childInTop fromView:nil];
+    if (fabsf(roundTrip.x) > 0.001f || fabsf(roundTrip.y) > 0.001f) {
+      result = -2;
+    }
+  }
+
+  // The rect forms must agree with the point forms, and also not crash.
+  if (result == 0) {
+    CGRect rectInTop =
+        [child convertRect:CGRectMake(0.0f, 0.0f, 3.0f, 4.0f) toView:nil];
+    if (fabsf(rectInTop.origin.x - childInTop.x) > 0.001f ||
+        fabsf(rectInTop.origin.y - childInTop.y) > 0.001f) {
+      result = -3;
+    } else if (fabsf(rectInTop.size.width - 3.0f) > 0.001f ||
+               fabsf(rectInTop.size.height - 4.0f) > 0.001f) {
+      result = -4;
+    }
+  }
+
+  [child release];
+  [parent release];
+  [pool drain];
+  return result;
+}
+
 int test_malloc_zone_basic() {
   malloc_zone_t *zone = malloc_create_zone(0, 0);
   unsigned char *p = malloc_zone_malloc(zone, 128);
@@ -7044,6 +7098,7 @@ struct {
     FUNC_DEF(test_NSObject_valueForKey),
     FUNC_DEF(test_NSObject_setValue_nil),
     FUNC_DEF(test_NSMutableSet_setAlgebra),
+    FUNC_DEF(test_UIView_convert_nilView_withoutWindow),
     FUNC_DEF(test_malloc_zone_basic),
     FUNC_DEF(test_malloc_zone_struct_dispatch),
     FUNC_DEF(test_NSDictionary_keysSortedByValueUsingSelector),
