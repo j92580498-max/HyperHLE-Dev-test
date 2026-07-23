@@ -157,11 +157,21 @@ document previously repeated the error:
   trailer, and GitHub records no co-author for the upstream work. See the
   commit-provenance rules in `AGENTS.md`: trailers must be contiguous.
 
-The published commit is not being rewritten — it is on `trunk` and may be
-referenced elsewhere — so this document is the correcting record. Credit for
-the native ES 2.0 backend belongs to **Бусик**. Any future commit that extends
-or re-ports this work should carry a contiguous
+The commit cannot be rewritten. It lives on `compat/baby-monkey`, not on
+`trunk`, with 54 commits after it — including `f0947bc4`, which is the tapHLE
+version cited by the published Baby Monkey report in the compatibility
+database. Rewriting `fd543d42` would change that descendant's hash and
+invalidate a published result, which `compatibility/README.md` forbids
+outright. This document and the provenance comment in
+`src/gles/gles2_native.rs` are therefore the correcting record.
+
+Credit for the native ES 2.0 backend belongs to **Бусик**. Any future commit
+that extends or re-ports this work should carry a contiguous
 `Co-authored-by:` trailer naming that author, and cite `d640dd4d`.
+
+The port is not on `trunk` at all: `src/gles/gles2_native.rs` exists only on
+`compat/baby-monkey`. If that work is ever promoted to `trunk`, the promoting
+commit is the place to attach the attribution that `fd543d42` failed to record.
 
 Note that HyperHLE hashes do not resolve from a fresh clone: `upstream` is
 touchHLE, and these objects only exist locally from an earlier fetch. To verify
