@@ -8,6 +8,14 @@
 //!
 //! This is the only backend that works on platforms that lack desktop OpenGL
 //! and is the preferred ES 2.0 backend on Windows.
+//!
+//! Adapted from work by Бусик in HyperHLE commit `d640dd4d`, "Add GLES2Native
+//! backend and shader-based present path"
+//! (<https://github.com/HyperHLE/HyperHLE>). The tapHLE commit that introduced
+//! this file, `fd543d42`, cited the wrong upstream commit and credited the
+//! wrong author; see the erratum in `dev-docs/upstream-sync.md`. That commit
+//! cannot be corrected in place because a published compatibility report cites
+//! one of its descendants, so this notice is the attribution of record.
 
 use super::gles11_raw as gles11;
 use super::gles11_raw::types::*;
