@@ -63,6 +63,7 @@ static inline NSRange NSMakeRange(NSUInteger loc, NSUInteger len) {
 // NSKeyValueCoding. NSString is not declared yet, so the key is typed as id.
 - (id)valueForKey:(id)key;
 - (void)setValue:(id)value forKey:(id)key;
+- (void)setNilValueForKey:(id)key;
 @end
 
 @interface NSAutoreleasePool : NSObject
@@ -155,6 +156,7 @@ typedef enum {
 @interface NSNumber : NSValue
 + (NSNumber *)numberWithFloat:(float)value;
 + (NSNumber *)numberWithBool:(bool)value;
++ (NSNumber *)numberWithInt:(int)value;
 - (float)floatValue;
 - (int)intValue;
 - (BOOL)boolValue;

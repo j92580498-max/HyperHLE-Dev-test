@@ -6636,6 +6636,80 @@ int test_NSObject_valueForKey() {
   return result;
 }
 
+@interface KVCNilTarget : NSObject {
+@public
+  id objectIvar;
+  int scalarIvar;
+  int nilKeyCount;
+  id lastNilKey;
+}
+- (void)setObjectProperty:(id)value;
+- (void)setScalarProperty:(int)value;
+@end
+
+@implementation KVCNilTarget
+- (void)setObjectProperty:(id)value {
+  [objectIvar release];
+  objectIvar = [value retain];
+}
+- (void)setScalarProperty:(int)value {
+  scalarIvar = value;
+}
+// The documented hook a class overrides to decide what nil means for a
+// property that cannot hold it. Overriding it here also keeps the test from
+// depending on what the unoverridden default does.
+- (void)setNilValueForKey:(id)key {
+  nilKeyCount++;
+  [lastNilKey release];
+  lastNilKey = [key retain];
+}
+- (void)dealloc {
+  [objectIvar release];
+  [lastNilKey release];
+  [super dealloc];
+}
+@end
+
+// setValue:nil forKey: is only meaningful when the target accepts an object.
+// For any other type there is no value to write, so it must go to
+// setNilValueForKey: instead of being passed on as a null pointer.
+int test_NSObject_setValue_nil() {
+  NSAutoreleasePool *pool = [NSAutoreleasePool new];
+
+  KVCNilTarget *target = [KVCNilTarget new];
+
+  int result = 0;
+  [target setValue:@"present" forKey:@"objectProperty"];
+  [target setValue:[NSNumber numberWithInt:5] forKey:@"scalarProperty"];
+  if (![target->objectIvar isEqual:@"present"]) {
+    result = -1;
+  } else if (target->scalarIvar != 5) {
+    result = -2;
+  } else {
+    // An object-typed setter receives the nil.
+    [target setValue:nil forKey:@"objectProperty"];
+    if (target->objectIvar != nil) {
+      result = -3;
+    } else if (target->nilKeyCount != 0) {
+      result = -4;
+    } else {
+      // A scalar setter is not called; setNilValueForKey: is.
+      [target setValue:nil forKey:@"scalarProperty"];
+      if (target->nilKeyCount != 1) {
+        result = -5;
+      } else if (![target->lastNilKey isEqual:@"scalarProperty"]) {
+        result = -6;
+      } else if (target->scalarIvar != 5) {
+        result = -7;
+      }
+    }
+  }
+
+  [target release];
+  [pool drain];
+  return result;
+}
+
 int test_malloc_zone_basic() {
   malloc_zone_t *zone = malloc_create_zone(0, 0);
   unsigned char *p = malloc_zone_malloc(zone, 128);
@@ -6906,6 +6980,7 @@ struct {
     FUNC_DEF(test_NSNotificationCenter_addObserver_nilName_removeObserver),
     FUNC_DEF(test_NSNotificationCenter_removeObserver_duringPost),
     FUNC_DEF(test_NSObject_valueForKey),
+    FUNC_DEF(test_NSObject_setValue_nil),
     FUNC_DEF(test_malloc_zone_basic),
     FUNC_DEF(test_malloc_zone_struct_dispatch),
     FUNC_DEF(test_NSDictionary_keysSortedByValueUsingSelector),

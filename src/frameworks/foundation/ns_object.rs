@@ -194,18 +194,18 @@ pub const CLASSES: ClassExports = objc_classes! {
 
     let class = msg![env; this class];
 
-    // TODO: If value is nil, the target ivar/method argument type must be
-    // checked. If it's non-object type, invoke setNilValueForKey:
-    assert!(value != nil);
-
     // When the value is a boxed scalar (NSNumber/NSValue) but the target
     // accessor takes a plain scalar (e.g. -[... setVolume:(double)]), KVC
     // unwraps the box and passes the scalar by value. `kvc_set_unwrapped_scalar`
     // consults the setter's type encoding and handles that; an object-typed
     // setter falls through to receive the boxed value unchanged.
-    let value_class = msg![env; value class];
-    let ns_value_class = env.objc.get_known_class("NSValue", &mut env.mem);
-    let value_is_boxed_scalar = env.objc.class_is_subclass_of(value_class, ns_value_class);
+    let value_is_boxed_scalar = if value == nil {
+        false
+    } else {
+        let value_class = msg![env; value class];
+        let ns_value_class = env.objc.get_known_class("NSValue", &mut env.mem);
+        env.objc.class_is_subclass_of(value_class, ns_value_class)
+    };
 
     // Look for the first accessor named set<Key>: or _set<Key>, in that order.
     // If found, invoke it with the input value (or unwrapped value, as needed)
@@ -220,6 +220,14 @@ pub const CLASSES: ClassExports = objc_classes! {
                 .filter(|&sel| env.objc.class_has_method(class, sel))
         });
     if let Some(sel) = setter {
+        // nil only means something to an object-typed setter. For any other
+        // type there is no value to write, so Apple's documented behaviour is
+        // to invoke setNilValueForKey: instead.
+        if value == nil && !matches!(kvc_setter_arg_type(env, this, sel), None | Some(b'@' | b'#')) {
+            let sel = env.objc.lookup_selector("setNilValueForKey:").unwrap();
+            () = msg_send(env, (this, sel, key));
+            return;
+        }
         if value_is_boxed_scalar && kvc_set_unwrapped_scalar(env, this, sel, value) {
             return;
         }
@@ -327,6 +335,16 @@ pub const CLASSES: ClassExports = objc_classes! {
         this, class_name_string, class, key_string, key,
         env.objc.debug_all_class_selectors_as_strings(&env.mem, class).join(", "),
         env.objc.debug_all_class_ivars_as_strings(class).join(", "));
+}
+
+- (())setNilValueForKey:(id)key { // NSString*
+    // TODO: Raise NSInvalidArgumentException
+    let class: Class = ObjC::read_isa(this, &env.mem);
+    let class_name_string = env.objc.get_class_name(class).to_owned(); // TODO: Avoid copying
+    let key_string = to_rust_string(env, key);
+    panic!("Object {:?} of class {:?} ({:?}) was asked to set nil for {}, \
+        which is not an object-typed property ({:?})",
+        this, class_name_string, class, key_string, key);
 }
 
 - (())setValue:(id)_value
@@ -509,27 +527,7 @@ forUndefinedKey:(id)key { // NSString*
 /// different number of argument registers, so choosing the wrong one would place
 /// the value incorrectly even when the `NSNumber`'s own `objCType` differs.
 fn kvc_set_unwrapped_scalar(env: &mut Environment, this: id, setter: SEL, value: id) -> bool {
-    let class = ObjC::read_isa(this, &env.mem);
-    let Some(&signature) = env.objc.class_get_method_signature(class, setter) else {
-        return false;
-    };
-    let Ok(signature) = env.mem.cstr_at_utf8(signature) else {
-        return false;
-    };
-    // A method type encoding is <return><self@><cmd:><arg…> with a numeric byte
-    // offset after each type. Dropping the digits leaves the ordered type
-    // tokens; a unary setter's value argument is the fourth token (return, self,
-    // _cmd, value).
-    let tokens: Vec<u8> = signature.bytes().filter(|b| !b.is_ascii_digit()).collect();
-    let mut i = 3;
-    // Skip any type qualifiers (const, in, out, …) that may precede the type.
-    while tokens
-        .get(i)
-        .is_some_and(|b| matches!(b, b'r' | b'n' | b'N' | b'o' | b'O' | b'R' | b'V'))
-    {
-        i += 1;
-    }
-    let Some(&arg_type) = tokens.get(i) else {
+    let Some(arg_type) = kvc_setter_arg_type(env, this, setter) else {
         return false;
     };
 
@@ -567,6 +565,29 @@ fn kvc_set_unwrapped_scalar(env: &mut Environment, this: id, setter: SEL, value:
         _ => return false,
     }
     true
+}
+
+/// Key-Value Coding helper: the Objective-C type encoding of a unary setter's
+/// value argument, or `None` when the method records no signature (which means
+/// a host-implemented method: see `class_get_method_signature`).
+fn kvc_setter_arg_type(env: &Environment, this: id, setter: SEL) -> Option<u8> {
+    let class = ObjC::read_isa(this, &env.mem);
+    let signature = *env.objc.class_get_method_signature(class, setter)?;
+    let signature = env.mem.cstr_at_utf8(signature).ok()?;
+    // A method type encoding is <return><self@><cmd:><arg…> with a numeric byte
+    // offset after each type. Dropping the digits leaves the ordered type
+    // tokens; a unary setter's value argument is the fourth token (return, self,
+    // _cmd, value).
+    let tokens: Vec<u8> = signature.bytes().filter(|b| !b.is_ascii_digit()).collect();
+    let mut i = 3;
+    // Skip any type qualifiers (const, in, out, …) that may precede the type.
+    while tokens
+        .get(i)
+        .is_some_and(|b| matches!(b, b'r' | b'n' | b'N' | b'o' | b'O' | b'R' | b'V'))
+    {
+        i += 1;
+    }
+    tokens.get(i).copied()
 }
 
 /// Key-Value Coding helper: invoke `getter` and return its result as an object,
