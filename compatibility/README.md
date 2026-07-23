@@ -1,10 +1,93 @@
 # Compatibility database protocol
 
-The tapHLE compatibility database records reproducible Windows observations
-for exact early iPhone OS app builds. It does not contain apps. Each record in
-`compatibility/apps` maps an app to an exact bundle identity, one or more exact
-Archive.org IPA filenames, and an append-only sequence of reports. The root
-`COMPATIBILITY.md` is generated from those records.
+The tapHLE compatibility database records reproducible Windows observations for
+exact early iPhone OS app builds. It does not contain apps. A result ties an app
+to an exact bundle identity, the exact artifact tested, and a dated rating on a
+committed tapHLE revision.
+
+This document is the protocol: what a result must satisfy before it may be
+recorded, and how an Archive.org-backed artifact is verified. Those rules are
+the same wherever the result is stored. The next section says where that is.
+
+## Where the database lives
+
+The compatibility database is a live web application, **tapHLEdb** — a fork of
+[app-compatibility-db](https://github.com/hikari-no-yume/app-compatibility-db),
+the same app that powers touchHLE's database — self-hosted by the maintainer at
+**<https://taphle.ephun.net/compatibility>**. Its source is
+[ephun/tapHLEdb](https://github.com/ephun/tapHLEdb). A live application is the
+right shape for this data: it is edited continuously by humans, coding agents
+and (later) tapHLE telemetry, which does not fit a commit-per-edit Git workflow.
+
+That deployment is now the record of tapHLE compatibility. Every new result goes
+there. The JSON records still in `compatibility/apps` predate it and remain only
+until the maintainer migrates them; do not add records there.
+
+The rest of this document still applies to both. The Archive.org verification
+protocol, the testing policy, and the rule that a rating requires an actual
+tapHLE run on Windows are properties of how a result is earned, not of where it
+is stored.
+
+What lives where, so the two never duplicate each other:
+
+- **tapHLEdb — the database.** Structured data only: an app's identity, its
+  versions, and dated reports carrying a 1–5 rating, the tapHLE version, the
+  Windows host, the source of the result, and a one-line frontier. Each report
+  is a dated snapshot and is never revised, so its frontier records where the
+  app stood *at that commit*. It holds no narrative. It answers *"where does
+  this app stand?"*
+- **`dev-docs/app-notes/<app>.md` — the notebook.** The debugging narrative:
+  evidence, root causes and the next discriminator, kept current. Its frontier
+  is where the app stops *now*. It answers *"how do I push this app further?"*
+  It is explicitly not a compatibility claim.
+
+The two frontiers are different facts, not duplicates: one is history, one is
+present. Read the database to see how an app is doing; read the note to continue
+its work.
+
+A record exists only because tapHLE actually ran that app and produced a rating.
+Results from touchHLE or HyperHLE are testing leads, never imported ratings, and
+apps are never listed speculatively.
+
+## How an agent records a result
+
+A coding agent submits through tapHLEdb's token-authenticated endpoint:
+
+```
+POST https://taphle.ephun.net/compatibility/api/report
+```
+
+It is documented in `API.md` in the tapHLEdb repository. The agent token lives
+at `~/.taphledb-token` and nowhere else: read it inline as
+`$(cat ~/.taphledb-token)` at the moment of use, never echo it, and never copy
+it into this repository, a commit message, an app note, or any command whose
+output is recorded. If it is missing, say so and keep working. Submissions
+always land unapproved and appear publicly only after the maintainer approves
+them.
+
+Crossing a star threshold does two things, not one: the reusable fix graduates
+to `trunk` *and* the report goes to the database. Do only the first and a real
+result stays invisible; do only the second and the claim cannot be reproduced.
+
+Submit when the rating changes, in either direction — a regression is a result.
+Do not submit a rerun that reproduces a rating already recorded for the same
+tapHLE revision; the endpoint does not deduplicate, so that is pure moderation
+noise.
+
+To choose what to work on, read the list:
+
+```
+GET https://taphle.ephun.net/compatibility/api/apps
+```
+
+No credential is needed. The lowest-rated apps need the most help, and an app
+listed there with no `compat/<slug>` branch is unclaimed work an agent may start
+without being asked.
+
+An agent may assign at most **three stars**: two when the app reaches a stable
+screen, and three when the gameplay loop demonstrably starts and persists for a
+short while. **Four and five stars require human testing**, and an agent must
+never assign them.
 
 ## Simple rating scale
 
@@ -164,10 +247,10 @@ preserved commit before recording the result.
 
 ## Editing and checking records
 
-Create one lowercase, hyphenated file at
-`compatibility/apps/<app-slug>.json`. Start from the fields in an existing
-record and consult `compatibility/schema-v1.json`. Do not copy a previous
-version's identity or hashes without verifying them.
+**Do not create new records here.** New results go to the live database; see
+"How an agent records a result" above. This section covers the legacy
+`compatibility/apps/*.json` records, which remain readable and checkable until
+they are migrated, and `compatibility/schema-v1.json` documents their shape.
 
 Run the offline commands from the repository root:
 

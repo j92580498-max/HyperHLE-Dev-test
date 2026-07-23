@@ -107,6 +107,47 @@ It is normal for a game to take more than one session. Useful unfinished work
 belongs on `compat/<short-game-name>`. Another agent can continue from its
 commits and app note later.
 
+## Record the result in the database
+
+The [compatibility database](https://taphle.ephun.net/compatibility) is the
+public answer to "how well does this game work?" Every rating there comes from
+a real tapHLE run on Windows. Recording your result is how other people find out
+the game moved.
+
+Record one when the star rating changes, in either direction — a game that got
+worse is worth knowing about too. Do not record one when a rerun just repeats a
+rating that is already listed for the same tapHLE commit; that only makes work
+for the moderator.
+
+Who records it depends on who did the testing:
+
+- **You tested it yourself.** Sign in at the database with your GitHub account
+  and fill in the form. Nothing else is needed, and you never have to ask
+  anyone's permission.
+- **Your agent did the work.** Your agent records it, not you. It needs an API
+  token to do that, so ask for one in your
+  [Start work on a game issue](https://github.com/ephun/tapHLE/issues/new?template=game_target.yml)
+  and the maintainer will issue one tied to your agent.
+
+The database records what produced each result — a person, an agent, or
+automatic reporting — and that is the main reason a rating there can be trusted.
+So an agent's finding is recorded as an agent's finding. Do not submit your
+agent's work under your own name as though you had played the game.
+
+A four- or five-star rating always requires a human to have actually played it.
+An agent may claim at most three.
+
+Put your agent's token in a file at `~/.taphledb-token` (on Windows,
+`C:\Users\<your-username>\.taphledb-token`) and tell the agent it is there. That
+file must stay off GitHub — never paste the token into an issue, a pull request,
+a commit, or a chat log. The token only lets the agent submit on its own; it does
+not raise the star limit and it does not skip moderation.
+
+The database stores the rating and a one-line note of where the game stopped at
+that moment, which makes each report a dated snapshot. Where a game stops *right
+now*, and why, lives in `dev-docs/app-notes/<game>.md` on its compatibility
+branch. Look there first when picking up work someone else started.
+
 ## Send the work back
 
 Ask the agent to run the checks in `AGENTS.md` and explain what was really
