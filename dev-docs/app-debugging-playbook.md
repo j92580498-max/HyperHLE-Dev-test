@@ -197,6 +197,34 @@ copy by descriptor size, copy/dispose helpers, heap reference counts,
 Returning the original stack pointer from `copy` may move one run forward but
 leaves a use-after-return bug, so it is not a valid compatibility fix.
 
+### Suspect the emulator's own iteration before the app's ownership
+
+A message arriving at an object whose class differs from run to run is a
+use-after-free. The tempting next step is to hunt for a retain the app is
+missing, but check the other side first: does tapHLE deliver that message by
+iterating a **copy** of a callback list it took before running guest code?
+
+`NSNotificationCenter`, responder and delegate lists, timer and run-loop
+queues all have to copy before dispatching, because delivery reenters the guest
+and the guest may register or unregister during it. Copying is correct;
+iterating the copy blindly is not. These lists deliberately hold unretained
+references, so an entry that unregisters and is deallocated part-way through a
+dispatch leaves the copy naming freed memory. Cocoa's guarantee that a removed
+observer is not messaged is exactly what makes unregistering in a teardown
+method safe, so a faithful implementation has to re-check each copied entry
+against the live list before messaging it.
+
+Two traps make this easy to misdiagnose:
+
+- Instrumenting `retain`/`release` and attributing each call by whether a guest
+  `LR` is available will label the emulator's own retain around a dispatch as
+  guest code. A retain/release pair that brackets exactly one send, and nothing
+  else, is more likely to be the host's dispatch guard than an app's.
+- If the app routes its own event system through a Foundation class, the guest
+  method names will not say so. Resolve the wrapper: a two-call method that
+  fetches a singleton and then sends one selector to it is almost always a thin
+  forwarder, and resolving its `__objc_selrefs` entries names the real API.
+
 Read structures before reinterpreting data. For compressed audio, for example,
 capture the `AudioStreamBasicDescription`, packet-description route/count, and
 the first sync bytes before treating the buffer as PCM. For a stale-pointer
