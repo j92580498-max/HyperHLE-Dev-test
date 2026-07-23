@@ -307,3 +307,47 @@ only on `_tapHLE_NSMutableArray`, so an immutable array cannot receive either.
 Neither is the current blocker, but both are genuine reusable gaps.
 
 Rating is unchanged at **★★☆☆☆ (2/5) Starts**.
+
+### The dispatcher holds unretained pointers (2026-07-22, later)
+
+Tracing one `KataCCButtonBehavior` from `alloc` to `dealloc`, recording the
+guest `LR` at every reference-count change, gives:
+
+```
+retain  -> 2   (host)
+retain  -> 3   (guest, LR 0x78b95 -- the dispatcher's send site)
+release, was 3 (guest, LR 0x78b95 -- immediately after the send)
+release, was 2 (host)
+release, was 1 (host)
+DEALLOC
+```
+
+The dispatcher's retain/release pair brackets the send and nothing else, so it
+holds **no persistent reference** — the same contract as iOS, where a list like
+this stores unretained pointers and the object is required to unregister
+itself. That rules out "the dispatcher forgot to retain" as the defect.
+
+Teardown is not being skipped either. Logging every selector sent to the class
+shows `onRemove` and both levels of `dealloc` (the guest override and its
+super-call) run on all five buttons. The registration simply outlives the
+object.
+
+No object was reported as deallocated with a non-zero refcount, and the counts
+above balance, so this is not an over-release. The missing piece is a retain
+that iOS performs and tapHLE does not, in whatever **owns** the button — not in
+the dispatcher and not in the teardown path.
+
+Note that `-[NSMutableArray removeObject:]` did contain a real bug: it removed
+matching indices in ascending order, so each removal shifted the rest down and
+every index after the first referred to the wrong element. That was fixed with
+a regression test in `673d684e`. It did **not** change this frontier, so do not
+assume it was the cause.
+
+The alias registry owner is `KataSVUserBehaviorController`; it performs 53
+`mapAlias:toClass:` registrations covering every alias the scene looks up.
+
+A private debugging cache lives outside the checkout at
+`RPythonVibecoding/_bm-debug-cache/`: the extracted binary, its armv7
+disassembly (addresses match the guest `PC`/`LR` in tapHLE's register dumps), a
+menu screenshot, and a PowerShell harness that launches the app, clicks Play,
+and prints the failure. None of it may enter the repository.
