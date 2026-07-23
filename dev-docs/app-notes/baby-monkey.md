@@ -226,3 +226,84 @@ build using these exact canonical bytes.
 - The full integration test remains unavailable because the reviewed custom
   test SDK and `tests/llvm/bin/clang.exe` are not installed; the failure is an
   environment prerequisite, not an app result.
+
+## Correction and root cause of the black gameplay screen (2026-07-22)
+
+**The 2026-07-21 root-cause claim above is wrong and must not be resumed.** It
+states that `bm/GameScene.scene` is "a 56 KB XML-plist keyed archive" and that
+reaching 3/5 requires completing `NSKeyedUnarchiver` decoding of the behavior
+graph. It is not a keyed archive. Every one of the 131 `.scene`/`.prefab` files
+in the bundle is a plain XML property list with the engine's own schema
+(`archetypeName`, `name`, `behaviors`, `children`); none contains `$objects` or
+`$archiver`. They are read with `dictionaryWithContentsOfFile:` and walked by
+the engine, so `NSKeyedUnarchiver` is not in this path at all. An agent that
+resumes the old discriminator will instrument code the scene never executes.
+
+The `$null`/UID-0 unarchiver fix (`33527851`) is still a correct general fix —
+a UID reference to `$objects[0]` does mean nil — but it is unrelated to this
+app's gameplay load, and the claim that it "cleared the `onTouchesBegan:`
+panic" was a misreading of nondeterministic output.
+
+### Actual root cause: use-after-free in the touch-responder list
+
+`KataCCButtonBehavior` instances are deallocated while the engine's touch
+dispatcher still holds pointers to them, so `onTouchesBegan:` is sent to
+whatever object later occupies that address. Direct evidence from one run:
+
+```
+dealloc KataCCButtonBehavior 0x3024bf00
+... later, same run ...
+Object 0x3024bf00 (class "_tapHLE_NSDictionary") does not respond to
+selector "onTouchesBegan:"!
+```
+
+Four runs of the identical committed build produced four different receiver
+types at the same point — `_tapHLE_NSString "density"`, `_tapHLE_NSString
+"kSpatialBehaviorAlias"`, `_tapHLE_NSDictionary`, and `_tapHLE_NSArray`. A
+deterministic scene load cannot yield a nondeterministic receiver type from a
+decoding bug; it is the signature of freed memory being reallocated. The
+specific strings are incidental (a Box2D fixture key, a `classAlias` value) and
+chasing their meaning is a dead end.
+
+148 `Kata*`/`bm*` objects are deallocated during the gameplay-scene load,
+including 19 `KataCCSpatialBehavior`, 16 `KataCCImageBehavior`, and 5
+`KataCCButtonBehavior`. No object was reported as deallocated with a non-zero
+refcount, so this is a missing retain (or a retain the engine expects a
+container to perform), not a double release.
+
+### Ruled out, with evidence — do not re-test these
+
+- **Alias registry is populated.** `mapAlias:toClass:` is called 53 times on
+  `KataSVUserBehaviorController`, including all three of
+  `kSpatialBehaviorAlias`, `kImageBehaviorAlias`, `kSpriteBehaviorAlias`.
+  `getClassForAlias:` resolves against a populated table.
+- `NSDictionary` fast enumeration yields keys (uses `allKeys`); `allKeys` and
+  `allValues` map to the correct halves of each pair.
+- `NSString`'s `hash` and `isEqual:` are on the base class and compare
+  contents, so binary constant strings and plist-parsed strings match as
+  dictionary keys.
+- `+load` is implemented and dispatched from `environment.rs`.
+- `removeObserver:` with a nil name and object removes every matching
+  registration; the touch path does not use `NSNotificationCenter` anyway.
+- The autorelease pool in `ui_touch.rs` correctly wraps the whole
+  `touchesBegan:` delivery and drains only after every view has been messaged.
+
+### Next discriminator
+
+In the failing run the fatal release of a `KataCCButtonBehavior` is logged
+*before* the surviving buttons receive `onTouchesBegan:`, so the object dies
+during scene setup/teardown rather than mid-dispatch. Find what is supposed to
+own it: instrument `retain`/`release` for one `KataCCButtonBehavior` from
+`alloc` onwards, recording the guest `LR` at each call, and identify which
+retain that iOS performs is missing under tapHLE. The guest frame pointer chain
+is not walkable from inside a host call, so capture `LR` at the call site
+rather than relying on `dump_current_guest_state`'s stack trace.
+
+### Separate real gaps found while investigating
+
+The game calls both `makeObjectsPerformSelector:` and
+`makeObjectsPerformSelector:withObject:`. tapHLE implements only the first, and
+only on `_tapHLE_NSMutableArray`, so an immutable array cannot receive either.
+Neither is the current blocker, but both are genuine reusable gaps.
+
+Rating is unchanged at **★★☆☆☆ (2/5) Starts**.
