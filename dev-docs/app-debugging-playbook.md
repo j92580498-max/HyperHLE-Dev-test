@@ -498,7 +498,15 @@ limitation. Never silently repair or classify an ambiguous file as evidence.
   context lines; do not repeatedly reread or paste the full file.
 - Prefer junctions/hard links over copied runtime support trees.
 - Remove only the exact temporary extraction/run directories created for the
-  completed experiment. Never use a broad wildcard or an unresolved path.
+  completed experiment. Never use a broad wildcard or an unresolved path. The
+  practice that makes this automatic: the harness that creates a directory
+  captures its path in a variable and is the only thing that deletes it, by that
+  variable. Enumerating the temporary directory by a `taphle-*` pattern is the
+  mistake this rule exists to prevent — that directory is shared by every
+  session and every app, so a matching name is not evidence that the directory
+  is yours, and a force delete there does not go to the Recycle Bin. If you are
+  not certain a directory is yours, leave it: stale temporary data costs
+  nothing, and it may be another investigation's only remaining evidence.
 - Keep the small sanitized conclusion, not gigabytes of intermediate data.
 
 ## Choose and bound the fix
