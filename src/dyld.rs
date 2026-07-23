@@ -373,14 +373,41 @@ impl Dyld {
             for alias in dylib.aliases {
                 writeln!(file, "// {alias}")?;
             }
+            let mut class_names = std::collections::HashSet::new();
             for (class_name, _) in dylib.class_exports.iter().copied().flatten() {
+                class_names.insert(class_name);
                 writeln!(file, "@interface {class_name}")?;
                 writeln!(file, "@end")?;
                 writeln!(file, "@implementation {class_name}")?;
                 writeln!(file, "@end")?;
             }
             for (constant_symbol, _) in dylib.constant_exports.iter().copied().flatten() {
-                writeln!(file, "int {};", constant_symbol.strip_prefix("_").unwrap())?;
+                let c_name = constant_symbol.strip_prefix("_").unwrap();
+                if class_names.contains(&c_name) {
+                    // A few symbols are exported both as a class and as data:
+                    // the block runtime's `_NSConcrete*Block` are classes, and
+                    // block literals also reference them as data. Both symbols
+                    // are needed, but they cannot share a C identifier in one
+                    // translation unit, so give the data one a distinct
+                    // identifier and pin its symbol name with an asm label.
+                    // The label is used verbatim, so no underscore is added.
+                    writeln!(
+                        file,
+                        "int {c_name}_taphle_data_stub __asm__(\"{constant_symbol}\");"
+                    )?;
+                } else {
+                    writeln!(file, "int {c_name};")?;
+                }
+            }
+            if dylib.path.ends_with("CoreFoundation.framework/CoreFoundation") {
+                // Clang emits a reference to this for every `@"..."` literal.
+                // Our dyld resolves it specially at load time (see
+                // do_symbol_linking) rather than through a normal export, so it
+                // appears in no export list and the stub libraries would not
+                // define it. The static link still needs the symbol to exist,
+                // so emit it here. Two leading underscores in the C identifier
+                // become the three the compiler references.
+                writeln!(file, "int __CFConstantStringClassReference;")?;
             }
             for (function_symbol, _) in dylib.function_exports.iter().copied().flatten() {
                 writeln!(

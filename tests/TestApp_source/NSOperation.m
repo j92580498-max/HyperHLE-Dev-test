@@ -14,11 +14,11 @@ static int operation_value;
 }
 @end
 
-@interface InvocationTarget : NSObject
+@interface NSOperationInvocationTarget : NSObject
 - (void)record:(id)object;
 @end
 
-@implementation InvocationTarget
+@implementation NSOperationInvocationTarget
 - (void)record:(id)object {
   if (object == self)
     operation_value = 2;
@@ -44,7 +44,7 @@ int test_NSOperation(void) {
   if ([queue operationCount] != 0 || [[queue operations] count] != 0)
     return -3;
 
-  InvocationTarget *target = [InvocationTarget new];
+  NSOperationInvocationTarget *target = [NSOperationInvocationTarget new];
   NSInvocationOperation *invocation =
       [[NSInvocationOperation alloc] initWithTarget:target
                                           selector:@selector(record:)

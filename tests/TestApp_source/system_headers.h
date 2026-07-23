@@ -104,6 +104,13 @@ static inline NSRange NSMakeRange(NSUInteger loc, NSUInteger len) {
 - (BOOL)isEqualToArray:(NSArray *)otherArray;
 @end
 
+@interface NSMutableArray<ObjectType> : NSArray<ObjectType>
+- (void)addObject:(ObjectType)anObject;
+- (void)removeObject:(ObjectType)anObject;
+- (void)removeObjectAtIndex:(NSUInteger)index;
+- (void)removeAllObjects;
+@end
+
 @interface NSDictionary<KeyType, ObjectType> : NSObject
 + (instancetype)dictionaryWithObjects:(NSArray<ObjectType> *)objects
                               forKeys:(NSArray<KeyType> *)keys;

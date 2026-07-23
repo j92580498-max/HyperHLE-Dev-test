@@ -26,7 +26,10 @@
 #include <mach/thread_info.h>
 #include <malloc/malloc.h>
 #include <math.h>
-#include <net/if.h>
+// <net/if.h> is not in the common-3.0 SDK, which is built from open-source
+// headers, so declare the one function used here rather than requiring an SDK
+// release that does not exist. See tests/README.md for the pinned SDK version.
+unsigned int if_nametoindex(const char *);
 #include <pthread.h>
 #include <semaphore.h>
 #include <setjmp.h>
@@ -6586,6 +6589,41 @@ int test_NSDictionary_dictionaryWithObjects_forKeys_count() {
   return 0;
 }
 
+// -[NSMutableArray removeObject:] must remove *every* occurrence. Removing by
+// ascending index is wrong, because each removal shifts the following elements
+// down: the second removal would then delete the wrong element and could run
+// past the end.
+int test_NSMutableArray_removeObject_duplicates() {
+  NSMutableArray *array = [NSMutableArray array];
+  id repeated = @"repeated";
+  id other = @"other";
+  [array addObject:repeated];
+  [array addObject:other];
+  [array addObject:repeated];
+  [array addObject:other];
+  [array addObject:repeated];
+
+  [array removeObject:repeated];
+
+  if ([array count] != 2)
+    return -1;
+  if (![[array objectAtIndex:0] isEqual:other])
+    return -2;
+  if (![[array objectAtIndex:1] isEqual:other])
+    return -3;
+
+  // Removing every element must empty the array, not leave a survivor.
+  [array removeObject:other];
+  if ([array count] != 0)
+    return -4;
+
+  // Removing something absent must be a no-op rather than an error.
+  [array removeObject:repeated];
+  if ([array count] != 0)
+    return -5;
+  return 0;
+}
+
 int test_if_nametoindex() {
   if (if_nametoindex("lo0") != 1)
     return -1;
@@ -6723,6 +6761,7 @@ struct {
     FUNC_DEF(test_malloc_zone_struct_dispatch),
     FUNC_DEF(test_NSDictionary_keysSortedByValueUsingSelector),
     FUNC_DEF(test_NSDictionary_dictionaryWithObjects_forKeys_count),
+    FUNC_DEF(test_NSMutableArray_removeObject_duplicates),
     FUNC_DEF(test_if_nametoindex),
 };
 // clang-format on

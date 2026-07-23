@@ -681,8 +681,12 @@ pub const CLASSES: ClassExports = objc_classes! {
             to_remove.push(i);
         }
     }
+    // Remove from the back: every removal shifts the following elements down,
+    // so ascending order would make each index after the first refer to the
+    // wrong element (and could run past the end). This matters whenever an
+    // object appears more than once, which `removeObject:` must fully remove.
     // TODO: runtime here is O(n^2), it could be O(n) instead
-    for i in to_remove {
+    for i in to_remove.into_iter().rev() {
         () = msg![env; this removeObjectAtIndex:i];
     }
 }
