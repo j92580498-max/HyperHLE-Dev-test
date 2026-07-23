@@ -6710,6 +6710,68 @@ int test_NSObject_setValue_nil() {
   return result;
 }
 
+// NSMutableSet's set-algebra mutators, and the NSSet comparisons that go with
+// them. setSet: has to read the other set's members before clearing its own,
+// because the other set may be the receiver.
+int test_NSMutableSet_setAlgebra() {
+  NSAutoreleasePool *pool = [NSAutoreleasePool new];
+
+  NSSet *ab = [NSSet setWithObjects:@"a", @"b", nil];
+  NSSet *bc = [NSSet setWithObjects:@"b", @"c", nil];
+  NSSet *de = [NSSet setWithObjects:@"d", @"e", nil];
+
+  int result = 0;
+  NSMutableSet *set = [NSMutableSet setWithCapacity:4];
+
+  [set setSet:ab];
+  if ([set count] != 2 || ![set containsObject:@"a"] ||
+      ![set containsObject:@"b"]) {
+    result = -1;
+  } else if (![set isEqualToSet:ab]) {
+    result = -2;
+  }
+
+  // setSet: with the receiver itself must leave it unchanged, not empty it.
+  if (result == 0) {
+    [set setSet:set];
+    if ([set count] != 2 || ![set containsObject:@"a"]) {
+      result = -3;
+    }
+  }
+
+  if (result == 0) {
+    [set intersectSet:bc];
+    if ([set count] != 1 || ![set containsObject:@"b"]) {
+      result = -4;
+    }
+  }
+
+  if (result == 0) {
+    [set setSet:ab];
+    [set minusSet:bc];
+    if ([set count] != 1 || ![set containsObject:@"a"]) {
+      result = -5;
+    }
+  }
+
+  if (result == 0) {
+    if (![ab intersectsSet:bc]) {
+      result = -6;
+    } else if ([ab intersectsSet:de]) {
+      result = -7;
+    } else if (![ab isSubsetOfSet:[NSSet setWithObjects:@"a", @"b", @"c", nil]]) {
+      result = -8;
+    } else if ([ab isSubsetOfSet:bc]) {
+      result = -9;
+    } else if ([ab isEqualToSet:bc]) {
+      result = -10;
+    }
+  }
+
+  [pool drain];
+  return result;
+}
+
 int test_malloc_zone_basic() {
   malloc_zone_t *zone = malloc_create_zone(0, 0);
   unsigned char *p = malloc_zone_malloc(zone, 128);
@@ -6981,6 +7043,7 @@ struct {
     FUNC_DEF(test_NSNotificationCenter_removeObserver_duringPost),
     FUNC_DEF(test_NSObject_valueForKey),
     FUNC_DEF(test_NSObject_setValue_nil),
+    FUNC_DEF(test_NSMutableSet_setAlgebra),
     FUNC_DEF(test_malloc_zone_basic),
     FUNC_DEF(test_malloc_zone_struct_dispatch),
     FUNC_DEF(test_NSDictionary_keysSortedByValueUsingSelector),
