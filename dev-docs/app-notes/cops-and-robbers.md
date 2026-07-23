@@ -111,6 +111,23 @@ play -> end -> restart completes under tapHLE.
 No score or game-over screen was seen between the round ending and the start
 prompt; the game appears to go straight there.
 
+## Audio produces signal (2026-07-23, later)
+
+Measured rather than assumed, with the OpenAL Soft wave writer described in the
+playbook. A 111.9 s capture (stereo, 44.1 kHz) driven through the proven recipe
+into gameplay:
+
+- Silent for the first 21.5 s, and again from 23.9 s to 34.9 s. That covers
+  startup and the language/sound prompts.
+- From about 34.9 s onward there is no silence of 3 s or more: the intro, the
+  menus and gameplay all carry signal.
+- Menu and intro window: mean −36.1 dB, max −14.5 dB. Gameplay window: mean
+  −32.1 dB, max −11.5 dB, so gameplay is the louder part.
+
+This proves the host mixer emits signal. Per the playbook it does not prove
+default-device routing or that the audio sounds right, so treat the feature as
+partial until a person listens.
+
 ## Known limitations at this rating
 
 - Jump and the speed boost were never exercised; only lateral steering was.
@@ -120,8 +137,6 @@ prompt; the game appears to go straight there.
 - A file the app repeatedly `open`s and `remove`s does not exist, producing a
   steady trickle of warnings. It does not appear to matter, but it has not been
   identified.
-- Audio was not measured. Do not claim it works or does not work without a wave
-  capture: see the audio section of the playbook.
 - `UIProxyObject` for `IBFirstResponder` is left unreplaced at nib load. It has
   not caused an observed problem, but it is a real gap.
 
