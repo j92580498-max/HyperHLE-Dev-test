@@ -16,6 +16,11 @@ Last updated: 2026-07-23. Rating: ★★★☆☆ (3/5) In game.
   `73d30a59a8d636e7c1cc33fd29e1a720a1f10badae40570c2f12aa5649e538a9`.
 - Embedded bundle: `com.glu.thief3d`, display name `Cop&Robber`, version `1.3`,
   minimum OS `2.0`, iPhone device family.
+- Build date: the archive entries for the executable and `Info.plist` are both
+  stamped `2009-06-16`, and the earliest asset is `2009-04-12`. That is the
+  evidence behind the `release_year` of 2009 in the database record; no iOS
+  `Info.plist` carries a release year, so this is the only source in the
+  artifact itself.
 
 Live metadata was verified on 2026-07-23 and the downloaded bytes match its
 exact size, MD5 and SHA-1. As with Baby Monkey, the Archive filename and the
