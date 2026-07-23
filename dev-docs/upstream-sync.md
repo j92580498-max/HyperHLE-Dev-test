@@ -131,9 +131,53 @@ and validate on Windows. Reconsider the base only on a dedicated migration
 branch after the full diff and regression surface are small enough to audit.
 
 The first bounded port validates that approach. tapHLE commit `fd543d42`
-adapts the smaller native ES 2.0 snapshot from HyperHLE commit
-`ec06f12b886a166b220df94d44861a2de78299b3`, retains its author credit, and
-advances Baby Monkey through two native Windows ES2 contexts and into its
-display-loop startup. It deliberately does not import HyperHLE's later ES3
-foundation, unrelated product changes, or incomplete desktop-GL fallback.
-Continue auditing later fixes only when a measured app frontier requires them.
+adapts the smaller native ES 2.0 snapshot from HyperHLE and advances Baby
+Monkey through two native Windows ES2 contexts and into its display-loop
+startup. It deliberately does not import HyperHLE's later ES3 foundation,
+unrelated product changes, or incomplete desktop-GL fallback. Continue auditing
+later fixes only when a measured app frontier requires them.
+
+**The ported work is by Бусик**, in HyperHLE commit
+`d640dd4d`, "Add GLES2Native backend and shader-based present path". That
+commit adds `src/gles/gles2_native.rs`, `src/frameworks/opengles/eagl.rs`, and
+the shader-based present path — the material `fd543d42` describes adapting.
+
+#### Erratum: the ES 2.0 attribution in `fd543d42` is wrong (recorded 2026-07-22)
+
+`fd543d42`'s message cites HyperHLE `ec06f12b886a166b220df94d44861a2de78299b3`
+and carries `Co-authored-by: Dev-HyperHle`. Both are incorrect, and this
+document previously repeated the error:
+
+- `ec06f12b` is "triage-22-coremedia-stub-dylib". It touches
+  `src/frameworks/core_media.rs`, `src/dyld/dylib_list.rs` and
+  `src/frameworks.rs`, and **no graphics files at all**. It is not the source
+  of any ES 2.0 code.
+- The trailer does not parse. A blank line separates it from the trailer block,
+  so `git interpret-trailers --parse` on `fd543d42` returns only the Codex
+  trailer, and GitHub records no co-author for the upstream work. See the
+  commit-provenance rules in `AGENTS.md`: trailers must be contiguous.
+
+The published commit is not being rewritten — it is on `trunk` and may be
+referenced elsewhere — so this document is the correcting record. Credit for
+the native ES 2.0 backend belongs to **Бусик**. Any future commit that extends
+or re-ports this work should carry a contiguous
+`Co-authored-by:` trailer naming that author, and cite `d640dd4d`.
+
+Note that HyperHLE hashes do not resolve from a fresh clone: `upstream` is
+touchHLE, and these objects only exist locally from an earlier fetch. To verify
+any citation in this section, add the source repository first:
+
+```
+git remote add hyperhle https://github.com/HyperHLE/HyperHLE
+git fetch hyperhle
+```
+
+#### Audited upstream commits not yet applied
+
+These touchHLE commits were reviewed and judged clean and self-contained, but
+have not been cherry-picked. Re-verify each against current `trunk` before
+applying; neither is urgent.
+
+- `39e32055` (mcd-3), "Substitute AdWhirl classes".
+- `d9a27f27` (apexad), "Change Icon.png/icon.png failsafe to actually check file
+  system".
