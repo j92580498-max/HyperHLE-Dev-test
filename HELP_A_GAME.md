@@ -107,6 +107,40 @@ It is normal for a game to take more than one session. Useful unfinished work
 belongs on `compat/<short-game-name>`. Another agent can continue from its
 commits and app note later.
 
+## Record the result in the database
+
+The [compatibility database](https://taphle.ephun.net/compatibility) is the
+public answer to "how well does this game work?" Every rating there comes from
+a real tapHLE run on Windows. Recording your result is how other people find out
+the game moved.
+
+Record one when the star rating changes, in either direction — a game that got
+worse is worth knowing about too. Do not record one when a rerun just repeats a
+rating that is already listed for the same tapHLE commit; that only makes work
+for the moderator.
+
+**You do not need anything special to contribute.** Sign in at the database with
+your GitHub account and fill in the form. That is the normal path, it works
+immediately, and your agent can hand you the exact values to paste. Contributions
+appear publicly once the maintainer approves them.
+
+**If you want your agent to submit directly**, it needs an API token so it can
+post without signing in as you. Ask for one in your
+[Start work on a game issue](https://github.com/ephun/tapHLE/issues/new?template=game_target.yml),
+and the maintainer will issue one tied to your agent. Put it in a file at
+`~/.taphledb-token` (on Windows, `C:\Users\<you>\.taphledb-token`) and tell the
+agent it is there. That file must stay off GitHub — never paste the token into
+an issue, a pull request, a commit, or a chat log. A token only saves you a
+copy-paste; it grants nothing the web form does not.
+
+Either way, a rating of four or five stars requires a human to play the game.
+An agent may claim at most three.
+
+The database stores the rating and a one-line note of where the game stopped at
+that moment, which makes each report a dated snapshot. Where a game stops *right
+now*, and why, lives in `dev-docs/app-notes/<game>.md` on its compatibility
+branch. Look there first when picking up work someone else started.
+
 ## Send the work back
 
 Ask the agent to run the checks in `AGENTS.md` and explain what was really

@@ -115,6 +115,54 @@ without explicit maintainer authorization.
 Archive.org protocol. Read it before inspecting an archived app or changing
 `compatibility/apps/*.json`. The generated public view is `COMPATIBILITY.md`.
 
+The database is **tapHLEdb**, a self-hosted live web application (a fork of
+`app-compatibility-db`, which also powers touchHLE's database), running at
+<https://taphle.ephun.net/compatibility>; its source is `ephun/tapHLEdb`. It
+stores structured data only: an app's identity, its versions, and dated ratings
+with their source. Narrative debugging belongs in `dev-docs/app-notes/<app>.md`,
+never in the database.
+
+Know which to read. A database report is a **dated snapshot**: its rating and
+its one-line frontier describe where the app stood at that commit, and it is
+never revised. The app note is **current state**: it holds today's frontier, the
+evidence behind it, and the next discriminator. To learn how an app is doing,
+read the database; to continue the work, read the note. Never copy the note's
+narrative into the database, and never treat an old report's frontier as the
+current one.
+
+The `compatibility/apps/*.json` records predate the deployment and remain only
+until they are migrated — do not add new ones.
+
+**Crossing a star threshold does two things, not one.** When a rerun proves an
+app has reached a new rating, the reusable fix graduates to `trunk` *and* a
+report goes to the database. Doing only the first leaves a real result invisible
+to everyone; doing only the second claims a result nobody can reproduce. The
+milestone is not finished until both are done.
+
+An agent may assign at most three stars (two for reaching a stable screen, three
+for a gameplay loop that starts and persists); four and five stars require human
+testing.
+
+Submit a report when the rating changes — in either direction, because a
+regression is a result worth publishing. Do not submit when a rerun merely
+reproduces a rating already recorded for that tapHLE revision: the endpoint
+deliberately does not deduplicate reports, so a repeat submission is pure
+moderation noise. Every submission lands unapproved and becomes public only when
+the maintainer approves it.
+
+Read the database to choose work. `GET /api/apps` returns the public list as
+JSON, needs no credential, and answers two questions a compatibility branch
+cannot: which apps have the lowest ratings, and which have a rating but no
+`compat/<slug>` branch yet — the second set is unclaimed work an agent may pick
+up without waiting to be asked.
+
+Submitting needs an agent token, which lives at `~/.taphledb-token` and nowhere
+else. Read it inline at the moment of use, as `$(cat ~/.taphledb-token)`. Never
+echo it, and never copy it into a file in this repository, a commit message, an
+app note, a report, or a command whose output is recorded. If the file is
+absent, say so and keep working: an unrecorded result is a far smaller problem
+than a leaked credential.
+
 The maintainer may authorize good-faith compatibility testing of a genuinely
 unavailable or abandoned build when it has no current App Store market
 alternative. This is project policy, not a blanket legal conclusion about
