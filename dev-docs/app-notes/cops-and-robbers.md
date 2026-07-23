@@ -145,6 +145,6 @@ partial until a person listens.
 Steering and the play/end/restart cycle are now confirmed, so the open boundary
 is whether a round can be *won* rather than lost: play deliberately, avoiding
 obstacles, and see whether the timer can be run down to zero and what the game
-does then. After that, PAUSE and the HIDEOUT/EXTRAS/OPTIONS screens, and a wave
-capture to settle whether audio works -- it has still never been measured for
-this app.
+does then. After that, PAUSE and the HIDEOUT/EXTRAS/OPTIONS screens. Audio is
+measured (see above) but has not been listened to, so a human ear on it would
+move that feature from partial to confirmed.
