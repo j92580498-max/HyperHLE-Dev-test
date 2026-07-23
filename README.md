@@ -53,7 +53,9 @@ Windows x86_64 releases, while green `trunk` builds are commit-identified
 previews. The versioning and packaging policy is documented in
 `dev-docs/releases.md`.
 
-**[See the compatibility ratings (1–5 stars)](COMPATIBILITY.md).** Results are
+**[See the compatibility ratings (1–5 stars)](https://taphle.ephun.net/compatibility).**
+That live database is the current record; `COMPATIBILITY.md` in this repository
+is an older snapshot kept until its records are migrated. Results are
 hash-checked for exact app builds. For an old game that is no longer sold, a
 record may link to the exact Archive.org file that was tested. The file name,
 hashes, and app version must all match. Read `compatibility/README.md` for the
@@ -111,8 +113,8 @@ Agents must read `AGENTS.md`. Human contributors can find more detail in
 
 Game compatibility reports are especially useful when they identify the exact
 game version, Windows environment, reproduction steps, and sanitized tapHLE
-log. Read `compatibility/README.md` before referencing Archive.org or updating
-the compatibility database. Never attach an app binary or raw log.
+log. Read `compatibility/README.md` before referencing Archive.org or recording
+a result in the compatibility database. Never attach an app binary or raw log.
 
 ## Origin and license
 

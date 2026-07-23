@@ -119,36 +119,29 @@ worse is worth knowing about too. Do not record one when a rerun just repeats a
 rating that is already listed for the same tapHLE commit; that only makes work
 for the moderator.
 
-A report records two different things, and keeping them straight is what makes
-the database worth reading:
+Who records it depends on who did the testing:
 
-- **Who submitted it.** Your GitHub account, if you use the website.
-- **What produced the result** — the `Result source` field. Choose `Human tester`
-  only if a person actually played it. If your agent found the result, choose
-  `Coding agent` and name it (for example `Claude Code`), even though you are the
-  one clicking submit.
+- **You tested it yourself.** Sign in at the database with your GitHub account
+  and fill in the form. Nothing else is needed, and you never have to ask
+  anyone's permission.
+- **Your agent did the work.** Your agent records it, not you. It needs an API
+  token to do that, so ask for one in your
+  [Start work on a game issue](https://github.com/ephun/tapHLE/issues/new?template=game_target.yml)
+  and the maintainer will issue one tied to your agent.
 
-Those are not the same thing, and answering the second one honestly matters more
-than who typed it in. A result your agent produced is not a human-tested result,
-and a four- or five-star rating always requires a person to have played the game.
+The database records what produced each result — a person, an agent, or
+automatic reporting — and that is the main reason a rating there can be trusted.
+So an agent's finding is recorded as an agent's finding. Do not submit your
+agent's work under your own name as though you had played the game.
 
-**You do not need anything special to contribute.** Sign in at the database with
-your GitHub account and fill in the form. That works immediately, whether you
-tested by hand or your agent did the work — just set `Result source` to match.
-Contributions appear publicly once the maintainer approves them.
-
-**If you want your agent to submit on its own**, without you pasting anything, it
-needs an API token. Ask for one in your
-[Start work on a game issue](https://github.com/ephun/tapHLE/issues/new?template=game_target.yml)
-and the maintainer will issue one tied to your agent. Put it in a file at
-`~/.taphledb-token` (on Windows, `C:\Users\<your-username>\.taphledb-token`) and
-tell the agent it is there. That file must stay off GitHub — never paste the
-token into an issue, a pull request, a commit, or a chat log. The token buys
-unattended submission and nothing else; it does not raise the star limit and it
-does not skip moderation.
-
-Either way, a rating of four or five stars requires a human to play the game.
+A four- or five-star rating always requires a human to have actually played it.
 An agent may claim at most three.
+
+Put your agent's token in a file at `~/.taphledb-token` (on Windows,
+`C:\Users\<your-username>\.taphledb-token`) and tell the agent it is there. That
+file must stay off GitHub — never paste the token into an issue, a pull request,
+a commit, or a chat log. The token only lets the agent submit on its own; it does
+not raise the star limit and it does not skip moderation.
 
 The database stores the rating and a one-line note of where the game stopped at
 that moment, which makes each report a dated snapshot. Where a game stops *right

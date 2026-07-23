@@ -1,10 +1,13 @@
 # Compatibility database protocol
 
-The tapHLE compatibility database records reproducible Windows observations
-for exact early iPhone OS app builds. It does not contain apps. Each record in
-`compatibility/apps` maps an app to an exact bundle identity, one or more exact
-Archive.org IPA filenames, and an append-only sequence of reports. The root
-`COMPATIBILITY.md` is generated from those records.
+The tapHLE compatibility database records reproducible Windows observations for
+exact early iPhone OS app builds. It does not contain apps. A result ties an app
+to an exact bundle identity, the exact artifact tested, and a dated rating on a
+committed tapHLE revision.
+
+This document is the protocol: what a result must satisfy before it may be
+recorded, and how an Archive.org-backed artifact is verified. Those rules are
+the same wherever the result is stored. The next section says where that is.
 
 ## Where the database lives
 
@@ -244,10 +247,10 @@ preserved commit before recording the result.
 
 ## Editing and checking records
 
-Create one lowercase, hyphenated file at
-`compatibility/apps/<app-slug>.json`. Start from the fields in an existing
-record and consult `compatibility/schema-v1.json`. Do not copy a previous
-version's identity or hashes without verifying them.
+**Do not create new records here.** New results go to the live database; see
+"How an agent records a result" above. This section covers the legacy
+`compatibility/apps/*.json` records, which remain readable and checkable until
+they are migrated, and `compatibility/schema-v1.json` documents their shape.
 
 Run the offline commands from the repository root:
 
