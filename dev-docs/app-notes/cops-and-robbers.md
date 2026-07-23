@@ -134,9 +134,12 @@ partial until a person listens.
 - Only the first mode was played, for two rounds. Whether a round can be
   *completed* rather than lost is unknown, as are PAUSE, HIDEOUT, EXTRAS and
   OPTIONS.
-- A file the app repeatedly `open`s and `remove`s does not exist, producing a
-  steady trickle of warnings. It does not appear to matter, but it has not been
-  identified.
+- A file the app repeatedly `open`s (`O_RDONLY`) and `remove`s does not exist,
+  producing a steady trickle of warnings. It does not appear to matter. It is
+  *not* worth another static hunt: the path argument is a guest heap address, so
+  it is composed at runtime, and a scan of all 16,561 printable strings in the
+  armv6 executable turns up no candidate filename. Identifying it needs a
+  diagnostic build that logs the resolved path in `libc::posix_io`.
 - `UIProxyObject` for `IBFirstResponder` is left unreplaced at nib load. It has
   not caused an observed problem, but it is a real gap.
 
