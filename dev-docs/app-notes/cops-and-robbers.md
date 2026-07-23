@@ -83,15 +83,35 @@ All three are general, none is specific to this game.
    polls each sound's OpenAL source and fires on the playing-to-stopped edge.
 3. `c4d56964` — `EAGLGetVersion` was not exported. Reports 1.0.
 
+## The loop closes, and steering works (2026-07-23, later)
+
+Two further things were checked on the same committed build, because "the loop
+starts and persists" deserves more than one run's worth of evidence.
+
+**Steering responds to the accelerometer.** tapHLE simulates tilt with the right
+mouse button held while the cursor moves. Holding it and dragging left moved the
+character's on-screen x from about 145 to about 85; dragging right afterwards
+carried him back rightward to about 122. The displacement followed the input in
+both directions, so the accelerometer path reaches the game. Shortly after the
+right drag the round ended, which is consistent with steering into the dumpster
+visible in those frames -- but the death frame itself was not captured, so treat
+the cause as unconfirmed.
+
+**A round ends and another can be started.** Left alone, a round finishes and
+the game replaces the HUD with a "TAP THE SCREEN TO START" prompt over the
+idling character. Tapping that prompt starts a fresh round: timer 1:59.4, score
+800, character running, obstacles ahead, PAUSE present. So the cycle
+play -> end -> restart completes under tapHLE.
+
+No score or game-over screen was seen between the round ending and the start
+prompt; the game appears to go straight there.
+
 ## Known limitations at this rating
 
-- **Tilt control is untested.** The game steers by accelerometer, which tapHLE
-  simulates with right-click-drag or a controller. The observed run used no
-  steering at all, so the character ran straight. Nothing is known about whether
-  steering, jumping or the speed boost behave correctly.
-- Only the first run of the first mode was observed, for under a minute. Death,
-  the timer expiring, the score screen, PAUSE, HIDEOUT, EXTRAS and OPTIONS are
-  all untested.
+- Jump and the speed boost were never exercised; only lateral steering was.
+- Only the first mode was played, for two rounds. Whether a round can be
+  *completed* rather than lost is unknown, as are PAUSE, HIDEOUT, EXTRAS and
+  OPTIONS.
 - A file the app repeatedly `open`s and `remove`s does not exist, producing a
   steady trickle of warnings. It does not appear to matter, but it has not been
   identified.
@@ -102,7 +122,9 @@ All three are general, none is specific to this game.
 
 ## Next discriminator
 
-Drive the accelerometer (right-click-drag, or a controller) during a run and
-confirm the character steers, then play to a death or timer expiry and see
-whether the score/game-over screen appears and a second run can be started.
-That is the boundary between "gameplay runs" and "the mode can be completed".
+Steering and the play/end/restart cycle are now confirmed, so the open boundary
+is whether a round can be *won* rather than lost: play deliberately, avoiding
+obstacles, and see whether the timer can be run down to zero and what the game
+does then. After that, PAUSE and the HIDEOUT/EXTRAS/OPTIONS screens, and a wave
+capture to settle whether audio works -- it has still never been measured for
+this app.
