@@ -154,7 +154,11 @@ fn _tapHLE_CFArray_release(env: &mut Environment, allocator: CFAllocatorRef, val
 fn _tapHLE_CFArray_copyDescription(_env: &mut Environment, _value: ConstVoidPtr) -> CFStringRef {
     todo!()
 }
-fn _tapHLE_CFArray_equal(env: &mut Environment, value1: ConstVoidPtr, value2: ConstVoidPtr) -> bool {
+fn _tapHLE_CFArray_equal(
+    env: &mut Environment,
+    value1: ConstVoidPtr,
+    value2: ConstVoidPtr,
+) -> bool {
     CFEqual(env, value1.cast_mut().cast(), value2.cast_mut().cast())
 }
 
@@ -167,7 +171,8 @@ fn create_default_callbacks(mem: &mut Mem, dyld: &mut Dyld) -> CFArrayCallBacks 
 
     let copy_desc_hf: HostFunction =
         &(_tapHLE_CFArray_copyDescription as fn(&mut Environment, _) -> _);
-    let copy_desc = dyld.create_guest_function(mem, "__tapHLE_CFArray_copyDescription", copy_desc_hf);
+    let copy_desc =
+        dyld.create_guest_function(mem, "__tapHLE_CFArray_copyDescription", copy_desc_hf);
 
     let equal_hf: HostFunction = &(_tapHLE_CFArray_equal as fn(&mut Environment, _, _) -> _);
     let equal = dyld.create_guest_function(mem, "__tapHLE_CFArray_equal", equal_hf);

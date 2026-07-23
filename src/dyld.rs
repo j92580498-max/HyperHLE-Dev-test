@@ -399,7 +399,10 @@ impl Dyld {
                     writeln!(file, "int {c_name};")?;
                 }
             }
-            if dylib.path.ends_with("CoreFoundation.framework/CoreFoundation") {
+            if dylib
+                .path
+                .ends_with("CoreFoundation.framework/CoreFoundation")
+            {
                 // Clang emits a reference to this for every `@"..."` literal.
                 // Our dyld resolves it specially at load time (see
                 // do_symbol_linking) rather than through a normal export, so it

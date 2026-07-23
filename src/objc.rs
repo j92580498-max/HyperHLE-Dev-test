@@ -44,11 +44,11 @@ pub use objects::{
 pub use properties::todo_objc_setter;
 pub use selectors::{selector, SEL};
 
+pub(crate) use blocks::block_invoke_function;
 use classes::{
     class_getInstanceSize, class_getProperty, class_getSuperclass, objc_getClass, ClassHostObject,
     FakeClass, UnimplementedClass,
 };
-pub(crate) use blocks::block_invoke_function;
 pub(crate) use messages::objc_msgSend;
 use messages::{objc_msgSendSuper2, objc_msgSend_stret, MsgSendSignature, MsgSendSuperSignature};
 use methods::method_list_t;

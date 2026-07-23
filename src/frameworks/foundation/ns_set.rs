@@ -13,8 +13,8 @@ use crate::abi::{CallFromHost, DotDotDot};
 use crate::environment::Environment;
 use crate::mem::MutPtr;
 use crate::objc::{
-    autorelease, block_invoke_function, id, msg, msg_class, nil, objc_classes, retain, ClassExports,
-    HostObject, NSZonePtr,
+    autorelease, block_invoke_function, id, msg, msg_class, nil, objc_classes, retain,
+    ClassExports, HostObject, NSZonePtr,
 };
 
 /// Belongs to _tapHLE_NSSet
