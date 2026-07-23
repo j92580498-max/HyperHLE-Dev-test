@@ -859,49 +859,37 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 // Co-ordinate space conversion
+//
+// A nil counterpart means the window's co-ordinate space. It does not require
+// the receiver to be in a window: CALayer's conversion already resolves a nil
+// layer to the top of the receiver's layer hierarchy, which is the window's
+// layer whenever there is a window, and the highest ancestor otherwise. Passing
+// the nil straight down therefore gives the same answer for a view in a window
+// and a defined one for a view that is not in one yet, which is what UIKit does
+// and what a nib-loaded view laying itself out before it is mounted needs.
 
 - (CGPoint)convertPoint:(CGPoint)point
                fromView:(id)other { // UIView*
-    if other == nil {
-        let window: id = msg![env; this window];
-        assert!(window != nil);
-        return msg![env; this convertPoint:point fromView:window]
-    }
     let this_layer = env.objc.borrow::<UIViewHostObject>(this).layer;
-    let other_layer = env.objc.borrow::<UIViewHostObject>(other).layer;
+    let other_layer = view_layer_or_nil(env, other);
     msg![env; this_layer convertPoint:point fromLayer:other_layer]
 }
 - (CGPoint)convertPoint:(CGPoint)point
                  toView:(id)other { // UIView*
-    if other == nil {
-        let window: id = msg![env; this window];
-        assert!(window != nil);
-        return msg![env; this convertPoint:point toView:window]
-    }
     let this_layer = env.objc.borrow::<UIViewHostObject>(this).layer;
-    let other_layer = env.objc.borrow::<UIViewHostObject>(other).layer;
+    let other_layer = view_layer_or_nil(env, other);
     msg![env; this_layer convertPoint:point toLayer:other_layer]
 }
 - (CGRect)convertRect:(CGRect)rect
              fromView:(id)other { // UIView*
-    if other == nil {
-        let window: id = msg![env; this window];
-        assert!(window != nil);
-        return msg![env; this convertRect:rect fromView:window]
-    }
     let this_layer = env.objc.borrow::<UIViewHostObject>(this).layer;
-    let other_layer = env.objc.borrow::<UIViewHostObject>(other).layer;
+    let other_layer = view_layer_or_nil(env, other);
     msg![env; this_layer convertRect:rect fromLayer:other_layer]
 }
 - (CGRect)convertRect:(CGRect)rect
                toView:(id)other { // UIView*
-    if other == nil {
-        let window: id = msg![env; this window];
-        assert!(window != nil);
-        return msg![env; this convertRect:rect toView:window]
-    }
     let this_layer = env.objc.borrow::<UIViewHostObject>(this).layer;
-    let other_layer = env.objc.borrow::<UIViewHostObject>(other).layer;
+    let other_layer = view_layer_or_nil(env, other);
     msg![env; this_layer convertRect:rect toLayer:other_layer]
 }
 
@@ -1021,3 +1009,16 @@ pub const CLASSES: ClassExports = objc_classes! {
 @end
 
 };
+
+/// The layer backing `view`, or `nil` for a nil view.
+///
+/// The co-ordinate conversion methods accept a nil counterpart to mean the
+/// window's co-ordinate space, and `CALayer`'s conversion spells that same case
+/// as a nil layer, so the nil passes straight through.
+fn view_layer_or_nil(env: &Environment, view: id) -> id {
+    if view == nil {
+        nil
+    } else {
+        env.objc.borrow::<UIViewHostObject>(view).layer
+    }
+}
