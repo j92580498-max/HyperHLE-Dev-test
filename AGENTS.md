@@ -128,9 +128,10 @@ never revised. The app note is **current state**: it holds today's frontier, the
 evidence behind it, and the next discriminator. To learn how an app is doing,
 read the database; to continue the work, read the note. Never copy the note's
 narrative into the database, and never treat an old report's frontier as the
-current one. The
-`compatibility/apps/*.json` records predate the deployment and remain only until
-they are migrated — do not add new ones.
+current one.
+
+The `compatibility/apps/*.json` records predate the deployment and remain only
+until they are migrated — do not add new ones.
 
 **Crossing a star threshold does two things, not one.** When a rerun proves an
 app has reached a new rating, the reusable fix graduates to `trunk` *and* a
