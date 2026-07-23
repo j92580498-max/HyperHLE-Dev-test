@@ -437,6 +437,18 @@ Separate four questions: did the decoder produce PCM, did buffers recycle, did
 the host mixer emit signal, and did a person hear sane audio? One observation
 does not automatically answer all four.
 
+This cuts both ways, and the negative direction is the easier mistake. A log
+full of failed loads is not evidence that the app is silent. An app may reach
+audio by more than one route — a failing `AudioFileOpenURL()` loader and a
+working OpenAL streaming path can coexist in the same title — so a repeated
+warning bounds which loader failed and nothing more. Baby Monkey was recorded as
+having "no audio" on exactly that reasoning while it was in fact playing music
+throughout; the wave capture below settled it in one run, and the maintainer had
+simply heard it. Never state what a user will hear, see, or be unable to do
+without an observation at that layer. If measuring is not practical, write down
+the API-level fact you actually have and say the user-facing consequence is
+unknown.
+
 The bundled OpenAL Soft Wave File Writer can capture tapHLE's process-local
 mixed output without a microphone or system loopback. In a unique run
 directory, create an OpenAL config with a new output path and launch tapHLE with

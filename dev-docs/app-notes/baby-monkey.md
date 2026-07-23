@@ -107,8 +107,10 @@ Two known limitations at this checkpoint:
   menu before any formal compatibility-database entry or star rating is added.
 - `AudioFileOpenURL()` fails to load the menu track: the game passes the
   relative path `audio/YaYaYaYa.wav`, which does not resolve against the guest
-  working directory (`/`). Menu audio is therefore silent. This relative-path
-  resolution against the app bundle is the next evidenced frontier.
+  working directory (`/`). **"Menu audio is therefore silent" was an inference,
+  not an observation, and it is wrong** — see the 2026-07-23 section, where a
+  wave capture shows continuous audio in the menu. The failing loads are real;
+  the silence conclusion drawn from them was not checked.
 
 ## Gameplay-load investigation (2026-07-21)
 
@@ -407,10 +409,18 @@ to this game:
 
 ### Known limitations at this rating
 
-- **No audio.** Every `AudioFileOpenURL()` fails with `FileReadError`. The
-  engine asks for `audio/<name>.wav`, which does not resolve: the files are at
-  `<bundle>/bm/audio/`, and the sound engine's lookup searches the bundle root.
-  This is the largest remaining gap and the obvious next piece of work.
+- **Some sounds fail to load, but audio works.** Do not repeat the earlier
+  claim that the game is silent — it is not, and it was never checked before
+  being written down. The maintainer hears audio, and an OpenAL Soft wave
+  capture of tapHLE's mixed output agrees: continuous signal across a 48 s run,
+  mean −30.4 dB and max −16.5 dB in the menu window and mean −30.3 dB / max
+  −16.5 dB in the gameplay window, with the only silence being the final 1.6 s
+  after `WM_CLOSE`. What is true is narrower: 30 `AudioFileOpenURL()` calls
+  fail with `FileReadError` on bundle-relative `audio/<name>.wav` paths, so
+  that loader is not finding its files (they live under `<bundle>/bm/audio/`).
+  Which individual sounds are consequently missing has not been established,
+  and the music evidently arrives by another route. Establish that before
+  treating the path fix as an audio fix.
 - Chartboost and Flurry are faked, and `NSURLConnection` is a TODO stub, so the
   ad/analytics paths do nothing. This does not affect gameplay.
 - Only the first level segment and the tutorial were observed. Scoring, death,
@@ -422,8 +432,9 @@ to this game:
 
 ### Next discriminator
 
-Fix bundle-relative resource lookup so `audio/YaYaYaYa.wav` resolves against
-`<bundle>/bm/`, then re-run and confirm menu music and at least one gameplay
-sound effect through the OpenAL Soft wave-writer capture described in the
-playbook. After that, play through to a death and a game-over screen to find the
-next frontier.
+First find out what the 30 failing `AudioFileOpenURL()` loads actually cost,
+since audio is audible without them. Identify the route the working audio takes,
+then fix bundle-relative resource lookup so `audio/<name>.wav` resolves against
+`<bundle>/bm/` and measure the difference with the OpenAL Soft wave-writer
+capture described in the playbook rather than assuming one. After that, play
+through to a death and a game-over screen to find the next frontier.
