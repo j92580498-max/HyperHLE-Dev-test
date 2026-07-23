@@ -9,11 +9,12 @@ use super::ns_array;
 use super::ns_dictionary::DictionaryHostObject;
 use super::ns_enumerator::{fast_enumeration_helper, NSFastEnumerationState};
 use super::NSUInteger;
-use crate::abi::DotDotDot;
+use crate::abi::{CallFromHost, DotDotDot};
 use crate::environment::Environment;
 use crate::mem::MutPtr;
 use crate::objc::{
-    autorelease, id, msg, msg_class, nil, objc_classes, retain, ClassExports, HostObject, NSZonePtr,
+    autorelease, block_invoke_function, id, msg, msg_class, nil, objc_classes, release, retain,
+    ClassExports, HostObject, NSZonePtr,
 };
 
 /// Belongs to _tapHLE_NSSet
@@ -111,6 +112,69 @@ pub const CLASSES: ClassExports = objc_classes! {
             return true;
         }
     }
+}
+
+- (bool)intersectsSet:(id)other { // NSSet *
+    let enumerator: id = msg![env; this objectEnumerator];
+    loop {
+        let next: id = msg![env; enumerator nextObject];
+        if next == nil {
+            return false;
+        }
+        if msg![env; other containsObject:next] {
+            return true;
+        }
+    }
+}
+
+- (bool)isSubsetOfSet:(id)other { // NSSet *
+    let enumerator: id = msg![env; this objectEnumerator];
+    loop {
+        let next: id = msg![env; enumerator nextObject];
+        if next == nil {
+            return true;
+        }
+        if !msg![env; other containsObject:next] {
+            return false;
+        }
+    }
+}
+
+- (bool)isEqualToSet:(id)other { // NSSet *
+    // Sets hold no duplicates, so equal counts plus one-way containment is
+    // equality.
+    let this_count: NSUInteger = msg![env; this count];
+    let other_count: NSUInteger = msg![env; other count];
+    if this_count != other_count {
+        return false;
+    }
+    msg![env; this isSubsetOfSet:other]
+}
+
+// Returns a new set of the objects for which the predicate block returns YES.
+// The block is `BOOL (^)(id obj, BOOL *stop)`; setting *stop ends enumeration.
+- (id)objectsPassingTest:(id)predicate { // block
+    let result: id = msg_class![env; NSMutableSet set];
+    let stop: MutPtr<u8> = env.mem.alloc_and_write(0u8);
+    let invoke = block_invoke_function(env, predicate);
+    let enumerator: id = msg![env; this objectEnumerator];
+    loop {
+        let obj: id = msg![env; enumerator nextObject];
+        if obj == nil {
+            break;
+        }
+        let passed: bool = invoke.call_from_host(env, (predicate, obj, stop));
+        if passed {
+            () = msg![env; result addObject:obj];
+        }
+        if env.mem.read(stop.cast_const()) != 0 {
+            break;
+        }
+    }
+    env.mem.free(stop.cast());
+    // objectsPassingTest: is documented to return an (immutable) NSSet.
+    let immutable: id = msg![env; result copy];
+    autorelease(env, immutable)
 }
 
 @end
@@ -354,6 +418,63 @@ pub const CLASSES: ClassExports = objc_classes! {
         }
         () = msg![env; this addObject:next];
     }
+}
+
+- (())minusSet:(id)other { // NSSet *
+    let enumerator: id = msg![env; other objectEnumerator];
+    loop {
+        let next: id = msg![env; enumerator nextObject];
+        if next == nil {
+            break;
+        }
+        () = msg![env; this removeObject:next];
+    }
+}
+
+- (())intersectSet:(id)other { // NSSet *
+    // Iterate a snapshot, because the receiver is mutated in the loop.
+    let members: id = msg![env; this allObjects];
+    let members: id = msg![env; members copy];
+    let enumerator: id = msg![env; members objectEnumerator];
+    loop {
+        let next: id = msg![env; enumerator nextObject];
+        if next == nil {
+            break;
+        }
+        let keep: bool = msg![env; other containsObject:next];
+        if !keep {
+            () = msg![env; this removeObject:next];
+        }
+    }
+    release(env, members);
+}
+
+- (())addObjectsFromArray:(id)array { // NSArray *
+    let enumerator: id = msg![env; array objectEnumerator];
+    loop {
+        let next: id = msg![env; enumerator nextObject];
+        if next == nil {
+            break;
+        }
+        () = msg![env; this addObject:next];
+    }
+}
+
+- (())setSet:(id)other { // NSSet *
+    // `other` may be this very set, so its members have to be read out before
+    // anything is removed.
+    let members: id = msg![env; other allObjects];
+    let members: id = msg![env; members copy];
+    () = msg![env; this removeAllObjects];
+    let enumerator: id = msg![env; members objectEnumerator];
+    loop {
+        let next: id = msg![env; enumerator nextObject];
+        if next == nil {
+            break;
+        }
+        () = msg![env; this addObject:next];
+    }
+    release(env, members);
 }
 
 @end

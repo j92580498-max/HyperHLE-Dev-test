@@ -12,16 +12,18 @@ use super::cf_allocator::{kCFAllocatorDefault, CFAllocatorRef};
 use super::CFIndex;
 use crate::dyld::{export_c_func, FunctionExports};
 use crate::frameworks::core_foundation::cf_string::{
-    kCFStringEncodingASCII, CFStringConvertEncodingToNSStringEncoding, CFStringEncoding,
+    kCFStringEncodingASCII, kCFStringEncodingISOLatin1, kCFStringEncodingMacRoman,
+    kCFStringEncodingUTF8, CFStringConvertEncodingToNSStringEncoding, CFStringEncoding,
     CFStringRef,
 };
 use crate::frameworks::foundation::ns_string::{
-    get_static_str, to_rust_string, NSUTF8StringEncoding,
+    from_rust_string, get_static_str, to_rust_string, NSUTF8StringEncoding,
 };
 use crate::frameworks::foundation::NSUInteger;
 use crate::mem::{ConstPtr, MutPtr, Ptr};
 use crate::objc::{id, msg, msg_class, release};
 use crate::Environment;
+use encoding_rs::MACINTOSH;
 
 pub type CFURLRef = super::CFTypeRef;
 
@@ -135,6 +137,111 @@ fn CFURLCreateWithString(
     msg![env; url initWithString:url_string]
 }
 
+fn is_rfc2396_url_character(character: char) -> bool {
+    character.is_ascii_alphanumeric()
+        || matches!(
+            character,
+            '-' | '_'
+                | '.'
+                | '!'
+                | '~'
+                | '*'
+                | '\''
+                | '('
+                | ')'
+                | ';'
+                | '/'
+                | '?'
+                | ':'
+                | '@'
+                | '&'
+                | '='
+                | '+'
+                | '$'
+                | ','
+                | '%'
+                | '#'
+        )
+}
+
+fn bytes_for_percent_escape(character: char, encoding: CFStringEncoding) -> Option<Vec<u8>> {
+    match encoding {
+        kCFStringEncodingUTF8 => {
+            let mut buffer = [0; 4];
+            Some(character.encode_utf8(&mut buffer).as_bytes().to_vec())
+        }
+        kCFStringEncodingASCII => character.is_ascii().then(|| vec![character as u8]),
+        kCFStringEncodingISOLatin1 => {
+            let codepoint = character as u32;
+            (codepoint <= u8::MAX as u32).then(|| vec![codepoint as u8])
+        }
+        kCFStringEncodingMacRoman => {
+            let mut buffer = [0; 4];
+            let string = character.encode_utf8(&mut buffer);
+            let (bytes, _, had_errors) = MACINTOSH.encode(string);
+            (!had_errors).then(|| bytes.into_owned())
+        }
+        _ => unimplemented!("Percent escapes with CFStringEncoding {encoding:#x}"),
+    }
+}
+
+fn add_percent_escapes(
+    original: &str,
+    characters_to_leave: &str,
+    legal_characters_to_escape: &str,
+    encoding: CFStringEncoding,
+) -> Option<String> {
+    const HEX: &[u8; 16] = b"0123456789ABCDEF";
+    let mut result = String::with_capacity(original.len());
+    for character in original.chars() {
+        let should_escape = !characters_to_leave.contains(character)
+            && (!is_rfc2396_url_character(character)
+                || legal_characters_to_escape.contains(character));
+        if !should_escape {
+            result.push(character);
+            continue;
+        }
+        for byte in bytes_for_percent_escape(character, encoding)? {
+            result.push('%');
+            result.push(HEX[(byte >> 4) as usize] as char);
+            result.push(HEX[(byte & 0x0f) as usize] as char);
+        }
+    }
+    Some(result)
+}
+
+fn CFURLCreateStringByAddingPercentEscapes(
+    env: &mut Environment,
+    allocator: CFAllocatorRef,
+    original_string: CFStringRef,
+    characters_to_leave_unescaped: CFStringRef,
+    legal_url_characters_to_be_escaped: CFStringRef,
+    encoding: CFStringEncoding,
+) -> CFStringRef {
+    assert!(allocator == kCFAllocatorDefault || env.mem.read(allocator).is_system_default());
+
+    let original = to_rust_string(env, original_string);
+    let characters_to_leave = if characters_to_leave_unescaped.is_null() {
+        ""
+    } else {
+        &to_rust_string(env, characters_to_leave_unescaped)
+    };
+    let legal_characters_to_escape = if legal_url_characters_to_be_escaped.is_null() {
+        ""
+    } else {
+        &to_rust_string(env, legal_url_characters_to_be_escaped)
+    };
+    let Some(result) = add_percent_escapes(
+        &original,
+        characters_to_leave,
+        legal_characters_to_escape,
+        encoding,
+    ) else {
+        return Ptr::null();
+    };
+    from_rust_string(env, result)
+}
+
 pub fn CFURLCopyPathExtension(env: &mut Environment, url: CFURLRef) -> CFStringRef {
     let path = msg![env; url path];
     let ext = msg![env; path pathExtension];
@@ -200,9 +307,42 @@ pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(CFURLCreateWithBytes(_, _, _, _, _)),
     export_c_func!(CFURLCreateWithFileSystemPath(_, _, _, _)),
     export_c_func!(CFURLCreateWithString(_, _, _)),
+    export_c_func!(CFURLCreateStringByAddingPercentEscapes(_, _, _, _, _)),
     export_c_func!(CFURLCopyPathExtension(_)),
     export_c_func!(CFURLCopyFileSystemPath(_, _)),
     export_c_func!(CFURLCreateCopyAppendingPathComponent(_, _, _, _)),
     export_c_func!(CFURLCreateCopyDeletingLastPathComponent(_, _)),
     export_c_func!(CFURLHasDirectoryPath(_)),
 ];
+
+#[cfg(test)]
+mod tests {
+    use super::add_percent_escapes;
+    use crate::frameworks::core_foundation::cf_string::{
+        kCFStringEncodingASCII, kCFStringEncodingUTF8,
+    };
+
+    #[test]
+    fn percent_escapes_illegal_and_requested_url_characters() {
+        assert_eq!(
+            add_percent_escapes("hello world/path?é=1", "", "/?", kCFStringEncodingUTF8),
+            Some("hello%20world%2Fpath%3F%C3%A9=1".to_owned())
+        );
+    }
+
+    #[test]
+    fn percent_escapes_respect_leave_list_and_existing_escapes() {
+        assert_eq!(
+            add_percent_escapes("hello world%20", " ", "", kCFStringEncodingUTF8),
+            Some("hello world%20".to_owned())
+        );
+    }
+
+    #[test]
+    fn percent_escapes_reject_unrepresentable_ascii() {
+        assert_eq!(
+            add_percent_escapes("é", "", "", kCFStringEncodingASCII),
+            None
+        );
+    }
+}

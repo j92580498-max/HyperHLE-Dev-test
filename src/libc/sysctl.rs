@@ -9,13 +9,30 @@ use std::collections::HashMap;
 use std::sync::LazyLock;
 
 use crate::dyld::{export_c_func, FunctionExports};
-use crate::libc::errno::{set_errno, ENOENT};
+use crate::libc::errno::{set_errno, ENOENT, ENOMEM};
 use crate::mem::{guest_size_of, ConstPtr, GuestUSize, MutPtr, MutVoidPtr, PAGE_SIZE};
 use crate::Environment;
 
 // Top level constants
 const CTL_KERN: i32 = 1;
+const CTL_NET: i32 = 4;
 const CTL_HW: i32 = 6;
+
+// CTL_NET route information used by older apps to read the Wi-Fi MAC address.
+const PF_ROUTE: i32 = 17;
+const AF_LINK: i32 = 18;
+const NET_RT_IFLIST: i32 = 3;
+const EN0_INDEX: i32 = 2;
+
+const RTM_VERSION: u8 = 5;
+const RTM_IFINFO: u8 = 0x0e;
+const RTA_IFP: i32 = 0x10;
+const IFT_ETHER: u8 = 0x06;
+const IFF_UP: i32 = 0x1;
+const IFF_BROADCAST: i32 = 0x2;
+const IFF_RUNNING: i32 = 0x40;
+const IFF_SIMPLEX: i32 = 0x800;
+const IFF_MULTICAST: i32 = 0x8000;
 
 // CTL_KERN
 const KERN_OSTYPE: i32 = 1;
@@ -107,6 +124,74 @@ enum SysInfoType {
     Struct,
 }
 
+fn en0_route_iflist() -> [u8; 132] {
+    // Darwin's 32-bit layout is a 112-byte if_msghdr followed by a
+    // 20-byte sockaddr_dl. Keep this guest-only and deterministic: exposing
+    // the host's real adapter or MAC address would be both unnecessary and a
+    // privacy leak.
+    const IF_MSGHDR_SIZE: usize = 112;
+    const MESSAGE_SIZE: usize = IF_MSGHDR_SIZE + 20;
+    const MAC_ADDRESS: [u8; 6] = [0x02, 0x54, 0x41, 0x50, 0x48, 0x4c];
+
+    let mut result = [0; MESSAGE_SIZE];
+
+    result[0..2].copy_from_slice(&(MESSAGE_SIZE as u16).to_le_bytes());
+    result[2] = RTM_VERSION;
+    result[3] = RTM_IFINFO;
+    result[4..8].copy_from_slice(&RTA_IFP.to_le_bytes());
+    let flags = IFF_UP | IFF_BROADCAST | IFF_RUNNING | IFF_SIMPLEX | IFF_MULTICAST;
+    result[8..12].copy_from_slice(&flags.to_le_bytes());
+    result[12..14].copy_from_slice(&(EN0_INDEX as u16).to_le_bytes());
+
+    // struct if_data begins at offset 16 in the 32-bit if_msghdr.
+    result[16] = IFT_ETHER;
+    result[19] = MAC_ADDRESS.len() as u8; // ifi_addrlen
+    result[20] = 14; // ifi_hdrlen
+    result[24..28].copy_from_slice(&1500_u32.to_le_bytes()); // ifi_mtu
+    result[32..36].copy_from_slice(&54_000_000_u32.to_le_bytes()); // ifi_baudrate
+
+    // struct sockaddr_dl begins immediately after struct if_msghdr.
+    let sockaddr = IF_MSGHDR_SIZE;
+    result[sockaddr] = 20; // sdl_len
+    result[sockaddr + 1] = AF_LINK as u8;
+    result[sockaddr + 2..sockaddr + 4].copy_from_slice(&(EN0_INDEX as u16).to_le_bytes());
+    result[sockaddr + 4] = IFT_ETHER;
+    result[sockaddr + 5] = 3; // sdl_nlen
+    result[sockaddr + 6] = MAC_ADDRESS.len() as u8; // sdl_alen
+    result[sockaddr + 8..sockaddr + 11].copy_from_slice(b"en0");
+    result[sockaddr + 11..sockaddr + 17].copy_from_slice(&MAC_ADDRESS);
+
+    result
+}
+
+fn sysctl_route_iflist(
+    env: &mut Environment,
+    oldp: MutVoidPtr,
+    oldlenp: MutPtr<GuestUSize>,
+    newp: MutVoidPtr,
+    newlen: GuestUSize,
+) -> i32 {
+    assert!(newp.is_null());
+    assert_eq!(newlen, 0);
+    assert!(!oldlenp.is_null());
+
+    let value = en0_route_iflist();
+    let len = value.len() as GuestUSize;
+    if oldp.is_null() {
+        env.mem.write(oldlenp, len);
+        return 0;
+    }
+    if env.mem.read(oldlenp) < len {
+        set_errno(env, ENOMEM);
+        return -1;
+    }
+    env.mem
+        .bytes_at_mut(oldp.cast(), len)
+        .copy_from_slice(&value);
+    env.mem.write(oldlenp, len);
+    0
+}
+
 fn sysctl(
     env: &mut Environment,
     name: MutPtr<i32>,
@@ -188,6 +273,21 @@ fn sysctl(
                 newp,
                 newlen,
             )
+        }
+        6 => {
+            let values = [
+                env.mem.read(name),
+                env.mem.read(name + 1),
+                env.mem.read(name + 2),
+                env.mem.read(name + 3),
+                env.mem.read(name + 4),
+                env.mem.read(name + 5),
+            ];
+            if values == [CTL_NET, PF_ROUTE, 0, AF_LINK, NET_RT_IFLIST, EN0_INDEX] {
+                sysctl_route_iflist(env, oldp, oldlenp, newp, newlen)
+            } else {
+                unimplemented!("Unknown sysctl parameter {values:?}!")
+            }
         }
         _ => unimplemented!("sysctl() for name length {name_len} is unimplemented!"),
     }
@@ -285,3 +385,27 @@ pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(sysctl(_, _, _, _, _, _)),
     export_c_func!(sysctlbyname(_, _, _, _, _)),
 ];
+
+#[cfg(test)]
+mod tests {
+    use super::{en0_route_iflist, AF_LINK, IFT_ETHER, RTM_IFINFO, RTM_VERSION};
+
+    #[test]
+    fn route_iflist_has_32_bit_darwin_layout_and_private_mac() {
+        let value = en0_route_iflist();
+        assert_eq!(value.len(), 132);
+        assert_eq!(u16::from_le_bytes(value[0..2].try_into().unwrap()), 132);
+        assert_eq!(value[2], RTM_VERSION);
+        assert_eq!(value[3], RTM_IFINFO);
+
+        let sockaddr = 112;
+        assert_eq!(value[sockaddr], 20);
+        assert_eq!(value[sockaddr + 1], AF_LINK as u8);
+        assert_eq!(value[sockaddr + 4], IFT_ETHER);
+        assert_eq!(&value[sockaddr + 8..sockaddr + 11], b"en0");
+        assert_eq!(
+            &value[sockaddr + 11..sockaddr + 17],
+            &[0x02, 0x54, 0x41, 0x50, 0x48, 0x4c]
+        );
+    }
+}

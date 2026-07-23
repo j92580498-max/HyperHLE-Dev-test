@@ -42,6 +42,7 @@ pub const DYLIB: crate::dyld::HostDylib = crate::dyld::HostDylib {
     ],
     constant_exports: &[
         cf_allocator::CONSTANTS,
+        cf_array::CONSTANTS,
         cf_bundle::CONSTANTS,
         cf_dictionary::CONSTANTS,
         cf_locale::CONSTANTS,

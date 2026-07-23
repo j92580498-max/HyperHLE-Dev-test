@@ -24,7 +24,7 @@
 //!   - [gles1_native] passes through native OpenGL ES 1.1.
 //!   - [gles1_on_gl2] provides an implementation of OpenGL ES 1.1 using OpenGL
 //!     2.1 compatibility profile.
-//!   - There might be more in future.
+//!   - [gles2_native] passes through native OpenGL ES 2.0.
 //! - [gles11_raw] provides raw bindings for OpenGL ES 1.1 generated from the
 //!   Khronos API headers. **The function bindings are only for use within this
 //!   module.** The constants and types can be used outside it, however.
@@ -65,15 +65,18 @@
 
 pub mod gles1_native;
 pub mod gles1_on_gl2;
+pub mod gles2_native;
 mod gles_generic;
 pub mod present;
 mod util;
 
 use tapHLE_gl_bindings::gl21compat as gl21compat_raw;
 pub use tapHLE_gl_bindings::gles11 as gles11_raw;
+pub use tapHLE_gl_bindings::gles2 as gles2_raw;
 
 use gles1_native::GLES1NativeContext;
 use gles1_on_gl2::GLES1OnGL2Context;
+use gles2_native::GLES2NativeContext;
 pub use gles_generic::GLESContext;
 pub use gles_generic::GLES;
 
@@ -126,6 +129,27 @@ impl GLESImplementation {
 pub fn create_gles1_ctx(env: &mut Environment) -> Box<dyn GLESContext> {
     env.on_parent_stack_in_coroutine(|window, options| {
         create_gles1_ctx_no_parent_stack(window, options)
+    })
+}
+
+/// Try to create a native OpenGL ES 2.0 context, panicking on failure.
+pub fn create_gles2_ctx(env: &mut Environment) -> Box<dyn GLESContext> {
+    env.on_parent_stack_in_coroutine(|window, _options| {
+        assert!(window.on_main_stack());
+        log!("Creating an OpenGL ES 2.0 context:");
+
+        log!("Trying: {}", GLES2NativeContext::description());
+        let ctx = match GLES2NativeContext::new(window) {
+            Ok(ctx) => {
+                log!("=> Success!");
+                ctx
+            }
+            Err(err) => {
+                log!("=> Failed: {}.", err);
+                panic!("Couldn't create a native OpenGL ES 2.0 context: {}", err)
+            }
+        };
+        Box::new(ctx)
     })
 }
 

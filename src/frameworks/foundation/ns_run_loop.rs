@@ -294,6 +294,42 @@ pub(super) fn cancel_perform_requests(
         .selector_objects = new_selector_objects;
 }
 
+/// Cancels every selector previously requested by [add_perform_request] for the
+/// given target, regardless of selector or argument. This backs the single-arg
+/// `cancelPreviousPerformRequestsWithTarget:`, [documented by Apple]
+/// (<https://developer.apple.com/documentation/objectivec/nsobject/1410849-cancelpreviousperformrequestswit?language=objc>)
+/// as cancelling all perform requests that share the target.
+pub(super) fn cancel_all_perform_requests_for_target(
+    env: &mut Environment,
+    run_loop: id,
+    target: id,
+) {
+    log_dbg!("Removing all object selector requests for {target:?} on run loop {run_loop:?}");
+    let mut new_selector_objects = VecDeque::new();
+    let host_object = env.objc.borrow_mut::<NSRunLoopHostObject>(run_loop);
+    let mut selector_objects = std::mem::take(&mut host_object.selector_objects);
+    while let Some(obj) = selector_objects.pop_front() {
+        if obj.target != target {
+            new_selector_objects.push_back(obj);
+            continue;
+        }
+        let ObjectSelectorSource {
+            target,
+            argument,
+            semaphore,
+            ..
+        } = obj;
+        release(env, target);
+        release(env, argument);
+        if !semaphore.is_null() {
+            sem_post(env, semaphore);
+        }
+    }
+    env.objc
+        .borrow_mut::<NSRunLoopHostObject>(run_loop)
+        .selector_objects = new_selector_objects;
+}
+
 /// Run the run loop for just a single iteration. This is a special mode just
 /// for the app picker, since we don't have `runMode:beforeDate:` yet.
 /// (TODO: implement those to replace this.)

@@ -956,6 +956,15 @@ impl Environment {
         self.stack_trace_for_thread(self.current_thread);
     }
 
+    /// Log the current guest registers and stack before a host-side HLE panic.
+    /// CPU execution errors already do this in [Environment::debug_cpu_error],
+    /// but failures raised while servicing a guest-to-host call otherwise lose
+    /// the guest call site that triggered them.
+    pub(crate) fn dump_current_guest_state(&self) {
+        self.dump_all_regs();
+        self.stack_trace_current();
+    }
+
     fn stack_trace_all(&self) {
         echo_no_panic!(
             "Attempting to produce stack trace for current thread (#{}):",
@@ -1563,6 +1572,8 @@ impl Environment {
         }
 
         if self.gdb_server.is_none() {
+            self.dump_all_regs();
+            self.stack_trace_current();
             panic!("Error during CPU execution: {error:?}");
         }
 

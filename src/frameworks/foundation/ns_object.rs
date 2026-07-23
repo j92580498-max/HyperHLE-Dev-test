@@ -10,13 +10,16 @@
 //!   explains how reference counting works. Note that we are interested in what
 //!   it calls "manual retain-release", not ARC.
 //! - Apple's [Key-Value Coding Programming Guide](https://developer.apple.com/library/archive/documentation/Cocoa/Conceptual/KeyValueCoding/SearchImplementation.html)
-//!   explains the algorithm `setValue:forKey:` should follow.
+//!   explains the algorithms `setValue:forKey:` and `valueForKey:` should
+//!   follow.
 //!
 //! See also: [crate::objc], especially the `objects` module.
 
 use super::ns_string::{from_rust_string, to_rust_string};
 use super::{NSTimeInterval, NSUInteger};
-use crate::frameworks::foundation::ns_run_loop::{add_perform_request, cancel_perform_requests};
+use crate::frameworks::foundation::ns_run_loop::{
+    add_perform_request, cancel_all_perform_requests_for_target, cancel_perform_requests,
+};
 use crate::frameworks::foundation::ns_thread::detach_new_thread_inner;
 use crate::libc::semaphore::{host_destroy_semaphore, sem_wait};
 use crate::mem::{ConstVoidPtr, MutVoidPtr};
@@ -24,6 +27,7 @@ use crate::objc::{
     autorelease, id, msg, msg_class, msg_send, msg_send_no_type_checking, nil, objc_classes,
     retain, Class, ClassExports, NSZonePtr, ObjC, TrivialHostObject, IMP, SEL,
 };
+use crate::Environment;
 
 pub const CLASSES: ClassExports = objc_classes! {
 
@@ -66,9 +70,25 @@ pub const CLASSES: ClassExports = objc_classes! {
     env.objc.class_has_method(this, selector)
 }
 
++ (ConstVoidPtr)instanceMethodForSelector:(SEL)selector {
+    match env.objc.class_get_method_implementation(this, selector) {
+        Some(IMP::Guest(imp)) => imp.to_ptr(),
+        Some(IMP::Host(_)) => {
+            log_once!("TODO: NSObject instanceMethodForSelector: for a host implementation");
+            ConstVoidPtr::null()
+        }
+        None => ConstVoidPtr::null(),
+    }
+}
+
 + (())cancelPreviousPerformRequestsWithTarget:(id)target selector:(SEL)selector object:(id)arg {
     let run_loop: id = msg_class![env; NSRunLoop currentRunLoop];
     cancel_perform_requests(env, run_loop, target, selector, arg);
+}
+
++ (())cancelPreviousPerformRequestsWithTarget:(id)target {
+    let run_loop: id = msg_class![env; NSRunLoop currentRunLoop];
+    cancel_all_perform_requests_for_target(env, run_loop, target);
 }
 
 + (bool)accessInstanceVariablesDirectly {
@@ -174,31 +194,50 @@ pub const CLASSES: ClassExports = objc_classes! {
 
     let class = msg![env; this class];
 
-    // TODO: If value is nil, the target ivar/method argument type must be
-    // checked. If it's non-object type, invoke setNilValueForKey:
-    assert!(value != nil);
-
-    // TODO: If value is a NSNumber or NSValue, it must be unwrapped
-    let value_class = msg![env; value class];
-    let ns_value_class = env.objc.get_known_class("NSValue", &mut env.mem);
-    assert!(!env.objc.class_is_subclass_of(value_class, ns_value_class));
+    // When the value is a boxed scalar (NSNumber/NSValue) but the target
+    // accessor takes a plain scalar (e.g. -[... setVolume:(double)]), KVC
+    // unwraps the box and passes the scalar by value. `kvc_set_unwrapped_scalar`
+    // consults the setter's type encoding and handles that; an object-typed
+    // setter falls through to receive the boxed value unchanged.
+    let value_is_boxed_scalar = if value == nil {
+        false
+    } else {
+        let value_class = msg![env; value class];
+        let ns_value_class = env.objc.get_known_class("NSValue", &mut env.mem);
+        env.objc.class_is_subclass_of(value_class, ns_value_class)
+    };
 
     // Look for the first accessor named set<Key>: or _set<Key>, in that order.
     // If found, invoke it with the input value (or unwrapped value, as needed)
     // and finish.
-    if let Some(sel) = env.objc.lookup_selector(&format!("set{camel_case_key_string}:")) {
-        if env.objc.class_has_method(class, sel) {
-            () = msg_send(env, (this, sel, value));
+    let setter = env
+        .objc
+        .lookup_selector(&format!("set{camel_case_key_string}:"))
+        .filter(|&sel| env.objc.class_has_method(class, sel))
+        .or_else(|| {
+            env.objc
+                .lookup_selector(&format!("_set{camel_case_key_string}:"))
+                .filter(|&sel| env.objc.class_has_method(class, sel))
+        });
+    if let Some(sel) = setter {
+        // nil only means something to an object-typed setter. For any other
+        // type there is no value to write, so Apple's documented behaviour is
+        // to invoke setNilValueForKey: instead.
+        if value == nil && !matches!(kvc_setter_arg_type(env, this, sel), None | Some(b'@' | b'#')) {
+            let sel = env.objc.lookup_selector("setNilValueForKey:").unwrap();
+            () = msg_send(env, (this, sel, key));
             return;
         }
+        if value_is_boxed_scalar && kvc_set_unwrapped_scalar(env, this, sel, value) {
+            return;
+        }
+        () = msg_send(env, (this, sel, value));
+        return;
     }
 
-    if let Some(sel) = env.objc.lookup_selector(&format!("_set{camel_case_key_string}:")) {
-        if env.objc.class_has_method(class, sel) {
-            () = msg_send(env, (this, sel, value));
-            return;
-        }
-    }
+    // TODO: a boxed scalar written into a scalar ivar directly (no accessor)
+    // still needs unwrapping via the ivar's type encoding; the direct-ivar path
+    // below only handles object-typed ivars.
 
     // If no simple accessor is found, and if the class method
     // accessInstanceVariablesDirectly returns YES, look for an instance
@@ -226,6 +265,86 @@ pub const CLASSES: ClassExports = objc_classes! {
     // may provide key-specific behavior.
     let sel = env.objc.lookup_selector("setValue:forUndefinedKey:").unwrap();
     () = msg_send(env, (this, sel, value, key));
+}
+
+- (id)valueForKey:(id)key { // NSString*
+    let key_string = to_rust_string(env, key); // TODO: avoid copy?
+    assert!(key_string.is_ascii()); // TODO: do we have to handle non-ASCII keys?
+    let camel_case_key_string = format!("{}{}", key_string.as_bytes()[0].to_ascii_uppercase() as char, &key_string[1..]);
+
+    let class = msg![env; this class];
+
+    // Look for the first accessor named get<Key>, <key>, is<Key> or _<key>, in
+    // that order. If found, invoke it and return its result, boxed in an
+    // NSNumber if the accessor does not return an object.
+    let getter = [
+        format!("get{camel_case_key_string}"),
+        key_string.to_string(),
+        format!("is{camel_case_key_string}"),
+        format!("_{key_string}"),
+    ]
+    .iter()
+    .find_map(|name| {
+        env.objc
+            .lookup_selector(name)
+            .filter(|&sel| env.objc.class_has_method(class, sel))
+    });
+    if let Some(sel) = getter {
+        return kvc_get_boxed_value(env, this, sel);
+    }
+
+    // TODO: the to-many accessor patterns (countOf<Key> together with
+    // objectIn<Key>AtIndex: or <key>AtIndexes:, and countOf<Key> together with
+    // enumeratorOf<Key> and memberOf<Key>:), which return a proxy collection.
+
+    // If no simple accessor is found, and if the class method
+    // accessInstanceVariablesDirectly returns YES, look for an instance
+    // variable with a name like _<key>, _is<Key>, <key>, or is<Key>,
+    // in that order, and return its value.
+    let sel = env.objc.lookup_selector("accessInstanceVariablesDirectly").unwrap();
+    let accessInstanceVariablesDirectly = msg_send(env, (class, sel));
+    if accessInstanceVariablesDirectly {
+        // TODO: ivar type encodings are not recorded (see `ivar_t` handling in
+        // objc::properties), so a scalar ivar cannot be boxed here and is read
+        // as if it were an object. `setValue:forKey:` has the same limitation
+        // in the same position.
+        if let Some(ivar_ptr) = env.objc.object_lookup_ivar(&env.mem, this, &format!("_{key_string}"))
+            .or_else(|| env.objc.object_lookup_ivar(&env.mem, this, &format!("_is{camel_case_key_string}")))
+            .or_else(|| env.objc.object_lookup_ivar(&env.mem, this, &format!("{key_string}")))
+            .or_else(|| env.objc.object_lookup_ivar(&env.mem, this, &format!("is{camel_case_key_string}"))
+        ) {
+            return env.mem.read(ivar_ptr.cast());
+        }
+    }
+
+    // Upon finding no accessor or instance variable,
+    // invoke valueForUndefinedKey:.
+    // This raises an exception by default, but a subclass of NSObject
+    // may provide key-specific behavior.
+    let sel = env.objc.lookup_selector("valueForUndefinedKey:").unwrap();
+    msg_send(env, (this, sel, key))
+}
+
+- (id)valueForUndefinedKey:(id)key { // NSString*
+    // TODO: Raise NSUnknownKeyException
+    let class: Class = ObjC::read_isa(this, &env.mem);
+    let class_name_string = env.objc.get_class_name(class).to_owned(); // TODO: Avoid copying
+    let key_string = to_rust_string(env, key);
+    panic!("Object {:?} of class {:?} ({:?}) does not have a getter for {} ({:?})\
+        \nAvailable selectors: {}\nAvailable ivars: {}",
+        this, class_name_string, class, key_string, key,
+        env.objc.debug_all_class_selectors_as_strings(&env.mem, class).join(", "),
+        env.objc.debug_all_class_ivars_as_strings(class).join(", "));
+}
+
+- (())setNilValueForKey:(id)key { // NSString*
+    // TODO: Raise NSInvalidArgumentException
+    let class: Class = ObjC::read_isa(this, &env.mem);
+    let class_name_string = env.objc.get_class_name(class).to_owned(); // TODO: Avoid copying
+    let key_string = to_rust_string(env, key);
+    panic!("Object {:?} of class {:?} ({:?}) was asked to set nil for {}, \
+        which is not an object-typed property ({:?})",
+        this, class_name_string, class, key_string, key);
 }
 
 - (())setValue:(id)_value
@@ -295,6 +414,34 @@ forUndefinedKey:(id)key { // NSString*
 - (())performSelector:(SEL)sel withObject:(id)arg afterDelay:(NSTimeInterval)delay {
     let run_loop: id = msg_class![env; NSRunLoop currentRunLoop];
     add_perform_request(env, run_loop, this, sel, arg, Some(delay), false);
+}
+
+- (())performSelector:(SEL)sel
+              onThread:(id)thread // NSThread*
+             withObject:(id)arg
+          waitUntilDone:(bool)wait {
+    assert!(!sel.is_null());
+    let current_thread: id = msg_class![env; NSThread currentThread];
+    if thread != current_thread {
+        // tapHLE cannot yet map an arbitrary NSThread object back to its run
+        // loop. Running the selector immediately preserves forward progress
+        // and matches the existing inline dispatch compatibility
+        // model, though it does not provide true cross-thread scheduling.
+        log_once!("TODO: performSelector:onThread: is executing immediately instead of switching NSThread");
+    }
+    log_dbg!(
+        "performSelector:{} onThread:{:?} withObject:{:?} waitUntilDone:{}",
+        sel.as_str(&env.mem),
+        thread,
+        arg,
+        wait,
+    );
+    if sel.as_str(&env.mem).ends_with(':') {
+        () = msg_send(env, (this, sel, arg));
+    } else {
+        assert!(arg.is_null());
+        () = msg_send(env, (this, sel));
+    }
 }
 
 - (())performSelectorOnMainThread:(SEL)sel withObject:(id)arg waitUntilDone:(bool)wait {
@@ -368,3 +515,155 @@ forUndefinedKey:(id)key { // NSString*
 @end
 
 };
+
+/// Key-Value Coding helper: if `setter` takes a plain scalar argument, unwrap
+/// the boxed scalar `value` (an `NSNumber`/`NSValue`) to that type and invoke
+/// the setter, returning `true`. Returns `false` when the setter takes an object
+/// (or a type we do not unwrap yet), so the caller passes the boxed value
+/// through unchanged.
+///
+/// The argument type comes from the setter's Objective-C method type encoding,
+/// which is authoritative for the wire type: e.g. `float` and `double` occupy a
+/// different number of argument registers, so choosing the wrong one would place
+/// the value incorrectly even when the `NSNumber`'s own `objCType` differs.
+fn kvc_set_unwrapped_scalar(env: &mut Environment, this: id, setter: SEL, value: id) -> bool {
+    let Some(arg_type) = kvc_setter_arg_type(env, this, setter) else {
+        return false;
+    };
+
+    // See `impl GuestArg` in abi.rs: scalar arguments (including `f32`/`f64`) are
+    // passed in the core argument registers, so unwrapping to the matching Rust
+    // type places the value the same way the guest compiler emitted the call.
+    match arg_type {
+        b'f' => {
+            let v: f32 = msg![env; value floatValue];
+            () = msg_send(env, (this, setter, v));
+        }
+        b'd' => {
+            let v: f64 = msg![env; value doubleValue];
+            () = msg_send(env, (this, setter, v));
+        }
+        // `c`/`B` cover BOOL/char/_Bool; a boxed 0/1 is the common case.
+        b'c' | b'B' => {
+            let v: bool = msg![env; value boolValue];
+            () = msg_send(env, (this, setter, v));
+        }
+        b'i' | b'l' | b's' => {
+            let v: i32 = msg![env; value intValue];
+            () = msg_send(env, (this, setter, v));
+        }
+        b'I' | b'L' | b'S' => {
+            let v: u32 = msg![env; value unsignedIntValue];
+            () = msg_send(env, (this, setter, v));
+        }
+        b'q' | b'Q' => {
+            let v: i64 = msg![env; value longLongValue];
+            () = msg_send(env, (this, setter, v));
+        }
+        // '@' (object), '{' (struct), '^' (pointer), etc.: not a scalar we
+        // unwrap; let the caller pass the boxed value through.
+        _ => return false,
+    }
+    true
+}
+
+/// Key-Value Coding helper: the Objective-C type encoding of a unary setter's
+/// value argument, or `None` when the method records no signature (which means
+/// a host-implemented method: see `class_get_method_signature`).
+fn kvc_setter_arg_type(env: &Environment, this: id, setter: SEL) -> Option<u8> {
+    let class = ObjC::read_isa(this, &env.mem);
+    let signature = *env.objc.class_get_method_signature(class, setter)?;
+    let signature = env.mem.cstr_at_utf8(signature).ok()?;
+    // A method type encoding is <return><self@><cmd:><arg…> with a numeric byte
+    // offset after each type. Dropping the digits leaves the ordered type
+    // tokens; a unary setter's value argument is the fourth token (return, self,
+    // _cmd, value).
+    let tokens: Vec<u8> = signature.bytes().filter(|b| !b.is_ascii_digit()).collect();
+    let mut i = 3;
+    // Skip any type qualifiers (const, in, out, …) that may precede the type.
+    while tokens
+        .get(i)
+        .is_some_and(|b| matches!(b, b'r' | b'n' | b'N' | b'o' | b'O' | b'R' | b'V'))
+    {
+        i += 1;
+    }
+    tokens.get(i).copied()
+}
+
+/// Key-Value Coding helper: invoke `getter` and return its result as an object,
+/// boxing it in an `NSNumber` when the accessor returns a plain scalar.
+///
+/// This is the inverse of [kvc_set_unwrapped_scalar] and reads the return type
+/// from the same authoritative source, the method's Objective-C type encoding.
+/// A missing or unreadable encoding means a host-implemented method, which
+/// returns an object.
+fn kvc_get_boxed_value(env: &mut Environment, this: id, getter: SEL) -> id {
+    let class = ObjC::read_isa(this, &env.mem);
+    let return_type = env
+        .objc
+        .class_get_method_signature(class, getter)
+        .copied()
+        .and_then(|signature| env.mem.cstr_at_utf8(signature).ok())
+        .and_then(|signature| {
+            // A method type encoding is <return><self@><cmd:><arg…> with a
+            // numeric byte offset after each type. Dropping the digits leaves
+            // the ordered type tokens, the first of which is the return type.
+            let tokens: Vec<u8> = signature.bytes().filter(|b| !b.is_ascii_digit()).collect();
+            let mut i = 0;
+            // Skip any type qualifiers (const, in, out, …) that may precede it.
+            while tokens
+                .get(i)
+                .is_some_and(|b| matches!(b, b'r' | b'n' | b'N' | b'o' | b'O' | b'R' | b'V'))
+            {
+                i += 1;
+            }
+            tokens.get(i).copied()
+        })
+        // Host methods have no recorded signature (see
+        // `class_get_method_signature`), and a KVC accessor implemented in the
+        // host is an object-returning Foundation getter.
+        .unwrap_or(b'@');
+
+    // See `impl GuestRet` in abi.rs: scalar results (including `f32`/`f64`)
+    // come back in the core result registers, so reading the matching Rust type
+    // takes the value from where the guest compiler put it.
+    match return_type {
+        b'@' | b'#' => msg_send(env, (this, getter)),
+        b'f' => {
+            let v: f32 = msg_send(env, (this, getter));
+            msg_class![env; NSNumber numberWithFloat:v]
+        }
+        b'd' => {
+            let v: f64 = msg_send(env, (this, getter));
+            msg_class![env; NSNumber numberWithDouble:v]
+        }
+        // `c`/`B` cover BOOL/char/_Bool. A signed char that is not a BOOL is
+        // indistinguishable here; Apple's KVC boxes it the same way.
+        b'c' | b'B' => {
+            let v: bool = msg_send(env, (this, getter));
+            msg_class![env; NSNumber numberWithBool:v]
+        }
+        b'i' | b'l' | b's' => {
+            let v: i32 = msg_send(env, (this, getter));
+            msg_class![env; NSNumber numberWithInt:v]
+        }
+        b'I' | b'L' | b'S' => {
+            let v: u32 = msg_send(env, (this, getter));
+            msg_class![env; NSNumber numberWithUnsignedInt:v]
+        }
+        b'q' | b'Q' => {
+            let v: i64 = msg_send(env, (this, getter));
+            msg_class![env; NSNumber numberWithLongLong:v]
+        }
+        b'v' => nil,
+        // '{' (struct) would need NSValue boxing through the struct-return
+        // calling convention, and '^' (pointer) needs valueWithPointer:.
+        // Neither is reached yet, and guessing would corrupt the result.
+        _ => unimplemented!(
+            "Key-value coding getter {:?} on class {:?} returns unsupported type {:?}",
+            getter.as_str(&env.mem),
+            env.objc.get_class_name(class),
+            return_type as char,
+        ),
+    }
+}

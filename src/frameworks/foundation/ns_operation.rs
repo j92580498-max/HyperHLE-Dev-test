@@ -9,7 +9,7 @@
 //! than iPhone OS, but it preserves operation ordering and lifecycle semantics
 //! while making the common operation-based loading pattern functional.
 
-use super::NSUInteger;
+use super::{NSInteger, NSUInteger};
 use crate::objc::{
     id, msg, msg_class, msg_send_no_type_checking, nil, objc_classes, release, retain,
     ClassExports, HostObject, NSZonePtr, SEL,
@@ -22,6 +22,11 @@ struct NSOperationHostObject {
     invocation: Option<(id, SEL, id)>,
 }
 impl HostObject for NSOperationHostObject {}
+
+struct NSOperationQueueHostObject {
+    max_concurrent_operation_count: NSInteger,
+}
+impl HostObject for NSOperationQueueHostObject {}
 
 fn alloc_operation(env: &mut crate::Environment, class: crate::objc::Class) -> id {
     let host_object = NSOperationHostObject {
@@ -129,6 +134,26 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 
 @implementation NSOperationQueue: NSObject
+
++ (id)allocWithZone:(NSZonePtr)_zone {
+    let host_object = NSOperationQueueHostObject {
+        // NSOperationQueueDefaultMaxConcurrentOperationCount
+        max_concurrent_operation_count: -1,
+    };
+    env.objc.alloc_object(this, Box::new(host_object), &mut env.mem)
+}
+
+- (())setMaxConcurrentOperationCount:(NSInteger)count {
+    env.objc
+        .borrow_mut::<NSOperationQueueHostObject>(this)
+        .max_concurrent_operation_count = count;
+}
+
+- (NSInteger)maxConcurrentOperationCount {
+    env.objc
+        .borrow::<NSOperationQueueHostObject>(this)
+        .max_concurrent_operation_count
+}
 
 - (())addOperation:(id)operation {
     retain(env, operation);

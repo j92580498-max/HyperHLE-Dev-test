@@ -60,6 +60,10 @@ static inline NSRange NSMakeRange(NSUInteger loc, NSUInteger len) {
 - (void *)methodForSelector:(SEL)selector;
 - (id)performSelector:(SEL)selector;
 - (BOOL)respondsToSelector:(SEL)selector;
+// NSKeyValueCoding. NSString is not declared yet, so the key is typed as id.
+- (id)valueForKey:(id)key;
+- (void)setValue:(id)value forKey:(id)key;
+- (void)setNilValueForKey:(id)key;
 @end
 
 @interface NSAutoreleasePool : NSObject
@@ -104,16 +108,39 @@ static inline NSRange NSMakeRange(NSUInteger loc, NSUInteger len) {
 - (BOOL)isEqualToArray:(NSArray *)otherArray;
 @end
 
+@interface NSMutableArray<ObjectType> : NSArray<ObjectType>
+- (void)addObject:(ObjectType)anObject;
+- (void)removeObject:(ObjectType)anObject;
+- (void)removeObjectAtIndex:(NSUInteger)index;
+- (void)removeAllObjects;
+@end
+
 @interface NSDictionary<KeyType, ObjectType> : NSObject
 + (instancetype)dictionaryWithObjects:(NSArray<ObjectType> *)objects
                               forKeys:(NSArray<KeyType> *)keys;
 - (NSUInteger)count;
 - (ObjectType)objectForKey:(KeyType)aKey;
 - (BOOL)isEqualToDictionary:(NSDictionary *)otherDictionary;
+- (NSArray<KeyType> *)keysSortedByValueUsingSelector:(SEL)comparator;
 @end
 
 @interface NSSet<ObjectType> : NSObject
++ (instancetype)setWithObjects:(ObjectType)first, ...;
 - (ObjectType)anyObject;
+- (NSUInteger)count;
+- (BOOL)containsObject:(ObjectType)object;
+- (BOOL)intersectsSet:(NSSet *)other;
+- (BOOL)isSubsetOfSet:(NSSet *)other;
+- (BOOL)isEqualToSet:(NSSet *)other;
+@end
+
+@interface NSMutableSet<ObjectType> : NSSet
++ (instancetype)setWithCapacity:(NSUInteger)capacity;
+- (void)addObject:(ObjectType)object;
+- (void)removeObject:(ObjectType)object;
+- (void)setSet:(NSSet *)other;
+- (void)minusSet:(NSSet *)other;
+- (void)intersectSet:(NSSet *)other;
 @end
 
 typedef enum {
@@ -132,6 +159,7 @@ typedef enum {
                                                (NSStringCompareOptions)options
                                              range:(NSRange)range;
 - (BOOL)isEqualToString:(NSString *)other;
+- (NSInteger)compare:(NSString *)other;
 @end
 @interface NSMutableString : NSString
 - (void)deleteCharactersInRange:(NSRange)range;
@@ -143,6 +171,10 @@ typedef enum {
 @interface NSNumber : NSValue
 + (NSNumber *)numberWithFloat:(float)value;
 + (NSNumber *)numberWithBool:(bool)value;
++ (NSNumber *)numberWithInt:(int)value;
+- (float)floatValue;
+- (int)intValue;
+- (BOOL)boolValue;
 @end
 
 NSString *NSStringFromClass(Class);
@@ -183,6 +215,8 @@ typedef double NSTimeInterval;
                       returnedLength:(NSUInteger *)lengthp;
 - (void)encodeInt:(int)value forKey:(NSString *)key;
 - (int)decodeIntForKey:(NSString *)key;
+- (void)encodeDouble:(double)value forKey:(NSString *)key;
+- (double)decodeDoubleForKey:(NSString *)key;
 @end
 
 @interface NSKeyedArchiver : NSCoder

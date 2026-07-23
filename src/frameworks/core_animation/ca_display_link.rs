@@ -5,6 +5,8 @@
  */
 //! `CADisplayLink`
 
+use super::CACurrentMediaTime;
+use crate::frameworks::core_foundation::time::CFTimeInterval;
 use crate::frameworks::foundation::ns_run_loop::NSRunLoopMode;
 use crate::frameworks::foundation::ns_timer::set_time_interval;
 use crate::frameworks::foundation::NSInteger;
@@ -13,7 +15,6 @@ use crate::objc::{
     HostObject, NSZonePtr, SEL,
 };
 
-#[derive(Default)]
 struct CADisplayLinkHostObject {
     target: id,
     selector: Option<SEL>,
@@ -22,6 +23,20 @@ struct CADisplayLinkHostObject {
     /// this pointer must not be used.
     ns_timer: id,
     paused: bool,
+    frame_interval: NSInteger,
+    timestamp: CFTimeInterval,
+}
+impl Default for CADisplayLinkHostObject {
+    fn default() -> Self {
+        Self {
+            target: nil,
+            selector: None,
+            ns_timer: nil,
+            paused: false,
+            frame_interval: 1,
+            timestamp: 0.0,
+        }
+    }
 }
 impl HostObject for CADisplayLinkHostObject {}
 
@@ -66,8 +81,24 @@ pub const CLASSES: ClassExports = objc_classes! {
     log_dbg!("[(CADisplayLink*){:?} setFrameInterval:{}]", this, frameInterval);
     assert!(frameInterval >= 1);
     let interval = frameInterval as f64 / 60.0;
-    let ns_timer = env.objc.borrow::<CADisplayLinkHostObject>(this).ns_timer;
+    let host_object = env.objc.borrow_mut::<CADisplayLinkHostObject>(this);
+    host_object.frame_interval = frameInterval;
+    let ns_timer = host_object.ns_timer;
     set_time_interval(env, ns_timer, interval);
+}
+
+- (NSInteger)frameInterval {
+    env.objc.borrow::<CADisplayLinkHostObject>(this).frame_interval
+}
+
+- (CFTimeInterval)timestamp {
+    env.objc.borrow::<CADisplayLinkHostObject>(this).timestamp
+}
+
+- (CFTimeInterval)duration {
+    // CADisplayLink duration describes the display's refresh interval, not
+    // the requested callback frame interval.
+    1.0 / 60.0
 }
 
 - (())addToRunLoop:(id)run_loop forMode:(NSRunLoopMode)mode {
@@ -89,19 +120,23 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (())_tapHLE_displayLinkTimerDidFire:(id)timer { // NSTimer *
-    let &CADisplayLinkHostObject {
-        target,
-        selector,
-        ns_timer,
-        paused,
-        ..
-    } = env.objc.borrow::<CADisplayLinkHostObject>(this);
+    let (target, selector, ns_timer, paused) = {
+        let host_object = env.objc.borrow::<CADisplayLinkHostObject>(this);
+        (
+            host_object.target,
+            host_object.selector,
+            host_object.ns_timer,
+            host_object.paused,
+        )
+    };
     assert_eq!(ns_timer, timer);
     if paused {
         // This could be improved, as we're still running the timer,
         // but just not passing the actual call.
         return;
     }
+    let timestamp = CACurrentMediaTime(env);
+    env.objc.borrow_mut::<CADisplayLinkHostObject>(this).timestamp = timestamp;
     // Signature is `- (void) selector:(CADisplayLink *)sender;`
     () = msg_send(env, (target, selector.unwrap(), this));
 }

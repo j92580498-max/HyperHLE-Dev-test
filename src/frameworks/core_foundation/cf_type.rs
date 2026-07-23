@@ -22,6 +22,16 @@ pub fn CFRelease(env: &mut Environment, object: CFTypeRef) {
     objc::release(env, object);
 }
 
+/// iOS does not use Objective-C garbage collection, so making a Core
+/// Foundation object collectable has no effect on its ownership.
+pub fn CFMakeCollectable(_env: &mut Environment, object: CFTypeRef) -> CFTypeRef {
+    make_collectable(object)
+}
+
+fn make_collectable(object: CFTypeRef) -> CFTypeRef {
+    object
+}
+
 pub fn CFGetRetainCount(env: &mut Environment, object: CFTypeRef) -> CFIndex {
     let count: NSUInteger = msg![env; object retainCount];
     count as CFIndex
@@ -48,7 +58,20 @@ pub fn CFHash(env: &mut Environment, object: CFTypeRef) -> CFHashCode {
 pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(CFRetain(_)),
     export_c_func!(CFRelease(_)),
+    export_c_func!(CFMakeCollectable(_)),
     export_c_func!(CFGetRetainCount(_)),
     export_c_func!(CFEqual(_, _)),
     export_c_func!(CFHash(_)),
 ];
+
+#[cfg(test)]
+mod tests {
+    use crate::mem::Ptr;
+
+    #[test]
+    fn make_collectable_is_an_identity_operation() {
+        let object: super::CFTypeRef = Ptr::from_bits(0x1234);
+
+        assert_eq!(super::make_collectable(object), object);
+    }
+}

@@ -10,7 +10,10 @@ use super::ns_property_list_serialization::{
     deserialize_plist_from_file, NSPropertyListBinaryFormat_v1_0,
 };
 use super::ns_string::{from_rust_string, get_static_str, to_rust_string};
-use super::{_nib_archive_decoder, ns_array, ns_keyed_unarchiver, ns_string, ns_url, NSUInteger};
+use super::{
+    _nib_archive_decoder, ns_array, ns_keyed_unarchiver, ns_string, ns_url, NSComparisonResult,
+    NSUInteger,
+};
 use crate::abi::{CallFromHost, GuestFunction, VaList};
 use crate::frameworks::core_foundation::{CFHashCode, CFIndex};
 use crate::frameworks::foundation::ns_enumerator::{
@@ -23,10 +26,11 @@ use crate::frameworks::foundation::ns_keyed_archiver::{
     encode_object, get_value_to_encode_for_current_key,
 };
 use crate::fs::GuestPath;
+use crate::libc::stdlib::qsort::qsort_generic;
 use crate::mem::{ConstPtr, MutPtr, Ptr, SafeRead};
 use crate::objc::{
-    autorelease, id, msg, msg_class, nil, objc_classes, release, retain, Class, ClassExports,
-    HostObject, NSZonePtr,
+    autorelease, id, msg, msg_class, msg_send, nil, objc_classes, release, retain, Class,
+    ClassExports, HostObject, NSZonePtr, SEL,
 };
 use crate::{impl_HostObject_with_superclass, Environment};
 use std::collections::hash_map::Entry;
@@ -313,6 +317,16 @@ pub fn init_with_objects_and_keys(
 
 /// Helper function to share `initWithDictionary:` implementations
 fn init_with_dictionary_common(env: &mut Environment, this: id, other_dict: id) -> id {
+    // Foundation tolerates a nil source dictionary, producing an empty
+    // dictionary instead of raising. Baby Monkey's Cocos2D command dispatch
+    // (`onCommandDispatch:` for kCCInitializeUserModelNotification) relies on
+    // `[[NSMutableDictionary alloc] initWithDictionary:nil]` returning an empty
+    // dictionary; sending count/getObjects to a nil dictionary on-device yields
+    // nothing, so the result is empty.
+    if other_dict == nil {
+        *env.objc.borrow_mut(this) = <DictionaryHostObject as Default>::default();
+        return this;
+    }
     let other_host_object: DictionaryHostObject = std::mem::take(env.objc.borrow_mut(other_dict));
 
     let mut host_object = <DictionaryHostObject as Default>::default();
@@ -346,6 +360,25 @@ fn init_with_objects_for_keys_common(env: &mut Environment, this: id, objects: i
             break;
         }
         host_object.insert(env, next_key, next_object, /* copy_key: */ true);
+    }
+    *env.objc.borrow_mut(this) = host_object;
+    this
+}
+
+fn init_with_object_key_buffers(
+    env: &mut Environment,
+    this: id,
+    objects: ConstPtr<id>,
+    keys: ConstPtr<id>,
+    count: NSUInteger,
+) -> id {
+    let mut host_object = <DictionaryHostObject as Default>::default();
+    for index in 0..count {
+        let object = env.mem.read(objects + index);
+        let key = env.mem.read(keys + index);
+        assert_ne!(object, nil); // TODO: raise NSInvalidArgumentException
+        assert_ne!(key, nil); // TODO: raise NSInvalidArgumentException
+        host_object.insert(env, key, object, /* copy_key: */ true);
     }
     *env.objc.borrow_mut(this) = host_object;
     this
@@ -397,7 +430,10 @@ pub const CLASSES: ClassExports = objc_classes! {
 + (id)dictionaryWithObject:(id)object forKey:(id)key {
     assert_ne!(key, nil); // TODO: raise proper exception
 
-    let new_dict = dict_from_keys_and_objects(env, &[(key, object)]);
+    // The return type is instancetype and this method is inherited by
+    // NSMutableDictionary, so allocate through the receiving class.
+    let new_dict: id = msg![env; this alloc];
+    let new_dict = init_dict_from_keys_and_objects(env, new_dict, &[(key, object)]);
     autorelease(env, new_dict)
 }
 
@@ -423,6 +459,14 @@ pub const CLASSES: ClassExports = objc_classes! {
                     forKeys:(id)keys { //NSArray *
     let new_dict: id = msg![env; this alloc];
     let new_dict: id = msg![env; new_dict initWithObjects:objects forKeys:keys];
+    autorelease(env, new_dict)
+}
+
++ (id)dictionaryWithObjects:(ConstPtr<id>)objects
+                    forKeys:(ConstPtr<id>)keys
+                      count:(NSUInteger)count {
+    let new_dict: id = msg![env; this alloc];
+    let new_dict: id = msg![env; new_dict initWithObjects:objects forKeys:keys count:count];
     autorelease(env, new_dict)
 }
 
@@ -477,6 +521,41 @@ pub const CLASSES: ClassExports = objc_classes! {
     // TODO: strip '@' and call super
     assert!(!key_str.starts_with('@'));
     msg![env; this objectForKey:key]
+}
+
+- (id)keysSortedByValueUsingSelector:(SEL)comparator {
+    let keys_array: id = msg![env; this allKeys];
+    let count: NSUInteger = msg![env; keys_array count];
+    let mut keys = Vec::with_capacity(count as usize);
+    for index in 0..count {
+        keys.push(msg![env; keys_array objectAtIndex:index]);
+    }
+
+    let mut user_data = (env, this, &mut keys);
+    qsort_generic(
+        &mut user_data,
+        count,
+        &mut |(env, dictionary, keys), left, right| {
+            let dictionary = *dictionary;
+            let left_key = keys[left as usize];
+            let right_key = keys[right as usize];
+            let left_value: id = msg![env; dictionary objectForKey:left_key];
+            let right_value: id = msg![env; dictionary objectForKey:right_key];
+            let result: NSComparisonResult =
+                msg_send(env, (left_value, comparator, right_value));
+            result
+        },
+        &mut |(_, _, keys), left, right| {
+            keys.swap(left as usize, right as usize);
+        },
+    );
+    let (env, _, _) = user_data;
+
+    for &key in &keys {
+        retain(env, key);
+    }
+    let result = ns_array::from_vec(env, keys);
+    autorelease(env, result)
 }
 
 - (NSUInteger)hash {
@@ -628,6 +707,12 @@ pub const CLASSES: ClassExports = objc_classes! {
     init_with_objects_for_keys_common(env, this, objects, keys)
 }
 
+- (id)initWithObjects:(ConstPtr<id>)objects
+              forKeys:(ConstPtr<id>)keys
+                count:(NSUInteger)count {
+    init_with_object_key_buffers(env, this, objects, keys, count)
+}
+
 // TODO: enumeration, more init methods, etc
 
 - (NSUInteger)count {
@@ -737,6 +822,12 @@ pub const CLASSES: ClassExports = objc_classes! {
     init_with_objects_for_keys_common(env, this, objects, keys)
 }
 
+- (id)initWithObjects:(ConstPtr<id>)objects
+              forKeys:(ConstPtr<id>)keys
+                count:(NSUInteger)count {
+    init_with_object_key_buffers(env, this, objects, keys, count)
+}
+
 // TODO: enumeration, more init methods, etc
 
 - (NSUInteger)count {
@@ -819,6 +910,13 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (())addEntriesFromDictionary:(id)other { // NSDictionary *
+    // Foundation enumerates the source dictionary's entries, so a nil source is
+    // a no-op rather than a raise. This also covers `registerDefaults:nil`,
+    // which forwards its argument here unguarded (e.g. when the guest passes a
+    // `dictionaryWithContentsOfFile:` result for a missing plist).
+    if other == nil {
+        return;
+    }
     let host_obj: DictionaryHostObject = std::mem::take(env.objc.borrow_mut(other));
     for (k, v) in host_obj.map.values().flatten() {
         () = msg![env; this setObject:(*v) forKey:(*k)];
@@ -956,6 +1054,14 @@ pub const CLASSES: ClassExports = objc_classes! {
 pub fn dict_from_keys_and_objects(env: &mut Environment, keys_and_objects: &[(id, id)]) -> id {
     let dict: id = msg_class![env; NSDictionary alloc];
 
+    init_dict_from_keys_and_objects(env, dict, keys_and_objects)
+}
+
+fn init_dict_from_keys_and_objects(
+    env: &mut Environment,
+    dict: id,
+    keys_and_objects: &[(id, id)],
+) -> id {
     let mut host_object = <DictionaryHostObject as Default>::default();
     for &(key, object) in keys_and_objects {
         host_object.insert(env, key, object, /* copy_key: */ true);
@@ -975,13 +1081,7 @@ pub fn mutable_dict_from_keys_and_objects(
 ) -> id {
     let dict: id = msg_class![env; NSMutableDictionary alloc];
 
-    let mut host_object = <DictionaryHostObject as Default>::default();
-    for &(key, object) in keys_and_objects {
-        host_object.insert(env, key, object, /* copy_key: */ true);
-    }
-    *env.objc.borrow_mut(dict) = host_object;
-
-    dict
+    init_dict_from_keys_and_objects(env, dict, keys_and_objects)
 }
 
 /// A helper to build a description NSString

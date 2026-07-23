@@ -26,6 +26,10 @@
 #include <mach/thread_info.h>
 #include <malloc/malloc.h>
 #include <math.h>
+// <net/if.h> is not in the common-3.0 SDK, which is built from open-source
+// headers, so declare the one function used here rather than requiring an SDK
+// release that does not exist. See tests/README.md for the pinned SDK version.
+unsigned int if_nametoindex(const char *);
 #include <pthread.h>
 #include <semaphore.h>
 #include <setjmp.h>
@@ -5847,6 +5851,102 @@ int test_NSInvocation_pointer() {
 }
 @end
 
+@interface DoubleCoderObject : NSObject {
+@public
+  double value;
+}
+@end
+
+@implementation DoubleCoderObject
+- (instancetype)initWithValue:(double)v {
+  self = [super init];
+  value = v;
+  return self;
+}
+
+- (void)encodeWithCoder:(NSCoder *)coder {
+  [coder encodeDouble:value forKey:[NSString stringWithUTF8String:"value"]];
+}
+
+- (instancetype)initWithCoder:(NSCoder *)coder {
+  self = [super init];
+  value = [coder decodeDoubleForKey:[NSString stringWithUTF8String:"value"]];
+  return self;
+}
+@end
+
+int test_printf_float_sign_flag() {
+  char buffer[32];
+  snprintf(buffer, sizeof(buffer), "%+.2f", 1.5);
+  if (strcmp(buffer, "+1.50") != 0)
+    return -1;
+  snprintf(buffer, sizeof(buffer), "%+08.2f", 1.5);
+  if (strcmp(buffer, "+0001.50") != 0)
+    return -2;
+  snprintf(buffer, sizeof(buffer), "%+08.2f", -1.5);
+  if (strcmp(buffer, "-0001.50") != 0)
+    return -3;
+  return 0;
+}
+
+int test_CFNumberGetValue_wide_types() {
+  int64_t inputLongLong = -9000000001LL;
+  CFNumberRef longLongNumber =
+      CFNumberCreate(NULL, kCFNumberLongLongType, &inputLongLong);
+  int64_t outputLongLong = 0;
+  if (!CFNumberGetValue(longLongNumber, kCFNumberLongLongType,
+                        &outputLongLong) ||
+      outputLongLong != inputLongLong) {
+    CFRelease(longLongNumber);
+    return -1;
+  }
+  CFRelease(longLongNumber);
+
+  double inputDouble = 123.25;
+  CFNumberRef doubleNumber =
+      CFNumberCreate(NULL, kCFNumberDoubleType, &inputDouble);
+  double outputDouble = 0;
+  if (!CFNumberGetValue(doubleNumber, kCFNumberDoubleType, &outputDouble) ||
+      outputDouble != inputDouble) {
+    CFRelease(doubleNumber);
+    return -2;
+  }
+  CFRelease(doubleNumber);
+  return 0;
+}
+
+int test_NSKeyedArchiver_encodeDoubleForKey() {
+  NSAutoreleasePool *pool = [NSAutoreleasePool new];
+  double values[] = {12345.5, 0.0, -1.25, 1.0 / 3.0};
+  int count = sizeof(values) / sizeof(double);
+
+  for (int i = 0; i < count; i++) {
+    DoubleCoderObject *obj =
+        [[DoubleCoderObject alloc] initWithValue:values[i]];
+    NSData *archivedData = [NSKeyedArchiver archivedDataWithRootObject:obj];
+    DoubleCoderObject *unarchivedObj =
+        [NSKeyedUnarchiver unarchiveObjectWithData:archivedData];
+    if (unarchivedObj->value != values[i]) {
+      [pool drain];
+      return -(i + 1);
+    }
+  }
+
+  [pool drain];
+  return 0;
+}
+
+int test_CFURLCreateStringByAddingPercentEscapes() {
+  CFStringRef escaped = CFURLCreateStringByAddingPercentEscapes(
+      NULL, CFSTR("hello world/path?x=1"), NULL, CFSTR("/?"),
+      kCFStringEncodingUTF8);
+  if (escaped == NULL)
+    return -1;
+  bool matches = CFEqual(escaped, CFSTR("hello%20world%2Fpath%3Fx=1"));
+  CFRelease(escaped);
+  return matches ? 0 : -2;
+}
+
 int test_NSKeyedArchiver_encodeIntForKey() {
   NSAutoreleasePool *pool = [NSAutoreleasePool new];
 
@@ -6389,6 +6489,289 @@ int test_NSNotificationCenter_addObserver_nilName_removeObserver() {
   return 0;
 }
 
+// An observer that unregisters other observers when it is notified.
+@interface RemovingNotificationObserver : NSObject {
+@public
+  int receivedCount;
+  NSArray *victims;
+}
+- (void)handleNotification:(NSNotification *)notification;
+@end
+
+@implementation RemovingNotificationObserver
+- (void)handleNotification:(NSNotification *)notification {
+  receivedCount++;
+  NSNotificationCenter *center = [NSNotificationCenter defaultCenter];
+  unsigned int i;
+  for (i = 0; i < [victims count]; i++) {
+    [center removeObserver:[victims objectAtIndex:i]];
+  }
+}
+- (void)dealloc {
+  [victims release];
+  [super dealloc];
+}
+@end
+
+// A notification must not be delivered to an observer that was removed while
+// that same notification was being posted. The notification centre does not
+// retain its observers, so an observer that unregisters during teardown is
+// routinely deallocated immediately afterwards; delivering to a copy of the
+// observer list taken before the post would then message freed memory.
+// Observers that are still registered must still be delivered to, so this also
+// checks that one removal does not truncate the rest of the delivery.
+//
+// Delivery order is not documented, but both implementations notify in
+// registration order, so registering the remover first puts its victims later
+// in the same post.
+int test_NSNotificationCenter_removeObserver_duringPost() {
+  NSAutoreleasePool *pool = [NSAutoreleasePool new];
+
+  NSNotificationCenter *center = [NSNotificationCenter defaultCenter];
+  SEL sel = NSSelectorFromString(
+      [NSString stringWithUTF8String:"handleNotification:"]);
+  NSString *name = [NSString stringWithUTF8String:"RemoveDuringPost"];
+
+  RemovingNotificationObserver *remover = [RemovingNotificationObserver new];
+  NotificationObserver *victim = [NotificationObserver new];
+  NotificationObserver *survivor = [NotificationObserver new];
+  // Observers registered with a nil name are kept separately, so cover both.
+  NotificationObserver *anyNameVictim = [NotificationObserver new];
+
+  [center addObserver:remover selector:sel name:name object:nil];
+  [center addObserver:victim selector:sel name:name object:nil];
+  [center addObserver:survivor selector:sel name:name object:nil];
+  [center addObserver:anyNameVictim selector:sel name:nil object:nil];
+  remover->victims = [[NSArray alloc] initWithObjects:victim, anyNameVictim,
+                                                     nil];
+
+  [center postNotificationName:name object:nil];
+
+  int result = 0;
+  if (remover->receivedCount != 1) {
+    result = -1;
+  } else if (victim->receivedCount != 0) {
+    result = -2;
+  } else if (anyNameVictim->receivedCount != 0) {
+    result = -3;
+  } else if (survivor->receivedCount != 1) {
+    result = -4;
+  }
+
+  [center removeObserver:remover];
+  [center removeObserver:victim];
+  [center removeObserver:survivor];
+  [center removeObserver:anyNameVictim];
+  [remover release];
+  [victim release];
+  [survivor release];
+  [anyNameVictim release];
+  [pool drain];
+  return result;
+}
+
+@interface KVCGetterTarget : NSObject {
+@public
+  // Reached only through the instance-variable fallback: neither has an
+  // accessor of any of the searched names.
+  id _hidden;
+  id plain;
+}
+- (NSString *)name;
+- (float)ratio;
+- (int)tally;
+- (BOOL)isEnabled;
+- (id)getPrefixed;
+@end
+
+@implementation KVCGetterTarget
+- (NSString *)name {
+  return @"monkey";
+}
+- (float)ratio {
+  return 1.5f;
+}
+- (int)tally {
+  return -7;
+}
+- (BOOL)isEnabled {
+  return YES;
+}
+- (id)getPrefixed {
+  return @"prefixed";
+}
+@end
+
+// valueForKey: searches for an accessor named get<Key>, <key>, is<Key> or
+// _<key>, then for an instance variable named _<key>, _is<Key>, <key> or
+// is<Key>. An accessor that does not return an object has its result boxed, and
+// the encoded return type decides which box, since that is what says where the
+// value was returned.
+int test_NSObject_valueForKey() {
+  NSAutoreleasePool *pool = [NSAutoreleasePool new];
+
+  KVCGetterTarget *target = [KVCGetterTarget new];
+  target->_hidden = @"hidden";
+  target->plain = @"plain";
+
+  int result = 0;
+  if (![[target valueForKey:@"name"] isEqual:@"monkey"]) {
+    result = -1;
+  } else if ([[target valueForKey:@"ratio"] floatValue] != 1.5f) {
+    result = -2;
+  } else if ([[target valueForKey:@"tally"] intValue] != -7) {
+    result = -3;
+  } else if ([[target valueForKey:@"enabled"] boolValue] != YES) {
+    result = -4;
+  } else if (![[target valueForKey:@"prefixed"] isEqual:@"prefixed"]) {
+    result = -5;
+  } else if (![[target valueForKey:@"hidden"] isEqual:@"hidden"]) {
+    result = -6;
+  } else if (![[target valueForKey:@"plain"] isEqual:@"plain"]) {
+    result = -7;
+  }
+
+  [target release];
+  [pool drain];
+  return result;
+}
+
+@interface KVCNilTarget : NSObject {
+@public
+  id objectIvar;
+  int scalarIvar;
+  int nilKeyCount;
+  id lastNilKey;
+}
+- (void)setObjectProperty:(id)value;
+- (void)setScalarProperty:(int)value;
+@end
+
+@implementation KVCNilTarget
+- (void)setObjectProperty:(id)value {
+  [objectIvar release];
+  objectIvar = [value retain];
+}
+- (void)setScalarProperty:(int)value {
+  scalarIvar = value;
+}
+// The documented hook a class overrides to decide what nil means for a
+// property that cannot hold it. Overriding it here also keeps the test from
+// depending on what the unoverridden default does.
+- (void)setNilValueForKey:(id)key {
+  nilKeyCount++;
+  [lastNilKey release];
+  lastNilKey = [key retain];
+}
+- (void)dealloc {
+  [objectIvar release];
+  [lastNilKey release];
+  [super dealloc];
+}
+@end
+
+// setValue:nil forKey: is only meaningful when the target accepts an object.
+// For any other type there is no value to write, so it must go to
+// setNilValueForKey: instead of being passed on as a null pointer.
+int test_NSObject_setValue_nil() {
+  NSAutoreleasePool *pool = [NSAutoreleasePool new];
+
+  KVCNilTarget *target = [KVCNilTarget new];
+
+  int result = 0;
+  [target setValue:@"present" forKey:@"objectProperty"];
+  [target setValue:[NSNumber numberWithInt:5] forKey:@"scalarProperty"];
+  if (![target->objectIvar isEqual:@"present"]) {
+    result = -1;
+  } else if (target->scalarIvar != 5) {
+    result = -2;
+  } else {
+    // An object-typed setter receives the nil.
+    [target setValue:nil forKey:@"objectProperty"];
+    if (target->objectIvar != nil) {
+      result = -3;
+    } else if (target->nilKeyCount != 0) {
+      result = -4;
+    } else {
+      // A scalar setter is not called; setNilValueForKey: is.
+      [target setValue:nil forKey:@"scalarProperty"];
+      if (target->nilKeyCount != 1) {
+        result = -5;
+      } else if (![target->lastNilKey isEqual:@"scalarProperty"]) {
+        result = -6;
+      } else if (target->scalarIvar != 5) {
+        result = -7;
+      }
+    }
+  }
+
+  [target release];
+  [pool drain];
+  return result;
+}
+
+// NSMutableSet's set-algebra mutators, and the NSSet comparisons that go with
+// them. setSet: has to read the other set's members before clearing its own,
+// because the other set may be the receiver.
+int test_NSMutableSet_setAlgebra() {
+  NSAutoreleasePool *pool = [NSAutoreleasePool new];
+
+  NSSet *ab = [NSSet setWithObjects:@"a", @"b", nil];
+  NSSet *bc = [NSSet setWithObjects:@"b", @"c", nil];
+  NSSet *de = [NSSet setWithObjects:@"d", @"e", nil];
+
+  int result = 0;
+  NSMutableSet *set = [NSMutableSet setWithCapacity:4];
+
+  [set setSet:ab];
+  if ([set count] != 2 || ![set containsObject:@"a"] ||
+      ![set containsObject:@"b"]) {
+    result = -1;
+  } else if (![set isEqualToSet:ab]) {
+    result = -2;
+  }
+
+  // setSet: with the receiver itself must leave it unchanged, not empty it.
+  if (result == 0) {
+    [set setSet:set];
+    if ([set count] != 2 || ![set containsObject:@"a"]) {
+      result = -3;
+    }
+  }
+
+  if (result == 0) {
+    [set intersectSet:bc];
+    if ([set count] != 1 || ![set containsObject:@"b"]) {
+      result = -4;
+    }
+  }
+
+  if (result == 0) {
+    [set setSet:ab];
+    [set minusSet:bc];
+    if ([set count] != 1 || ![set containsObject:@"a"]) {
+      result = -5;
+    }
+  }
+
+  if (result == 0) {
+    if (![ab intersectsSet:bc]) {
+      result = -6;
+    } else if ([ab intersectsSet:de]) {
+      result = -7;
+    } else if (![ab isSubsetOfSet:[NSSet setWithObjects:@"a", @"b", @"c", nil]]) {
+      result = -8;
+    } else if ([ab isSubsetOfSet:bc]) {
+      result = -9;
+    } else if ([ab isEqualToSet:bc]) {
+      result = -10;
+    }
+  }
+
+  [pool drain];
+  return result;
+}
+
 int test_malloc_zone_basic() {
   malloc_zone_t *zone = malloc_create_zone(0, 0);
   unsigned char *p = malloc_zone_malloc(zone, 128);
@@ -6431,6 +6814,111 @@ int test_malloc_zone_struct_dispatch() {
   return 0;
 }
 
+int test_NSNumber_objCType() {
+  if (strcmp([[NSNumber numberWithBool:YES] objCType], @encode(BOOL)) != 0)
+    return -1;
+  if (strcmp([[NSNumber numberWithUnsignedLongLong:1] objCType],
+             @encode(unsigned long long)) != 0)
+    return -2;
+  if (strcmp([[NSNumber numberWithUnsignedInt:1] objCType],
+             @encode(unsigned int)) != 0)
+    return -3;
+  if (strcmp([[NSNumber numberWithInt:1] objCType], @encode(int)) != 0)
+    return -4;
+  if (strcmp([[NSNumber numberWithLongLong:1] objCType],
+             @encode(long long)) != 0)
+    return -5;
+  if (strcmp([[NSNumber numberWithFloat:1] objCType], @encode(float)) != 0)
+    return -6;
+  if (strcmp([[NSNumber numberWithDouble:1] objCType], @encode(double)) != 0)
+    return -7;
+  if (strcmp([[NSNumber numberWithShort:1] objCType], @encode(short)) != 0)
+    return -8;
+  if (strcmp([[NSNumber numberWithUnsignedShort:1] objCType],
+             @encode(unsigned short)) != 0)
+    return -9;
+  if (strcmp([[NSNumber numberWithChar:1] objCType], @encode(char)) != 0)
+    return -10;
+  return 0;
+}
+
+int test_NSDictionary_keysSortedByValueUsingSelector() {
+  NSString *firstKey = [NSString stringWithUTF8String:"first"];
+  NSString *secondKey = [NSString stringWithUTF8String:"second"];
+  NSString *a = [NSString stringWithUTF8String:"a"];
+  NSString *b = [NSString stringWithUTF8String:"b"];
+  NSArray *keys = [NSArray arrayWithObjects:secondKey, firstKey, nil];
+  NSArray *values = [NSArray arrayWithObjects:b, a, nil];
+  NSDictionary *dictionary =
+      [NSDictionary dictionaryWithObjects:values forKeys:keys];
+  NSArray *sorted =
+      [dictionary keysSortedByValueUsingSelector:@selector(compare:)];
+  NSArray *expected = [NSArray arrayWithObjects:firstKey, secondKey, nil];
+
+  return [sorted isEqualToArray:expected] ? 0 : -1;
+}
+
+int test_NSDictionary_dictionaryWithObjects_forKeys_count() {
+  id objects[] = {@"first value", @"second value"};
+  id keys[] = {@"first key", @"second key"};
+  NSDictionary *dictionary =
+      [NSDictionary dictionaryWithObjects:objects forKeys:keys count:2];
+  if ([dictionary count] != 2)
+    return -1;
+  if (![[dictionary objectForKey:@"first key"] isEqual:@"first value"])
+    return -2;
+  if (![[dictionary objectForKey:@"second key"] isEqual:@"second value"])
+    return -3;
+  return 0;
+}
+
+// -[NSMutableArray removeObject:] must remove *every* occurrence. Removing by
+// ascending index is wrong, because each removal shifts the following elements
+// down: the second removal would then delete the wrong element and could run
+// past the end.
+int test_NSMutableArray_removeObject_duplicates() {
+  NSMutableArray *array = [NSMutableArray array];
+  id repeated = @"repeated";
+  id other = @"other";
+  [array addObject:repeated];
+  [array addObject:other];
+  [array addObject:repeated];
+  [array addObject:other];
+  [array addObject:repeated];
+
+  [array removeObject:repeated];
+
+  if ([array count] != 2)
+    return -1;
+  if (![[array objectAtIndex:0] isEqual:other])
+    return -2;
+  if (![[array objectAtIndex:1] isEqual:other])
+    return -3;
+
+  // Removing every element must empty the array, not leave a survivor.
+  [array removeObject:other];
+  if ([array count] != 0)
+    return -4;
+
+  // Removing something absent must be a no-op rather than an error.
+  [array removeObject:repeated];
+  if ([array count] != 0)
+    return -5;
+  return 0;
+}
+
+int test_if_nametoindex() {
+  if (if_nametoindex("lo0") != 1)
+    return -1;
+  if (if_nametoindex("en0") != 2)
+    return -2;
+  if (if_nametoindex("pdp_ip0") != 3)
+    return -3;
+  if (if_nametoindex("not-an-interface") != 0)
+    return -4;
+  return 0;
+}
+
 // clang-format off
 #define FUNC_DEF(func)                                                         \
   { &func, #func }
@@ -6449,6 +6937,7 @@ struct {
 #endif
     FUNC_DEF(test_qsort),
     FUNC_DEF(test_vsnprintf),
+    FUNC_DEF(test_printf_float_sign_flag),
     FUNC_DEF(test_sscanf),
     FUNC_DEF(test_swscanf),
     FUNC_DEF(test_realloc),
@@ -6518,7 +7007,9 @@ struct {
     FUNC_DEF(test_inet_ntop),
     FUNC_DEF(test_inet_pton),
     FUNC_DEF(test_CFURL),
+    FUNC_DEF(test_CFURLCreateStringByAddingPercentEscapes),
     FUNC_DEF(test_CFNumberCompare_simple),
+    FUNC_DEF(test_CFNumberGetValue_wide_types),
     FUNC_DEF(test_CFNumberCompare_extended),
     FUNC_DEF(test_memset_pattern),
     FUNC_DEF(test_CGGeometry),
@@ -6533,11 +7024,13 @@ struct {
     FUNC_DEF(test_RespondsToSelector),
     FUNC_DEF(test_MethodForSelector),
     FUNC_DEF(test_NSOperation),
+    FUNC_DEF(test_NSKeyedArchiver_encodeDoubleForKey),
     FUNC_DEF(test_NSKeyedArchiver_encodeIntForKey),
     FUNC_DEF(test_NSKeyedArchiver_NSKeyedUnarchiver),
     FUNC_DEF(test_NSKeyedArchiver_NSDictionary_of_NSArray_of_NSStrings),
     FUNC_DEF(test_AutoreleasePool),
     FUNC_DEF(test_NSNumber_stringValue),
+    FUNC_DEF(test_NSNumber_objCType),
     FUNC_DEF(test_NSMethodSignature),
     FUNC_DEF(test_NSInvocation),
     FUNC_DEF(test_NSInvocation_invokeWithTarget),
@@ -6547,8 +7040,16 @@ struct {
     FUNC_DEF(test_NSNotificationCenter_addObserver_nilName),
     FUNC_DEF(test_NSNotificationCenter_addObserver_nilName_withObject),
     FUNC_DEF(test_NSNotificationCenter_addObserver_nilName_removeObserver),
+    FUNC_DEF(test_NSNotificationCenter_removeObserver_duringPost),
+    FUNC_DEF(test_NSObject_valueForKey),
+    FUNC_DEF(test_NSObject_setValue_nil),
+    FUNC_DEF(test_NSMutableSet_setAlgebra),
     FUNC_DEF(test_malloc_zone_basic),
     FUNC_DEF(test_malloc_zone_struct_dispatch),
+    FUNC_DEF(test_NSDictionary_keysSortedByValueUsingSelector),
+    FUNC_DEF(test_NSDictionary_dictionaryWithObjects_forKeys_count),
+    FUNC_DEF(test_NSMutableArray_removeObject_duplicates),
+    FUNC_DEF(test_if_nametoindex),
 };
 // clang-format on
 

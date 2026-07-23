@@ -20,13 +20,16 @@ type NSSearchPathDirectory = NSUInteger;
 const NSApplicationDirectory: NSSearchPathDirectory = 1;
 const NSLibraryDirectory: NSSearchPathDirectory = 5;
 const NSDocumentDirectory: NSSearchPathDirectory = 9;
+const NSCachesDirectory: NSSearchPathDirectory = 13;
 
 type NSSearchPathDomainMask = NSUInteger;
 const NSUserDomainMask: NSSearchPathDomainMask = 1;
 
 pub const NSFileModificationDate: &str = "NSFileModificationDate";
+pub const NSFilePosixPermissions: &str = "NSFilePosixPermissions";
 pub const NSFileSize: &str = "NSFileSize";
 const NSFileSystemFreeSize: &str = "NSFileSystemFreeSize";
+const NSFileSystemSize: &str = "NSFileSystemSize";
 pub const NSFileType: &str = "NSFileType";
 pub const NSFileTypeDirectory: &str = "NSFileTypeDirectory";
 pub const NSFileTypeRegular: &str = "NSFileTypeRegular";
@@ -36,10 +39,18 @@ pub const CONSTANTS: ConstantExports = &[
         "_NSFileModificationDate",
         HostConstant::NSString(NSFileModificationDate),
     ),
+    (
+        "_NSFilePosixPermissions",
+        HostConstant::NSString(NSFilePosixPermissions),
+    ),
     ("_NSFileSize", HostConstant::NSString(NSFileSize)),
     (
         "_NSFileSystemFreeSize",
         HostConstant::NSString(NSFileSystemFreeSize),
+    ),
+    (
+        "_NSFileSystemSize",
+        HostConstant::NSString(NSFileSystemSize),
     ),
     ("_NSFileType", HostConstant::NSString(NSFileType)),
     (
@@ -72,6 +83,7 @@ fn NSSearchPathForDirectoriesInDomains(
         }
         NSDocumentDirectory => env.fs.home_directory().join("Documents"),
         NSLibraryDirectory => env.fs.home_directory().join("Library"),
+        NSCachesDirectory => env.fs.home_directory().join("Library/Caches"),
         _ => todo!("NSSearchPathDirectory {}", directory),
     };
     let dir = ns_string::from_rust_string(env, String::from(dir));
@@ -238,7 +250,12 @@ pub const CLASSES: ClassExports = objc_classes! {
   withIntermediateDirectories:(bool)with_intermediates
                    attributes:(id)attributes // NSDictionary*
                         error:(MutPtr<id>)error { // NSError**
-    assert_eq!(attributes, nil); // TODO
+    if attributes != nil {
+        // The host filesystem owns the effective permissions. Accepting the
+        // dictionary matches iOS call flow even though its POSIX mode cannot
+        // be reproduced portably here.
+        log_once!("TODO: NSFileManager createDirectoryAtPath: ignores attributes");
+    }
 
     let path_str = ns_string::to_rust_string(env, path); // TODO: avoid copy
     let res = if with_intermediates {
@@ -409,13 +426,13 @@ pub const CLASSES: ClassExports = objc_classes! {
 - (id)attributesOfFileSystemForPath:(id)_path
                               error:(MutPtr<id>)error {
     // TODO: other attributes
-    log_once!("Warning: NSFileManager attributesOfFileSystemForPath:error: returns only NSFileSystemFreeSize attribute!");
+    log_once!("Warning: NSFileManager attributesOfFileSystemForPath:error: returns only filesystem size attributes!");
 
     assert!(error.is_null()); // TODO
 
     let dict = msg_class![env; NSMutableDictionary new];
 
-    // Reporting 1 Gb of free space should be enough
+    // Reporting 1 GiB free out of 2 GiB should be enough for old apps.
     // TODO: unify with `statfs`
     // TODO: account for path
     let size: u64 = 1024 * 1024 * 1024;
@@ -423,6 +440,11 @@ pub const CLASSES: ClassExports = objc_classes! {
 
     let fs_free_size_key = get_static_str(env, NSFileSystemFreeSize);
     () = msg![env; dict setObject:size_num forKey:fs_free_size_key];
+
+    let total_size: u64 = 2 * 1024 * 1024 * 1024;
+    let total_size_num: id = msg_class![env; NSNumber numberWithUnsignedLongLong:total_size];
+    let fs_size_key = get_static_str(env, NSFileSystemSize);
+    () = msg![env; dict setObject:total_size_num forKey:fs_size_key];
 
     let dict_imm = msg![env; dict copy];
     release(env, dict);

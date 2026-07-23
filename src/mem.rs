@@ -365,7 +365,8 @@ impl Mem {
     }
 
     /// Special version of [Self::bytes_at] that returns [None] rather than
-    /// panicking on failure. Only for use by [crate::gdb::GdbServer].
+    /// panicking on failure. This is useful for callers such as
+    /// [crate::gdb::GdbServer] and guest APIs that must report a bad pointer.
     pub fn get_bytes_fallible(&self, addr: ConstVoidPtr, count: GuestUSize) -> Option<&[u8]> {
         if addr.to_bits() < self.null_segment_size {
             return None;
@@ -375,7 +376,8 @@ impl Mem {
             .get(..count as usize)
     }
     /// Special version of [Self::bytes_at_mut] that returns [None] rather than
-    /// panicking on failure. Only for use by [crate::gdb::GdbServer].
+    /// panicking on failure. This is useful for callers such as
+    /// [crate::gdb::GdbServer] and guest APIs that must report a bad pointer.
     pub fn get_bytes_fallible_mut(
         &mut self,
         addr: ConstVoidPtr,
@@ -505,6 +507,16 @@ impl Mem {
         // This would also be unsafe if the non-unaligned method was used.
         unsafe { self.ptr_at(ptr, 1).read_unaligned() }
     }
+    /// Read a value from memory, returning [None] for an invalid guest range.
+    pub fn read_fallible<T, const MUT: bool>(&self, ptr: Ptr<T, MUT>) -> Option<T>
+    where
+        T: SafeRead,
+    {
+        let addr = ConstVoidPtr::from_bits(ptr.to_bits());
+        let bytes = self.get_bytes_fallible(addr, guest_size_of::<T>())?;
+        // SafeRead and the unaligned load provide the same guarantees as read().
+        Some(unsafe { bytes.as_ptr().cast::<T>().read_unaligned() })
+    }
     /// Write a value to memory. This is the preferred way to write memory in
     /// most cases.
     pub fn write<T>(&mut self, ptr: MutPtr<T>, value: T)
@@ -519,6 +531,22 @@ impl Mem {
         // necessarily well-aligned for the host.
         // This would be unsafe if the non-unaligned method was used.
         unsafe { ptr.write_unaligned(value) }
+    }
+    /// Write a value to memory, returning false for an invalid guest range.
+    pub fn write_fallible<T>(&mut self, ptr: MutPtr<T>, value: T) -> bool
+    where
+        T: SafeWrite,
+    {
+        let size = guest_size_of::<T>();
+        assert!(size > 0);
+        let addr = ConstVoidPtr::from_bits(ptr.to_bits());
+        let Some(bytes) = self.get_bytes_fallible_mut(addr, size) else {
+            return false;
+        };
+        // SafeWrite and the unaligned store provide the same guarantees as
+        // write().
+        unsafe { bytes.as_mut_ptr().cast::<T>().write_unaligned(value) };
+        true
     }
 
     /// C-style `memmove`.
@@ -750,5 +778,24 @@ impl Mem {
         });
 
         (vm, heap)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Mem, MutPtr, Ptr, PAGE_SIZE};
+
+    #[test]
+    fn fallible_typed_access_reports_invalid_guest_ranges() {
+        let mut mem = Mem::new();
+        mem.set_null_segment_size(PAGE_SIZE);
+
+        let valid: MutPtr<u32> = Ptr::from_bits(PAGE_SIZE);
+        assert!(mem.write_fallible(valid, 0x1234_5678));
+        assert_eq!(mem.read_fallible(valid), Some(0x1234_5678));
+
+        let invalid: MutPtr<u32> = Ptr::null();
+        assert!(!mem.write_fallible(invalid, 1));
+        assert_eq!(mem.read_fallible(invalid), None);
     }
 }

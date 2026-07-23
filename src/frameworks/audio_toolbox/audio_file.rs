@@ -99,12 +99,13 @@ pub fn AudioFileOpenURL(
     }
 
     let path = to_rust_path(env, in_file_ref);
-    let audio_file = match audio::AudioFile::open_for_reading(path, &env.fs) {
+    let audio_file = match audio::AudioFile::open_for_reading(&path, &env.fs) {
         Ok(audio_file) => audio_file,
         Err(error) => {
             log!(
-                "Warning: AudioFileOpenURL() for path {:?} failed",
-                in_file_ref
+                "Warning: AudioFileOpenURL() for path {:?} failed: {:?}",
+                path,
+                error
             );
             return match error {
                 audio::AudioFileOpenError::FileDecodeError => kAudioFileUnsupportedFileTypeError,
