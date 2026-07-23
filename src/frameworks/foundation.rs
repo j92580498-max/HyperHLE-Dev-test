@@ -11,7 +11,7 @@
 //! Being aware of this concept will make common types like `NSArray` and
 //! `NSString` easier to understand.
 
-use crate::dyld::{export_c_func, FunctionExports};
+use crate::dyld::{export_c_func, ConstantExports, FunctionExports, HostConstant};
 use crate::objc::id;
 use crate::Environment;
 
@@ -109,6 +109,7 @@ pub const DYLIB: crate::dyld::HostDylib = crate::dyld::HostDylib {
         ns_xml_parser::CLASSES,
     ],
     constant_exports: &[
+        CONSTANTS,
         ns_error::CONSTANTS,
         ns_exception::CONSTANTS,
         ns_file_manager::CONSTANTS,
@@ -208,3 +209,22 @@ fn hash_helper<T: std::hash::Hash>(hashable: &T) -> NSUInteger {
 }
 
 const FUNCTIONS: FunctionExports = &[export_c_func!(NSStringFromRange(_))];
+
+/// Value of the `NSFoundationVersionNumber` global on iPhone OS 3.2. Like
+/// `kCFCoreFoundationVersionNumber`, apps read this `double` for runtime OS
+/// version detection; we report the 3.2 value to match the newest early build
+/// tapHLE targets.
+pub const NSFoundationVersionNumber_iPhoneOS_3_2: f64 = 678.60;
+
+/// The `NSFoundationVersionNumber` symbol is the address of that double. It was
+/// previously an unhandled non-lazy symbol left null, which would crash any app
+/// that dereferenced it.
+const CONSTANTS: ConstantExports = &[(
+    "_NSFoundationVersionNumber",
+    HostConstant::Custom(|env| {
+        env.mem
+            .alloc_and_write(NSFoundationVersionNumber_iPhoneOS_3_2)
+            .cast()
+            .cast_const()
+    }),
+)];

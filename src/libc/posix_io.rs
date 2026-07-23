@@ -465,6 +465,52 @@ pub fn write(
     }
 }
 
+/// `struct iovec` from `<sys/uio.h>`: a base pointer and a length.
+#[repr(C, packed)]
+struct iovec {
+    iov_base: ConstVoidPtr,
+    iov_len: GuestUSize,
+}
+unsafe impl SafeRead for iovec {}
+
+/// `ssize_t writev(int fildes, const struct iovec *iov, int iovcnt)`. Scatter
+/// output: writes each `iov` buffer to `fd` in order and returns the total
+/// number of bytes written. Implemented on top of [write], which is the same
+/// destination handling every buffer would get individually.
+pub fn writev(
+    env: &mut Environment,
+    fd: FileDescriptor,
+    iov: ConstPtr<iovec>,
+    iovcnt: i32,
+) -> GuestISize {
+    if iovcnt < 0 {
+        set_errno(env, EINVAL);
+        return -1;
+    }
+    let mut total: GuestISize = 0;
+    for i in 0..iovcnt as GuestUSize {
+        let entry = env.mem.read(iov + i);
+        let (base, len) = (entry.iov_base, entry.iov_len);
+        if len == 0 {
+            continue;
+        }
+        let written = write(env, fd, base, len);
+        if written < 0 {
+            // Report the error only if nothing has been written yet; otherwise
+            // return the partial count, as the real writev does.
+            if total == 0 {
+                return -1;
+            }
+            break;
+        }
+        total += written;
+        if (written as GuestUSize) < len {
+            break;
+        }
+    }
+    total
+}
+
 pub fn pwrite(
     env: &mut Environment,
     fd: FileDescriptor,
@@ -958,6 +1004,7 @@ pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(read(_, _, _)),
     export_c_func!(pread(_, _, _, _)),
     export_c_func!(write(_, _, _)),
+    export_c_func!(writev(_, _, _)),
     export_c_func!(pwrite(_, _, _, _)),
     export_c_func!(lseek(_, _, _)),
     export_c_func!(close(_)),

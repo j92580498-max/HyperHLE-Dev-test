@@ -6,6 +6,7 @@
 //! `Mach-O` related functions.
 
 use crate::dyld::{export_c_func, FunctionExports};
+use crate::mem::MutPtr;
 use crate::Environment;
 
 fn get_end(env: &mut Environment) -> u32 {
@@ -34,4 +35,28 @@ fn get_etext(env: &mut Environment) -> u32 {
     text_section.next_section_addr()
 }
 
-pub const FUNCTIONS: FunctionExports = &[export_c_func!(get_end()), export_c_func!(get_etext())];
+/// `int _NSGetExecutablePath(char *buf, uint32_t *bufsize)` from
+/// `<mach-o/dyld.h>`. Copies the executable's path (NUL-terminated) into `buf`.
+/// Apps use it to locate their own bundle. On success it returns 0 and leaves
+/// `*bufsize` unchanged; if the buffer is too small it returns -1 and stores the
+/// required size (including the NUL) in `*bufsize`, matching the real dyld.
+fn _NSGetExecutablePath(env: &mut Environment, buf: MutPtr<u8>, bufsize: MutPtr<u32>) -> i32 {
+    let path = env.bundle.executable_path().as_str().to_string();
+    let bytes = path.as_bytes();
+    let needed = bytes.len() as u32 + 1;
+    let available = env.mem.read(bufsize);
+    if needed > available {
+        env.mem.write(bufsize, needed);
+        return -1;
+    }
+    let dst = env.mem.bytes_at_mut(buf, needed);
+    dst[..bytes.len()].copy_from_slice(bytes);
+    dst[bytes.len()] = 0;
+    0
+}
+
+pub const FUNCTIONS: FunctionExports = &[
+    export_c_func!(get_end()),
+    export_c_func!(get_etext()),
+    export_c_func!(_NSGetExecutablePath(_, _)),
+];

@@ -1102,22 +1102,24 @@ pub const CLASSES: ClassExports = objc_classes! {
     //       "/var/automount”, or "/private” from the path
     assert!(!path.starts_with("/private"));
     assert!(!path.starts_with("/var/automount"));
-    // TODO: Reducing empty components and references to the current directory
-    assert!(!path.contains("//"));
-    assert!(!path.contains("/./"));
     // Removing a trailing slash from the last component.
     let path = path_algorithms::trim_trailing_slashes(&path);
-    // For absolute paths only, resolve references to the parent directory
     let new_path_str = if path.starts_with('/') {
-        assert!(!path.starts_with("/.."));
-        // Note: while we are using fs function, it's just string manipulation
-        // here.
+        // For absolute paths, resolve_path already reduces empty components
+        // ("//"), current-directory references ("/./") and parent references
+        // ("/.."), which is exactly the reduction this method must perform.
+        // Note: while we are using an fs function, it's just string
+        // manipulation here.
         let resolved = fs::resolve_path(GuestPath::new(path), None);
-        let new_path = format!("/{}", resolved.join("/"));
-        assert!(!new_path.contains(".."));
-        new_path
+        format!("/{}", resolved.join("/"))
     } else {
-        String::from(path)
+        // For relative paths, reduce empty components and current-directory
+        // references. Apple leaves a leading ".." unresolved for these, so we
+        // do not pop parent references here.
+        path.split('/')
+            .filter(|component| !component.is_empty() && *component != ".")
+            .collect::<Vec<_>>()
+            .join("/")
     };
     log_dbg!("[(NSString *){:?} stringByStandardizingPath] {} -> {}", this, to_rust_string(env, this), new_path_str);
     let new_string = from_rust_string(env, new_path_str);

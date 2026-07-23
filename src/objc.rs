@@ -51,7 +51,11 @@ use classes::{
 };
 pub(crate) use messages::objc_msgSend;
 use messages::{objc_msgSendSuper2, objc_msgSend_stret, MsgSendSignature, MsgSendSuperSignature};
-use methods::method_list_t;
+use methods::{
+    class_addMethod, class_getInstanceMethod, class_getMethodImplementation, class_replaceMethod,
+    method_exchangeImplementations, method_getImplementation, method_getName,
+    method_getTypeEncoding, method_list_t, method_setImplementation,
+};
 use objects::{objc_object, object_getClass, HostObjectEntry};
 use properties::{ivar_list_t, objc_copyStruct, objc_getProperty, objc_setProperty};
 use selectors::sel_registerName;
@@ -88,6 +92,15 @@ pub struct ObjC {
     /// Type information isn't part of the `objc_msgSend` ABI, so an alternative
     /// channel is needed.
     message_type_info: Option<(std::any::TypeId, &'static str)>,
+
+    /// Cache of guest-visible `Method` objects, keyed by the class that defines
+    /// the method and its selector, so repeated `class_getInstanceMethod` calls
+    /// return a stable pointer the way the real runtime does.
+    method_objects: HashMap<(Class, SEL), crate::mem::MutVoidPtr>,
+
+    /// Reverse map from a `Method` pointer to the class and selector it belongs
+    /// to, so `method_setImplementation` can update the dispatch table.
+    method_lookup: HashMap<crate::mem::MutVoidPtr, (Class, SEL)>,
 }
 
 impl ObjC {
@@ -99,6 +112,8 @@ impl ObjC {
             sync_mutexes: HashMap::new(),
             initializer_threads: HashMap::new(),
             message_type_info: None,
+            method_objects: HashMap::new(),
+            method_lookup: HashMap::new(),
         }
     }
 }
@@ -123,6 +138,15 @@ const FUNCTIONS: FunctionExports = &[
     export_c_func!(class_getInstanceSize(_)),
     export_c_func!(class_getSuperclass(_)),
     export_c_func!(class_getProperty(_, _)),
+    export_c_func!(class_getInstanceMethod(_, _)),
+    export_c_func!(class_getMethodImplementation(_, _)),
+    export_c_func!(class_addMethod(_, _, _, _)),
+    export_c_func!(class_replaceMethod(_, _, _, _)),
+    export_c_func!(method_getImplementation(_)),
+    export_c_func!(method_setImplementation(_, _)),
+    export_c_func!(method_getName(_)),
+    export_c_func!(method_getTypeEncoding(_)),
+    export_c_func!(method_exchangeImplementations(_, _)),
     export_c_func!(objc_msgSend(_, _)),
     export_c_func!(objc_msgSend_stret(_, _, _)),
     export_c_func!(objc_msgSendSuper2(_, _)),

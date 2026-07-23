@@ -987,6 +987,15 @@ where
                                 let c_int_ptr: ConstPtr<i32> = args.next(env);
                                 env.mem.write(c_int_ptr.cast_mut(), val as i32);
                             }
+                            // `long` is 32-bit on this ABI, `long long` 64-bit.
+                            Some("l") => {
+                                let c_long_ptr: ConstPtr<i32> = args.next(env);
+                                env.mem.write(c_long_ptr.cast_mut(), val as i32);
+                            }
+                            Some("ll") => {
+                                let c_longlong_ptr: ConstPtr<i64> = args.next(env);
+                                env.mem.write(c_longlong_ptr.cast_mut(), val);
+                            }
                             _ => unimplemented!("length_modifier {:?}", length_modifier),
                         }
                     }
@@ -1055,6 +1064,16 @@ where
                             None => {
                                 let c_u32_ptr: ConstPtr<u32> = args.next(env);
                                 env.mem.write(c_u32_ptr.cast_mut(), val as u32);
+                            }
+                            // `unsigned long` is 32-bit on this ABI,
+                            // `unsigned long long` 64-bit.
+                            Some("l") => {
+                                let c_ulong_ptr: ConstPtr<u32> = args.next(env);
+                                env.mem.write(c_ulong_ptr.cast_mut(), val as u32);
+                            }
+                            Some("ll") => {
+                                let c_ulonglong_ptr: ConstPtr<u64> = args.next(env);
+                                env.mem.write(c_ulonglong_ptr.cast_mut(), val);
                             }
                             _ => unimplemented!("length_modifier {:?}", length_modifier),
                         }
