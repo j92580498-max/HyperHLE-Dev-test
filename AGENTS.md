@@ -223,6 +223,25 @@ ad-hoc prefixes is the sprawl this rule exists to prevent.
   Project-wide agent guidance lives here on its way to `trunk`; a game's own
   continuation note lives on that game's `compat/` branch instead.
 
+Classify a branch by its **purpose — who benefits and why it exists — not by
+which files it happens to touch.** Both `feat/` and `infra/` may edit the
+tapHLE binary; what separates them is whether the change gives an end user
+running a game a new capability (`feat/`) or serves development and diagnostics
+(`infra/`). A diagnostic hook, a dump flag, or a crash-journal writer added to
+the binary is `infra/` because its purpose is tooling, even though it ships in
+the executable; a fullscreen mode or a settings UI is `feat/` because a user
+gains from it. Decide in this order and stop at the first match:
+
+1. Documentation only? → `docs/`.
+2. Is the goal to advance one specific game? → `compat/<app-slug>` (reusable
+   fixes discovered there still graduate to `trunk`).
+3. Does it change what the shipped emulator does for a user *running a game*? A
+   new user-facing capability → `feat/`; correcting a defect a user hits →
+   `fix/`.
+4. Otherwise it serves development — CI, build scripts, the toolchain and its
+   lints, developer tooling and diagnostics, the compatibility-database
+   machinery, versioning, release — → `infra/`.
+
 Use a short, hyphenated slug after the root. When a change spans categories,
 name the branch for its primary deliverable and split genuinely independent
 deliverables into separate branches rather than widening one. Releases are tags
