@@ -186,10 +186,14 @@ maintainer or reporter; do not search for or guess one. Verify the canonical
 item URL and exact IPA filename against
 `https://archive.org/metadata/<identifier>`. After the live metadata confirms
 that the maintainer-designated filename is an original file, an agent may
-download only that exact file to an external cache outside the checkout. Treat
-the downloaded bytes as opaque until their MD5 and SHA-1 match the live
-metadata and their SHA-256 is recorded; only then may the IPA be opened,
-inspected, or run. The Archive filename remains canonical. If Windows requires
+download only that exact file, and it goes in `tapHLE_apps/`, next to the other
+targets. That directory is gitignored, so the bytes never enter Git, and it is
+the directory tapHLE's app picker reads. Do not invent a cache directory
+elsewhere, and never create one outside the checkout: a stray folder in the
+maintainer's working area is litter, and a second copy of an IPA is exactly the
+duplication `dev-docs/app-debugging-playbook.md` warns about. Treat the
+downloaded bytes as opaque until their MD5 and SHA-1 match the live metadata and
+their SHA-256 is recorded; only then may the IPA be opened, inspected, or run. The Archive filename remains canonical. If Windows requires
 a different local filename, map it explicitly with `--archive-filename`.
 Inspect the verified IPA's embedded `Info.plist`, and cross-check it with local
 `tapHLE --info` when available. Never commit the IPA, extracted files, assets,
