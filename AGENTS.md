@@ -120,8 +120,15 @@ The database is **tapHLEdb**, a self-hosted live web application (a fork of
 <https://taphle.ephun.net/compatibility>; its source is `ephun/tapHLEdb`. It
 stores structured data only: an app's identity, its versions, and dated ratings
 with their source. Narrative debugging belongs in `dev-docs/app-notes/<app>.md`,
-never in the database. The note is the working notebook and holds the frontier;
-the database is the published result and holds the rating. The
+never in the database.
+
+Know which to read. A database report is a **dated snapshot**: its rating and
+its one-line frontier describe where the app stood at that commit, and it is
+never revised. The app note is **current state**: it holds today's frontier, the
+evidence behind it, and the next discriminator. To learn how an app is doing,
+read the database; to continue the work, read the note. Never copy the note's
+narrative into the database, and never treat an old report's frontier as the
+current one. The
 `compatibility/apps/*.json` records predate the deployment and remain only until
 they are migrated — do not add new ones.
 

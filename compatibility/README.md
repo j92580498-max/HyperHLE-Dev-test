@@ -29,11 +29,18 @@ What lives where, so the two never duplicate each other:
 
 - **tapHLEdb — the database.** Structured data only: an app's identity, its
   versions, and dated reports carrying a 1–5 rating, the tapHLE version, the
-  Windows host, the source of the result, and the current frontier. It holds no
-  narrative notes. It answers *"where does this app stand?"*
+  Windows host, the source of the result, and a one-line frontier. Each report
+  is a dated snapshot and is never revised, so its frontier records where the
+  app stood *at that commit*. It holds no narrative. It answers *"where does
+  this app stand?"*
 - **`dev-docs/app-notes/<app>.md` — the notebook.** The debugging narrative:
-  evidence, root causes and the next discriminator. It answers *"how do I push
-  this app further?"* It is explicitly not a compatibility claim.
+  evidence, root causes and the next discriminator, kept current. Its frontier
+  is where the app stops *now*. It answers *"how do I push this app further?"*
+  It is explicitly not a compatibility claim.
+
+The two frontiers are different facts, not duplicates: one is history, one is
+present. Read the database to see how an app is doing; read the note to continue
+its work.
 
 A record exists only because tapHLE actually ran that app and produced a rating.
 Results from touchHLE or HyperHLE are testing leads, never imported ratings, and
