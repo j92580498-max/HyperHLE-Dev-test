@@ -6489,6 +6489,87 @@ int test_NSNotificationCenter_addObserver_nilName_removeObserver() {
   return 0;
 }
 
+// An observer that unregisters other observers when it is notified.
+@interface RemovingNotificationObserver : NSObject {
+@public
+  int receivedCount;
+  NSArray *victims;
+}
+- (void)handleNotification:(NSNotification *)notification;
+@end
+
+@implementation RemovingNotificationObserver
+- (void)handleNotification:(NSNotification *)notification {
+  receivedCount++;
+  NSNotificationCenter *center = [NSNotificationCenter defaultCenter];
+  unsigned int i;
+  for (i = 0; i < [victims count]; i++) {
+    [center removeObserver:[victims objectAtIndex:i]];
+  }
+}
+- (void)dealloc {
+  [victims release];
+  [super dealloc];
+}
+@end
+
+// A notification must not be delivered to an observer that was removed while
+// that same notification was being posted. The notification centre does not
+// retain its observers, so an observer that unregisters during teardown is
+// routinely deallocated immediately afterwards; delivering to a copy of the
+// observer list taken before the post would then message freed memory.
+// Observers that are still registered must still be delivered to, so this also
+// checks that one removal does not truncate the rest of the delivery.
+//
+// Delivery order is not documented, but both implementations notify in
+// registration order, so registering the remover first puts its victims later
+// in the same post.
+int test_NSNotificationCenter_removeObserver_duringPost() {
+  NSAutoreleasePool *pool = [NSAutoreleasePool new];
+
+  NSNotificationCenter *center = [NSNotificationCenter defaultCenter];
+  SEL sel = NSSelectorFromString(
+      [NSString stringWithUTF8String:"handleNotification:"]);
+  NSString *name = [NSString stringWithUTF8String:"RemoveDuringPost"];
+
+  RemovingNotificationObserver *remover = [RemovingNotificationObserver new];
+  NotificationObserver *victim = [NotificationObserver new];
+  NotificationObserver *survivor = [NotificationObserver new];
+  // Observers registered with a nil name are kept separately, so cover both.
+  NotificationObserver *anyNameVictim = [NotificationObserver new];
+
+  [center addObserver:remover selector:sel name:name object:nil];
+  [center addObserver:victim selector:sel name:name object:nil];
+  [center addObserver:survivor selector:sel name:name object:nil];
+  [center addObserver:anyNameVictim selector:sel name:nil object:nil];
+  remover->victims = [[NSArray alloc] initWithObjects:victim, anyNameVictim,
+                                                     nil];
+
+  [center postNotificationName:name object:nil];
+
+  int result = 0;
+  if (remover->receivedCount != 1) {
+    result = -1;
+  } else if (victim->receivedCount != 0) {
+    result = -2;
+  } else if (anyNameVictim->receivedCount != 0) {
+    result = -3;
+  } else if (survivor->receivedCount != 1) {
+    result = -4;
+  }
+
+  [center removeObserver:remover];
+  [center removeObserver:victim];
+  [center removeObserver:survivor];
+  [center removeObserver:anyNameVictim];
+  [remover release];
+  [victim release];
+  [survivor release];
+  [anyNameVictim release];
+  [pool drain];
+  return result;
+}
+
 int test_malloc_zone_basic() {
   malloc_zone_t *zone = malloc_create_zone(0, 0);
   unsigned char *p = malloc_zone_malloc(zone, 128);
@@ -6757,6 +6838,7 @@ struct {
     FUNC_DEF(test_NSNotificationCenter_addObserver_nilName),
     FUNC_DEF(test_NSNotificationCenter_addObserver_nilName_withObject),
     FUNC_DEF(test_NSNotificationCenter_addObserver_nilName_removeObserver),
+    FUNC_DEF(test_NSNotificationCenter_removeObserver_duringPost),
     FUNC_DEF(test_malloc_zone_basic),
     FUNC_DEF(test_malloc_zone_struct_dispatch),
     FUNC_DEF(test_NSDictionary_keysSortedByValueUsingSelector),

@@ -25,10 +25,19 @@ struct Observer {
     observer: id,
     selector: SEL,
     object: id,
+    /// Identity of this individual registration, unique within its centre.
+    ///
+    /// Posting a notification has to copy the observer list, because delivering
+    /// it runs guest code that may register or remove observers. The centre
+    /// does not retain observers, so a copied entry can outlive the object it
+    /// names. This lets the poster ask whether a copied entry is still
+    /// registered before it messages the observer.
+    registration: u64,
 }
 
 struct NSNotificationCenterHostObject {
     observers: HashMap<Option<Cow<'static, str>>, Vec<Observer>>,
+    next_registration: u64,
 }
 impl HostObject for NSNotificationCenterHostObject {}
 
@@ -41,6 +50,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 + (id)allocWithZone:(NSZonePtr)_zone {
     let host_object = Box::new(NSNotificationCenterHostObject {
         observers: HashMap::new(),
+        next_registration: 0,
     });
     env.objc.alloc_object(this, host_object, &mut env.mem)
 }
@@ -104,10 +114,13 @@ pub const CLASSES: ClassExports = objc_classes! {
     retain(env, object);
 
     let host_obj = env.objc.borrow_mut::<NSNotificationCenterHostObject>(this);
+    let registration = host_obj.next_registration;
+    host_obj.next_registration += 1;
     host_obj.observers.entry(name).or_default().push(Observer {
         observer,
         selector,
         object,
+        registration,
     });
 }
 
@@ -171,15 +184,58 @@ pub const CLASSES: ClassExports = objc_classes! {
 
     log_dbg!("Notification is a {:?} posted by {:?}", name, notification_poster);
 
-    let host_obj = env.objc.borrow_mut::<NSNotificationCenterHostObject>(this);
-    let mut observers = host_obj.observers.get(&Some(name)).cloned().unwrap_or_default();
-    if let Some(nameless_observers) = host_obj.observers.get(&None) {
-        observers.extend(nameless_observers.iter().cloned());
+    // Delivering a notification runs guest code that may register or remove
+    // observers, so the lists have to be copied before anything is messaged.
+    // Each copied entry remembers which list it came from: a registration never
+    // moves between them, so that is where its identity is looked up again
+    // below.
+    let named_key = Some(name);
+    let nameless_key = None;
+    let host_obj = env.objc.borrow::<NSNotificationCenterHostObject>(this);
+    let mut observers: Vec<(bool, Observer)> = host_obj
+        .observers
+        .get(&named_key)
+        .map(|observers| observers.iter().map(|o| (true, o.clone())).collect())
+        .unwrap_or_default();
+    if let Some(nameless_observers) = host_obj.observers.get(&nameless_key) {
+        observers.extend(nameless_observers.iter().map(|o| (false, o.clone())));
     }
-    for Observer { observer, selector, object } in observers {
+    for (
+        named,
+        Observer {
+            observer,
+            selector,
+            object,
+            registration,
+        },
+    ) in observers
+    {
         // The object argument is a filter for which notification sources the
         // observer is interested in.
         if object != nil && notification_poster != object {
+            continue;
+        }
+
+        // An observer messaged earlier in this loop may have removed this one,
+        // directly or by tearing down whatever owned it. Since the centre does
+        // not retain observers, the copy taken above can name a deallocated
+        // object, and messaging it would be a use-after-free. Real
+        // NSNotificationCenter does not deliver a notification to an observer
+        // that was removed while that notification was being posted, which is
+        // what makes unregistering in a teardown method safe, so skip it.
+        let key = if named { &named_key } else { &nameless_key };
+        let host_obj = env.objc.borrow::<NSNotificationCenterHostObject>(this);
+        let still_registered = host_obj
+            .observers
+            .get(key)
+            .is_some_and(|observers| observers.iter().any(|o| o.registration == registration));
+        if !still_registered {
+            log_dbg!(
+                "Observer {:?} was removed while {:?} was being posted, not sending {:?}",
+                observer,
+                notification,
+                selector.as_str(&env.mem),
+            );
             continue;
         }
 
