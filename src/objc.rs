@@ -46,8 +46,8 @@ pub use selectors::{selector, SEL};
 
 pub(crate) use blocks::block_invoke_function;
 use classes::{
-    class_getInstanceSize, class_getProperty, class_getSuperclass, objc_getClass, ClassHostObject,
-    FakeClass, UnimplementedClass,
+    class_copyPropertyList, class_getInstanceSize, class_getProperty, class_getSuperclass,
+    objc_getClass, ClassHostObject, FakeClass, UnimplementedClass,
 };
 pub(crate) use messages::objc_msgSend;
 use messages::{objc_msgSendSuper2, objc_msgSend_stret, MsgSendSignature, MsgSendSuperSignature};
@@ -135,6 +135,7 @@ const CONSTANTS: ConstantExports = &[
 ];
 
 const FUNCTIONS: FunctionExports = &[
+    export_c_func!(class_copyPropertyList(_, _)),
     export_c_func!(class_getInstanceSize(_)),
     export_c_func!(class_getSuperclass(_)),
     export_c_func!(class_getProperty(_, _)),

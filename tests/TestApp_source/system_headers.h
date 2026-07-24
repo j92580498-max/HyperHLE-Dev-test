@@ -48,6 +48,7 @@ static inline NSRange NSMakeRange(NSUInteger loc, NSUInteger len) {
   Class isa;
 }
 + (Class)class;
++ (Class)superclass;
 + (instancetype)alloc;
 + (instancetype)new;
 + (BOOL)respondsToSelector:(SEL)selector;

@@ -19,6 +19,7 @@ pub mod _nib_archive_decoder;
 pub mod ns_array;
 pub mod ns_autorelease_pool;
 pub mod ns_bundle;
+pub mod ns_calendar;
 pub mod ns_character_set;
 pub mod ns_coder;
 pub mod ns_data;
@@ -69,6 +70,7 @@ pub const DYLIB: crate::dyld::HostDylib = crate::dyld::HostDylib {
         ns_array::CLASSES,
         ns_autorelease_pool::CLASSES,
         ns_bundle::CLASSES,
+        ns_calendar::CLASSES,
         ns_character_set::CLASSES,
         ns_coder::CLASSES,
         ns_data::CLASSES,
@@ -219,12 +221,19 @@ pub const NSFoundationVersionNumber_iPhoneOS_3_2: f64 = 678.60;
 /// The `NSFoundationVersionNumber` symbol is the address of that double. It was
 /// previously an unhandled non-lazy symbol left null, which would crash any app
 /// that dereferenced it.
-const CONSTANTS: ConstantExports = &[(
-    "_NSFoundationVersionNumber",
-    HostConstant::Custom(|env| {
-        env.mem
-            .alloc_and_write(NSFoundationVersionNumber_iPhoneOS_3_2)
-            .cast()
-            .cast_const()
-    }),
-)];
+const CONSTANTS: ConstantExports = &[
+    (
+        "_NSFoundationVersionNumber",
+        HostConstant::Custom(|env| {
+            env.mem
+                .alloc_and_write(NSFoundationVersionNumber_iPhoneOS_3_2)
+                .cast()
+                .cast_const()
+        }),
+    ),
+    // `NSGregorianCalendar` (the pre-iOS-8 calendar identifier) is an NSString
+    // whose value is "gregorian"; apps pass it to
+    // -[NSCalendar initWithCalendarIdentifier:]. Previously an unhandled
+    // non-lazy symbol left null, so dereferencing it crashed.
+    ("_NSGregorianCalendar", HostConstant::NSString("gregorian")),
+];

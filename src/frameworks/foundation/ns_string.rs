@@ -1334,6 +1334,29 @@ pub const CLASSES: ClassExports = objc_classes! {
     () = msg![env; this setString:res];
 }
 
+- (())insertString:(id)a_string // NSString*
+           atIndex:(NSUInteger)index {
+    // Concatenate the text before `index`, the inserted string, and the text
+    // after `index`. Inefficient (rebuilds the whole string) but matches the
+    // primitive-based approach of the other mutators above.
+    let length: NSUInteger = msg![env; this length];
+    let left: id = if index == 0 {
+        get_static_str(env, "")
+    } else {
+        let left_range = NSRange { location: 0, length: index };
+        msg![env; this substringWithRange:left_range]
+    };
+    let right: id = if index == length {
+        get_static_str(env, "")
+    } else {
+        let right_range = NSRange { location: index, length: length - index };
+        msg![env; this substringWithRange:right_range]
+    };
+    let res: id = msg![env; left stringByAppendingString:a_string];
+    let res: id = msg![env; res stringByAppendingString:right];
+    () = msg![env; this setString:res];
+}
+
 @end
 
 // Our private subclass that is the single implementation of NSString for the

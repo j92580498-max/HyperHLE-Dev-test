@@ -19,9 +19,15 @@ struct NSOperationHostObject {
     cancelled: bool,
     executing: bool,
     finished: bool,
-    invocation: Option<(id, SEL, id)>,
+    invocation: Option<OperationInvocation>,
 }
 impl HostObject for NSOperationHostObject {}
+
+#[derive(Clone, Copy)]
+enum OperationInvocation {
+    TargetSelectorObject(id, SEL, id),
+    NSInvocation(id),
+}
 
 struct NSOperationQueueHostObject {
     max_concurrent_operation_count: NSInteger,
@@ -65,8 +71,14 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 - (())main {
     let invocation = env.objc.borrow::<NSOperationHostObject>(this).invocation;
-    if let Some((target, selector, object)) = invocation {
-        () = msg_send_no_type_checking(env, (target, selector, object));
+    match invocation {
+        Some(OperationInvocation::TargetSelectorObject(target, selector, object)) => {
+            () = msg_send_no_type_checking(env, (target, selector, object));
+        }
+        Some(OperationInvocation::NSInvocation(invocation)) => {
+            () = msg![env; invocation invoke];
+        }
+        None => {}
     }
 }
 
@@ -99,11 +111,14 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (())dealloc {
-    if let Some((target, _selector, object)) =
-        env.objc.borrow::<NSOperationHostObject>(this).invocation
-    {
-        release(env, target);
-        release(env, object);
+    if let Some(invocation) = env.objc.borrow::<NSOperationHostObject>(this).invocation {
+        match invocation {
+            OperationInvocation::TargetSelectorObject(target, _selector, object) => {
+                release(env, target);
+                release(env, object);
+            }
+            OperationInvocation::NSInvocation(invocation) => release(env, invocation),
+        }
     }
     env.objc.dealloc_object(this, &mut env.mem)
 }
@@ -120,7 +135,14 @@ pub const CLASSES: ClassExports = objc_classes! {
     retain(env, target);
     retain(env, object);
     env.objc.borrow_mut::<NSOperationHostObject>(this).invocation =
-        Some((target, selector, object));
+        Some(OperationInvocation::TargetSelectorObject(target, selector, object));
+    this
+}
+
+- (id)initWithInvocation:(id)invocation { // NSInvocation *
+    retain(env, invocation);
+    env.objc.borrow_mut::<NSOperationHostObject>(this).invocation =
+        Some(OperationInvocation::NSInvocation(invocation));
     this
 }
 

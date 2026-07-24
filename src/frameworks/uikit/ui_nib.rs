@@ -107,10 +107,35 @@ pub const CLASSES: ClassExports = objc_classes! {
     let unarchiver = load_nib_file(env, this, GuestPathBuf::from(nib_path)).unwrap();
     let top_level_objects_key = get_static_str(env, "UINibTopLevelObjectsKey");
     let top_level_objects = msg![env; unarchiver decodeObjectForKey:top_level_objects_key];
+
+    // The decoded array can include the File's Owner (which our UIProxyObject
+    // replaces with `owner`) and unreplaced proxy objects such as the First
+    // Responder. UIKit does not return those from
+    // -instantiateWithOwner:options:; it returns only the objects the nib
+    // itself instantiates. Filter them out. Without this, a caller that
+    // enumerates the result looking for its view — e.g. EA's
+    // +[EBISU_CounterView counterViewFromNib], which passes the class as the
+    // owner and then returns the first element that isKindOfClass: the view
+    // class — can pick up the owner instead of the real instance.
+    let proxy_class: Class = msg_class![env; UIProxyObject class];
+    let count: NSUInteger = msg![env; top_level_objects count];
+    let filtered: id = msg_class![env; NSMutableArray array];
+    for i in 0..count {
+        let obj: id = msg![env; top_level_objects objectAtIndex:i];
+        if obj == owner {
+            continue;
+        }
+        let is_proxy: bool = msg![env; obj isKindOfClass:proxy_class];
+        if is_proxy {
+            continue;
+        }
+        () = msg![env; filtered addObject:obj];
+    }
+
     release(env, unarchiver);
     env.objc.borrow_mut::<UINibHostObject>(this).file_owner = nil;
 
-    top_level_objects
+    filtered
 }
 
 @end

@@ -145,6 +145,11 @@ pub const CLASSES: ClassExports = objc_classes! {
             let arg = env.mem.read(arg_loc);
             env.mem.alloc_and_write(arg).cast()
         }
+        ":" => {
+            let arg_loc: MutPtr<SEL> = arg_loc.cast();
+            let arg = env.mem.read(arg_loc);
+            env.mem.alloc_and_write(arg).cast()
+        }
         "*" => {
             assert!(!arguments_retained); // TODO
             let arg_loc: MutPtr<MutPtr<u8>> = arg_loc.cast();
@@ -232,7 +237,13 @@ pub const CLASSES: ClassExports = objc_classes! {
                 let arg_val = env.mem.read(arg);
                 let regs = env.cpu.regs_mut();
                 write_next_arg::<id>(&mut reg_offset, regs, &mut env.mem, arg_val);
-            },
+            }
+            ":" => {
+                let arg: ConstPtr<SEL> = arg_slot.cast().cast_const();
+                let arg_val = env.mem.read(arg);
+                let regs = env.cpu.regs_mut();
+                write_next_arg::<SEL>(&mut reg_offset, regs, &mut env.mem, arg_val);
+            }
             "f" => {
                 let arg: ConstPtr<f32> = arg_slot.cast().cast_const();
                 let arg_val = env.mem.read(arg);

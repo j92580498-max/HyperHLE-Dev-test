@@ -51,6 +51,9 @@ pub const CLASSES: ClassExports = objc_classes! {
 + (Class)class {
     this
 }
++ (Class)superclass {
+    env.objc.class_get_superclass(this)
+}
 + (bool)isSubclassOfClass:(Class)class {
     env.objc.class_is_subclass_of(this, class)
 }
@@ -117,6 +120,12 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (id)init {
+    this
+}
+
+// `self` is used by code generated for some Objective-C property accessors.
+// It is inherited by every NSObject subclass and simply returns the receiver.
+- (id)self {
     this
 }
 

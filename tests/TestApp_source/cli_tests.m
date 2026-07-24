@@ -5500,11 +5500,13 @@ int test_strftime() {
   id receivedValue;
   const char *cstringValue;
   int intValue;
+  SEL receivedSelector;
 }
 - (void)storeValue:(id)value;
 - (void)clearValue;
 - (void)storeCString:(const char *)str;
 - (void)storeIntPtr:(int *)ptr;
+- (void)storeSelector:(SEL)selector;
 @end
 
 @implementation InvocationTarget
@@ -5519,6 +5521,9 @@ int test_strftime() {
 }
 - (void)storeIntPtr:(int *)ptr {
   intValue = *ptr;
+}
+- (void)storeSelector:(SEL)selector {
+  receivedSelector = selector;
 }
 @end
 
@@ -5779,6 +5784,28 @@ int test_NSInvocation_pointer() {
 
   [pool drain];
   return 0;
+}
+
+// NSInvocation copies and marshals selector-typed arguments just like other
+// single-word Objective-C arguments.
+int test_NSInvocation_selector() {
+  NSAutoreleasePool *pool = [NSAutoreleasePool new];
+
+  InvocationTarget *target = [InvocationTarget new];
+  NSMethodSignature *sig =
+      [NSMethodSignature signatureWithObjCTypes:"v12@0:4:8"];
+  NSInvocation *inv = [NSInvocation invocationWithMethodSignature:sig];
+  [inv setTarget:target];
+  [inv setSelector:NSSelectorFromString(
+                       [NSString stringWithUTF8String:"storeSelector:"] )];
+
+  SEL selector = NSSelectorFromString([NSString stringWithUTF8String:"clearValue"]);
+  [inv setArgument:&selector atIndex:2];
+  [inv invoke];
+
+  int result = (target->receivedSelector == selector) ? 0 : -1;
+  [pool drain];
+  return result;
 }
 
 @interface CharBufferObject : NSObject {
@@ -6710,6 +6737,24 @@ int test_NSObject_setValue_nil() {
   return result;
 }
 
+// `self` is an NSObject method inherited by every object. Some code generated
+// by Objective-C compilers uses it as the accessor for a self property.
+int test_NSObject_self() {
+  NSObject *object = [NSObject new];
+  int result = ([object self] == object) ? 0 : -1;
+  [object release];
+  return result;
+}
+
+// Class objects inherit +superclass from NSObject.
+int test_NSObject_superclass() {
+  if ([NSObject superclass] != (Class)nil)
+    return -1;
+  if ([NSString superclass] != [NSObject class])
+    return -2;
+  return 0;
+}
+
 // NSMutableSet's set-algebra mutators, and the NSSet comparisons that go with
 // them. setSet: has to read the other set's members before clearing its own,
 // because the other set may be the receiver.
@@ -7090,6 +7135,7 @@ struct {
     FUNC_DEF(test_NSInvocation_invokeWithTarget),
     FUNC_DEF(test_NSInvocation_retainArguments),
     FUNC_DEF(test_NSInvocation_pointer),
+    FUNC_DEF(test_NSInvocation_selector),
     FUNC_DEF(test_Initialize),
     FUNC_DEF(test_NSNotificationCenter_addObserver_nilName),
     FUNC_DEF(test_NSNotificationCenter_addObserver_nilName_withObject),
@@ -7097,6 +7143,8 @@ struct {
     FUNC_DEF(test_NSNotificationCenter_removeObserver_duringPost),
     FUNC_DEF(test_NSObject_valueForKey),
     FUNC_DEF(test_NSObject_setValue_nil),
+    FUNC_DEF(test_NSObject_self),
+    FUNC_DEF(test_NSObject_superclass),
     FUNC_DEF(test_NSMutableSet_setAlgebra),
     FUNC_DEF(test_UIView_convert_nilView_withoutWindow),
     FUNC_DEF(test_malloc_zone_basic),
