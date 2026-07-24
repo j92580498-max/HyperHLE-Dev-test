@@ -691,6 +691,37 @@ pub const CLASSES: ClassExports = objc_classes! {
     }
 }
 
+- (())removeObjectsInArray:(id)other { // NSArray*
+    // Keep the source objects alive while mutating `this`: the two arrays may
+    // be the same object, and removing its last reference would otherwise
+    // deallocate an object still needed for later equality checks.
+    let source_count: NSUInteger = msg![env; other count];
+    let mut source_objects = Vec::with_capacity(source_count as usize);
+    for index in 0..source_count {
+        let object: id = msg![env; other objectAtIndex:index];
+        retain(env, object);
+        source_objects.push(object);
+    }
+
+    let mut to_remove = Vec::new();
+    let count: NSUInteger = msg![env; this count];
+    for index in 0..count {
+        let object: id = msg![env; this objectAtIndex:index];
+        if source_objects
+            .iter()
+            .any(|&source_object| msg![env; object isEqual:source_object])
+        {
+            to_remove.push(index);
+        }
+    }
+    for index in to_remove.into_iter().rev() {
+        () = msg![env; this removeObjectAtIndex:index];
+    }
+    for object in source_objects {
+        release(env, object);
+    }
+}
+
 - (())removeObjectAtIndex:(NSUInteger)index {
     let object = env.objc.borrow_mut::<ArrayHostObject>(this).array.remove(index as usize);
     release(env, object)

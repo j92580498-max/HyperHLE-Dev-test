@@ -951,7 +951,8 @@ pub const CLASSES: ClassExports = objc_classes! {
     let left: id = msg![env; this substringToIndex:loc];
     let middle: id = msg![env; this substringWithRange:range];
     let right: id = msg![env; this substringFromIndex:(loc + len)];
-    let new_middle: id = string_by_replacing_occurrences_inner(env, middle, target, replacement, options);
+    let (new_middle, _) =
+        string_by_replacing_occurrences_inner(env, middle, target, replacement, options);
     let res: id = msg![env; left stringByAppendingString:new_middle];
     msg![env; res stringByAppendingString:right]
 }
@@ -1362,6 +1363,30 @@ pub const CLASSES: ClassExports = objc_classes! {
     let res: id = msg![env; left stringByAppendingString:a_string];
     let res: id = msg![env; res stringByAppendingString:right];
     () = msg![env; this setString:res];
+}
+
+- (NSUInteger)replaceOccurrencesOfString:(id)target // NSString*
+                              withString:(id)replacement // NSString*
+                                 options:(NSStringCompareOptions)options
+                                   range:(NSRange)range {
+    assert_ne!(target, nil);
+    assert_ne!(replacement, nil);
+
+    let total_length: NSUInteger = msg![env; this length];
+    let location = range.location;
+    let length = range.length;
+    assert!(location <= total_length);
+    assert!(length <= total_length - location);
+
+    let left: id = msg![env; this substringToIndex:location];
+    let middle: id = msg![env; this substringWithRange:range];
+    let right: id = msg![env; this substringFromIndex:(location + length)];
+    let (new_middle, replacements) =
+        string_by_replacing_occurrences_inner(env, middle, target, replacement, options);
+    let result: id = msg![env; left stringByAppendingString:new_middle];
+    let result: id = msg![env; result stringByAppendingString:right];
+    () = msg![env; this setString:result];
+    replacements
 }
 
 @end
@@ -2110,7 +2135,7 @@ fn string_by_replacing_occurrences_inner(
     target: id,      // NSString *
     replacement: id, // NSString *
     options: NSStringCompareOptions,
-) -> id {
+) -> (id, NSUInteger) {
     // TODO: support foreign subclasses (perhaps via a helper function that
     // copies the string first)
     let mut main_iter = env
@@ -2129,7 +2154,7 @@ fn string_by_replacing_occurrences_inner(
     // Zero-length target case
     if target_iter.clone().next().is_none() {
         let res = msg![env; source copy];
-        return autorelease(env, res);
+        return (autorelease(env, res), 0);
     }
 
     let case_insensitive = match options {
@@ -2139,11 +2164,13 @@ fn string_by_replacing_occurrences_inner(
     };
 
     let mut result: Utf16String = Vec::new();
+    let mut replacements: NSUInteger = 0;
     loop {
         if let Some(new_main_iter) = main_iter.strip_prefix(&target_iter, case_insensitive) {
             // matched target, replace it
             result.extend(replacement_iter.clone());
             main_iter = new_main_iter;
+            replacements += 1;
         } else {
             // no match, copy as normal
             match main_iter.next() {
@@ -2158,5 +2185,5 @@ fn string_by_replacing_occurrences_inner(
     // worth the effort, but it's an interesting question.
     let result_ns_string = msg_class![env; _tapHLE_NSString alloc];
     *env.objc.borrow_mut(result_ns_string) = StringHostObject::Utf16(result);
-    autorelease(env, result_ns_string)
+    (autorelease(env, result_ns_string), replacements)
 }

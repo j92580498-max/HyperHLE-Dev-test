@@ -36,6 +36,9 @@ pub(super) enum NSValueHostObject {
     CGPoint(CGPoint),
     CGSize(CGSize),
     CGRect(CGRect),
+    // NSValue deliberately does not retain this object. This mirrors
+    // +valueWithNonretainedObject:, which is used for weak-style references.
+    NonretainedObject(id),
 }
 impl HostObject for NSValueHostObject {}
 
@@ -155,6 +158,12 @@ pub const CLASSES: ClassExports = objc_classes! {
     msg_class![env; NSNumber numberWithUnsignedInt:(ptr.to_bits())]
 }
 
++ (id)valueWithNonretainedObject:(id)object {
+    let host_object = Box::new(NSValueHostObject::NonretainedObject(object));
+    let new = env.objc.alloc_object(this, host_object, &mut env.mem);
+    autorelease(env, new)
+}
+
 + (id)valueWithCGPoint:(CGPoint)value {
     let host_object = Box::new(NSValueHostObject::CGPoint(value));
     let new = env.objc.alloc_object(this, host_object, &mut env.mem);
@@ -194,6 +203,14 @@ pub const CLASSES: ClassExports = objc_classes! {
     match host_object {
         NSValueHostObject::CGRect(cg_rect) => *cg_rect,
         _ => unimplemented!()
+    }
+}
+
+- (id)nonretainedObjectValue {
+    let host_object = env.objc.borrow::<NSValueHostObject>(this);
+    match host_object {
+        NSValueHostObject::NonretainedObject(object) => *object,
+        _ => unimplemented!(),
     }
 }
 

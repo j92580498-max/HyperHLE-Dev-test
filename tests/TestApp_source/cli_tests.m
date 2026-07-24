@@ -5104,6 +5104,39 @@ int test_NSMutableString_deleteCharactersInRange() {
   return 0;
 }
 
+int test_NSMutableString_replaceOccurrencesOfString() {
+  NSAutoreleasePool *pool = [NSAutoreleasePool new];
+  NSMutableString *str = [NSMutableString stringWithUTF8String:"a-b-a"];
+  NSString *target = [NSString stringWithUTF8String:"a"];
+  NSString *replacement = [NSString stringWithUTF8String:"long"];
+  NSRange range = NSMakeRange(0, 5);
+  NSUInteger count = [str replaceOccurrencesOfString:target
+                                           withString:replacement
+                                              options:0
+                                                range:range];
+  NSString *expected = [NSString stringWithUTF8String:"long-b-long"];
+  if (count != 2 || ![str isEqualToString:expected]) {
+    [pool drain];
+    return -1;
+  }
+  [pool drain];
+  return 0;
+}
+
+int test_NSValue_nonretainedObjectValue() {
+  NSAutoreleasePool *pool = [NSAutoreleasePool new];
+  NSObject *object = [NSObject new];
+  NSValue *value = [NSValue valueWithNonretainedObject:object];
+  if ([value nonretainedObjectValue] != object) {
+    [object release];
+    [pool drain];
+    return -1;
+  }
+  [object release];
+  [pool drain];
+  return 0;
+}
+
 int test_NSString_stringByReplacingOccurrencesOfString() {
   NSAutoreleasePool *pool = [NSAutoreleasePool new];
 
@@ -7160,6 +7193,18 @@ int test_NSMutableArray_removeObject_duplicates() {
   return 0;
 }
 
+int test_NSMutableArray_removeObjectsInArray() {
+  NSMutableArray *array = [NSMutableArray arrayWithObjects:@"one", @"two",
+                                                     @"one", @"three", nil];
+  NSArray *to_remove = [NSArray arrayWithObjects:@"one", @"three", nil];
+  [array removeObjectsInArray:to_remove];
+  if ([array count] != 1)
+    return -1;
+  if (![[array objectAtIndex:0] isEqual:@"two"])
+    return -2;
+  return 0;
+}
+
 int test_if_nametoindex() {
   if (if_nametoindex("lo0") != 1)
     return -1;
@@ -7269,6 +7314,8 @@ struct {
     FUNC_DEF(test_CFURLHasDirectoryPath),
     FUNC_DEF(test_CGImage_JPEG),
     FUNC_DEF(test_NSMutableString_deleteCharactersInRange),
+    FUNC_DEF(test_NSMutableString_replaceOccurrencesOfString),
+    FUNC_DEF(test_NSValue_nonretainedObjectValue),
     FUNC_DEF(test_NSString_stringByReplacingOccurrencesOfString),
     FUNC_DEF(test_NSString_stringByReplacingOccurrencesOfString_options_range),
     FUNC_DEF(test_NSString_pathWithComponents),
@@ -7317,6 +7364,7 @@ struct {
     FUNC_DEF(test_NSDictionary_keysSortedByValueUsingSelector),
     FUNC_DEF(test_NSDictionary_dictionaryWithObjects_forKeys_count),
     FUNC_DEF(test_NSMutableArray_removeObject_duplicates),
+    FUNC_DEF(test_NSMutableArray_removeObjectsInArray),
     FUNC_DEF(test_if_nametoindex),
 };
 // clang-format on

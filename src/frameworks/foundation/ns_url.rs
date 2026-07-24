@@ -105,6 +105,26 @@ pub const CLASSES: ClassExports = objc_classes! {
     this
 }
 
+- (id)initWithString:(id)url // NSString*
+relativeToURL:(id)base_url { // NSURL*
+    if url == nil {
+        return nil;
+    }
+    if base_url == nil || url_scheme_component(&to_rust_string(env, url)).is_some() {
+        return msg![env; this initWithString:url];
+    }
+
+    let base_string: id = msg![env; base_url absoluteString];
+    let resolved = resolve_relative_url(
+        &to_rust_string(env, base_string),
+        &to_rust_string(env, url),
+    );
+    let resolved = from_rust_string(env, resolved);
+    let result = msg![env; this initWithString:resolved];
+    release(env, resolved);
+    result
+}
+
 - (bool)isFileURL {
     match env.objc.borrow(this) {
         NSURLHostObject::FileURL { .. } => true,
@@ -239,6 +259,33 @@ fn url_component(env: &mut Environment, this: id, parser: fn(&str) -> Option<&st
     }
 }
 
+/// Resolve the common relative-URL forms used by iPhone OS apps. This is not a
+/// complete RFC 1808 parser, but it preserves the scheme and authority for an
+/// absolute base URL and resolves both root-relative and path-relative inputs.
+fn resolve_relative_url(base: &str, relative: &str) -> String {
+    if relative.starts_with('/') {
+        if let Some(scheme_end) = base.find("://") {
+            let authority_end = base[scheme_end + 3..]
+                .find('/')
+                .map(|index| scheme_end + 3 + index)
+                .unwrap_or(base.len());
+            return format!("{}{}", &base[..authority_end], relative);
+        }
+        return relative.to_string();
+    }
+
+    let base_without_query_or_fragment = base.split(['?', '#']).next().unwrap();
+    let prefix = if base_without_query_or_fragment.ends_with('/') {
+        base_without_query_or_fragment
+    } else {
+        base_without_query_or_fragment
+            .rsplit_once('/')
+            .map(|(directory, _)| &base_without_query_or_fragment[..directory.len() + 1])
+            .unwrap_or("")
+    };
+    format!("{prefix}{relative}")
+}
+
 /// Scheme: the text before the first `:`, if it is a valid scheme.
 fn url_scheme_component(url: &str) -> Option<&str> {
     let (scheme, _rest) = url.split_once(':')?;
@@ -275,6 +322,27 @@ fn url_query_component(url: &str) -> Option<&str> {
 /// Fragment: the text after the first `#`.
 fn url_fragment_component(url: &str) -> Option<&str> {
     Some(url.split_once('#')?.1)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::resolve_relative_url;
+
+    #[test]
+    fn resolves_relative_urls_against_http_base_urls() {
+        assert_eq!(
+            resolve_relative_url("http://example.com/assets/levels/", "one.json"),
+            "http://example.com/assets/levels/one.json"
+        );
+        assert_eq!(
+            resolve_relative_url("http://example.com/assets/levels.json", "one.json"),
+            "http://example.com/assets/one.json"
+        );
+        assert_eq!(
+            resolve_relative_url("http://example.com/assets/levels.json", "/scores"),
+            "http://example.com/scores"
+        );
+    }
 }
 
 /// Shortcut for host code, provides a view of a URL as a path.

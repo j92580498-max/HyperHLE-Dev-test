@@ -473,7 +473,10 @@ pub fn run_run_loop(
                     if selector.as_str(&env.mem).ends_with(':') {
                         () = msg_send(env, (target, selector, argument));
                     } else {
-                        assert!(argument.is_null());
+                        // `performSelector:withObject:afterDelay:` may carry
+                        // an object even when the target selector has no
+                        // parameter. The Objective-C call has no slot for it,
+                        // so dispatch the selector and discard the object.
                         () = msg_send(env, (target, selector));
                     }
 

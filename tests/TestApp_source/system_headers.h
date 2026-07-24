@@ -146,6 +146,7 @@ static inline NSRange NSMakeRange(NSUInteger loc, NSUInteger len) {
 @interface NSMutableArray<ObjectType> : NSArray<ObjectType>
 - (void)addObject:(ObjectType)anObject;
 - (void)removeObject:(ObjectType)anObject;
+- (void)removeObjectsInArray:(NSArray<ObjectType> *)otherArray;
 - (void)removeObjectAtIndex:(NSUInteger)index;
 - (void)removeAllObjects;
 @end
@@ -209,9 +210,15 @@ enum { NSASCIIStringEncoding = 1, NSUTF8StringEncoding = 4 };
 @end
 @interface NSMutableString : NSString
 - (void)deleteCharactersInRange:(NSRange)range;
+- (NSUInteger)replaceOccurrencesOfString:(NSString *)target
+                              withString:(NSString *)replacement
+                                 options:(NSStringCompareOptions)options
+                                   range:(NSRange)range;
 @end
 
 @interface NSValue : NSObject
++ (instancetype)valueWithNonretainedObject:(id)object;
+- (id)nonretainedObjectValue;
 @end
 
 @interface NSNumber : NSValue

@@ -109,8 +109,12 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 + (id)instanceMethodSignatureForSelector:(SEL)sel {
-    // TODO: support `host` method signatures
-    let sig = *env.objc.class_get_method_signature(this, sel).unwrap();
+    // Host implementations do not yet carry Objective-C type encodings, and
+    // asking about an unimplemented selector is valid. Both cases have no
+    // method signature rather than being an error.
+    let Some(sig) = env.objc.class_get_method_signature(this, sel).copied() else {
+        return nil;
+    };
     log_dbg!("instanceMethodSignatureForSelector: '{}' -> {:?}", sel.as_str(&env.mem), env.mem.cstr_at_utf8(sig));
     msg_class![env; NSMethodSignature signatureWithObjCTypes:sig]
 }
@@ -397,6 +401,15 @@ forUndefinedKey:(id)key { // NSString*
 
 - (bool)respondsToSelector:(SEL)selector {
     env.objc.object_has_method(&env.mem, this, selector)
+}
+
+- (id)methodSignatureForSelector:(SEL)sel {
+    let class = ObjC::read_isa(this, &env.mem);
+    let Some(sig) = env.objc.class_get_method_signature(class, sel).copied() else {
+        return nil;
+    };
+    log_dbg!("methodSignatureForSelector: '{}' -> {:?}", sel.as_str(&env.mem), env.mem.cstr_at_utf8(sig));
+    msg_class![env; NSMethodSignature signatureWithObjCTypes:sig]
 }
 
 - (ConstVoidPtr)methodForSelector:(SEL)selector {
