@@ -5,9 +5,16 @@
 - Local test artifact: `SPYmouseHD_v1.1.1_os32.ipa`; SHA-256
   `92b4712f4c15d17c83c237692126275519583568b115ddeeb69507669adaaeb5`.
 - Artifact provenance: the maintainer confirmed this local IPA is the right
-  target for this work. Its canonical Archive source URL, filename, and live
-  metadata hashes are still not recorded, so do not submit a public
-  compatibility report until that verification is complete.
+  target for this work. It is content-hash-verified against the original
+  `SPYmouseHD_v1.1.1_os32.ipa` in
+  `https://archive.org/details/ios_3_2_ipa`: MD5
+  `329a4efcd51ca1b5005bbeda3ac49628`, SHA-1
+  `9474d90a85215ece455c4046fd9e28bd456b7c05`, and locally calculated SHA-256
+  `92b4712f4c15d17c83c237692126275519583568b115ddeeb69507669adaaeb5`.
+- Availability check (2026-07-24): no current App Store listing was found for
+  this exact EA bundle/version. Apple does list a separate modern app with a
+  similar name by Dram Inc.; that is not a claim about the availability or
+  legal status of this legacy EA build.
 - Runtime milestone: on Windows, the `bddd7c91` release build of this exact
   artifact clears KVC's `dictionaryWithValuesForKeys:`, custom `NSDictionary`
   subclass key enumeration, `NSAssertionHandler`, `NSException`, `NSMachPort`,
@@ -37,7 +44,6 @@
   failed before tests because the debug target refers to an unavailable former
   worktree, Boost is absent, and CMake is not on the debug-build PATH. The
   TestApp suite likewise remains unavailable without its custom SDK/LLVM.
-- A compatibility-database report is required by the new rating but cannot yet
-  be submitted: the canonical Archive URL, filename, and live metadata hashes
-  for the local IPA have not been verified. Once they are supplied and checked,
-  submit one three-star report for `bddd7c91` with `source_type: agent`.
+- Compatibility database: submitted the three-star `source_type: agent` result
+  for `bddd7c91` on 2026-07-24 after the content-hash verification. It created
+  app 6, version 6, and report 10, all pending maintainer moderation.
