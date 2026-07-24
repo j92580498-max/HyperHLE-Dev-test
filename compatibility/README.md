@@ -276,16 +276,14 @@ Run the offline commands from the repository root:
 ```powershell
 python .\dev-scripts\compatibility.py list
 python .\dev-scripts\compatibility.py show ricky
-python .\dev-scripts\compatibility.py render
 python .\dev-scripts\compatibility.py check
 python .\dev-scripts\compatibility.py check --baseline-ref origin/trunk
 ```
 
 `check` validates exact identities, canonical URLs, hashes, report ordering,
-the generated Markdown, and that every report's tapHLE commit exists and is an
-ancestor of `HEAD`, without accessing the network. With `--baseline-ref`, it
-also proves that existing reports are an unchanged prefix of the new report
-list.
+and that every report's tapHLE commit exists and is an ancestor of `HEAD`,
+without accessing the network. With `--baseline-ref`, it also proves that
+existing reports are an unchanged prefix of the new report list.
 
 Never commit an IPA, extracted app, game asset, decryption key, save data,
 personal path, or raw tapHLE log. Summarize only the minimum diagnostic facts

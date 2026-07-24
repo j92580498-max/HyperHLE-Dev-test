@@ -10,7 +10,7 @@ POLICY_FILES='AGENTS.md CLAUDE.md .github/copilot-instructions.md'
 PROTECTED_FILES='AGENTS.md CLAUDE.md .github/copilot-instructions.md
 .github/CODEOWNERS .github/pull_request_template.md
 .github/ISSUE_TEMPLATE .github/workflows CONTRIBUTING.md CODE_OF_CONDUCT.md README.md
-HELP_A_GAME.md COMPATIBILITY.md compatibility
+HELP_A_GAME.md compatibility
 dev-docs/app-debugging-playbook.md dev-docs/app-notes dev-docs/agent-workflow.md
 dev-docs/debugging.md
 dev-docs/upstream-sync.md dev-scripts/audit-agent-safety.sh

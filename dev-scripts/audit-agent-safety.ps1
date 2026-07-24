@@ -30,7 +30,6 @@ try {
         "CODE_OF_CONDUCT.md",
         "README.md",
         "HELP_A_GAME.md",
-        "COMPATIBILITY.md",
         "compatibility",
         "dev-docs/app-debugging-playbook.md",
         "dev-docs/app-notes",

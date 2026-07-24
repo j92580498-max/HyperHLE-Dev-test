@@ -54,8 +54,8 @@ previews. The versioning and packaging policy is documented in
 `dev-docs/releases.md`.
 
 **[See the compatibility ratings (1–5 stars)](https://taphle.ephun.net/compatibility).**
-That live database is the current record; `COMPATIBILITY.md` in this repository
-is an older snapshot kept until its records are migrated. Results are
+That live database is the current record. The legacy JSON records remain only
+until they are migrated. Results are
 hash-checked for exact app builds. For an old game that is no longer sold, a
 record may link to the exact Archive.org file that was tested. The file name,
 hashes, and app version must all match. Read `compatibility/README.md` for the

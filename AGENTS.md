@@ -116,7 +116,8 @@ without explicit maintainer authorization.
 
 `compatibility/README.md` is the canonical compatibility-record and
 Archive.org protocol. Read it before inspecting an archived app or changing
-`compatibility/apps/*.json`. The generated public view is `COMPATIBILITY.md`.
+`compatibility/apps/*.json`. The live tapHLEdb site is the public compatibility
+record; the legacy JSON records remain only for migration and offline checks.
 
 The database is **tapHLEdb**, a self-hosted live web application (a fork of
 `app-compatibility-db`, which also powers touchHLE's database), running at

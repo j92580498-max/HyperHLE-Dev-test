@@ -59,7 +59,7 @@ A numbered release must:
 3. pass repository policy, formatting, unit/integration tests, and the release
    Windows build in CI;
 4. contain the executable, runtime libraries/fonts, default and user option
-   templates, app-picker directory, compatibility view, README/changelog, and
+   templates, app-picker directory, README/changelog, and
    license text; and
 5. avoid claims broader than the exact committed compatibility evidence.
 

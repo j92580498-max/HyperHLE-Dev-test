@@ -86,8 +86,8 @@ provisional and must not enter the database.
 4. Make the smallest complete change that advances the target game.
 5. Add or update a focused test when practical.
 6. Run the relevant checks from `AGENTS.md`.
-7. For verified app testing, append the exact result and regenerate
-   `COMPATIBILITY.md`.
+7. For verified app testing, submit the exact result to the live compatibility
+   database when publication is authorized.
 8. Open a GitHub pull request using the repository template.
 
 Pull requests should say which agent or AI tool materially assisted, what

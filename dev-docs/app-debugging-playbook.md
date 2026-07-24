@@ -541,7 +541,8 @@ A dirty-worktree run is a useful experiment but never database evidence.
 3. Re-verify the IPA hash and replay the milestone on Windows.
 4. If the milestone is reproducible, append a compatibility report referencing
    the tested implementation commit.
-5. Commit the generated compatibility view separately when practical.
+5. Submit the verified result to the live compatibility database when
+   publication is authorized.
 6. When publishing is authorized, push unfinished checkpoints to the
    compatibility branch so another agent can resume them. Merge a stable,
    documented milestone to `trunk` even when known limitations remain.
