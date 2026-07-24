@@ -69,6 +69,25 @@ Crossing a star threshold does two things, not one: the reusable fix graduates
 to `trunk` *and* the report goes to the database. Do only the first and a real
 result stays invisible; do only the second and the claim cannot be reproduced.
 
+### Threshold-publication closeout
+
+Do not call a new rating complete until all four conditions hold:
+
+1. A content-hash-verified artifact has reproduced the milestone on a committed
+   implementation revision.
+2. `POST /api/report` has accepted the report for that exact revision. A
+   `pending_moderation` response is successful submission; it is not a reason
+   to wait for approval before continuing.
+3. The compatibility checkpoint has been merged into `trunk` without removing
+   the tested revision, and `trunk` has been pushed to `origin`.
+4. `git merge-base --is-ancestor <tested-commit> origin/trunk` exits zero after
+   the push.
+
+A pushed `compat/<app-slug>` branch is a checkpoint, not threshold completion.
+If canonical provenance or the submission token is missing, record that exact
+blocker and keep threshold publication open; do not silently leave the report
+or the `trunk` promotion undone.
+
 Submit when the rating changes, in either direction — a regression is a result.
 Do not submit a rerun that reproduces a rating already recorded for the same
 tapHLE revision; the endpoint does not deduplicate, so that is pure moderation

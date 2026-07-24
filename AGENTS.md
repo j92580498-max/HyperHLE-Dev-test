@@ -142,6 +142,16 @@ report goes to the database. Doing only the first leaves a real result invisible
 to everyone; doing only the second claims a result nobody can reproduce. The
 milestone is not finished until both are done.
 
+**Threshold closeout is a hard gate.** Before calling a threshold result
+complete, verify all of the following: the report submission was accepted
+(`pending_moderation` counts); the exact tested implementation commit is an
+ancestor of `trunk`; and the merge has been pushed to `origin/trunk`. After the
+push, run `git merge-base --is-ancestor <tested-commit> origin/trunk` and check
+its exit status. A pushed `compat/<app-slug>` branch alone is never completion.
+If a database submission is blocked by missing provenance or credentials, say
+so plainly and leave threshold publication incomplete rather than silently
+omitting either half of the milestone.
+
 An agent may assign at most three stars (two for reaching a stable screen, three
 for a gameplay loop that starts and persists); four and five stars require human
 testing.
