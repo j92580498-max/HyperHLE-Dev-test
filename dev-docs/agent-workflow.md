@@ -7,10 +7,10 @@ Use `app-debugging-playbook.md` for the efficient runtime/static-analysis
 protocol. If `app-notes/<app-slug>.md` exists, read it first and continue from
 its highest proven milestone rather than rediscovering the same facts.
 
-Do not assign autonomous compatibility debugging to Terra or Luna. Maintainer
-testing on 2026-07-18 found that neither was sufficient to advance this
-project without stronger review. Treat their output as an unverified lead,
-not as implementation or compatibility evidence.
+Read `dev-docs/agent-capability-log.md` before choosing an agent. Its dated,
+task-specific observations are evidence rather than a standing ban: give every
+agent a narrow, independently reviewable task, then review and retest its work
+on Windows before relying on it as implementation or compatibility evidence.
 
 ## 1. Capture a reproducible case
 
