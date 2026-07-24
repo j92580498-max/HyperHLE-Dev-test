@@ -120,6 +120,13 @@ pub const CLASSES: ClassExports = objc_classes! {
     ns_timer::set_run_loop(env, timer, this);
 }
 
+// NSMachPort delivery is not implemented. Older networking libraries may
+// still register a port for an optional request, so accept that registration
+// without making a run-loop delivery guarantee.
+- (())addPort:(id)_port // NSPort*
+      forMode:(NSRunLoopMode)_mode {
+}
+
 - (())run {
     run_run_loop(env, this, /* single_iteration: */ false, None);
 }
@@ -127,6 +134,15 @@ pub const CLASSES: ClassExports = objc_classes! {
 - (())runUntilDate:(id)date {
     let time_limit: NSTimeInterval = msg![env; date timeIntervalSince1970];
     run_run_loop(env, this, /* single_iteration: */ false, Some(time_limit));
+}
+
+- (bool)runMode:(NSRunLoopMode)_mode
+    beforeDate:(id)_limit_date {
+    // The current run-loop implementation has no generic input-source model,
+    // but it can advance timers and queued selectors once. With no registered
+    // input source to dispatch, Foundation reports NO to the caller.
+    run_run_loop(env, this, /* single_iteration: */ true, None);
+    false
 }
 
 // TODO: other run methods
@@ -331,9 +347,7 @@ pub(super) fn cancel_all_perform_requests_for_target(
         .selector_objects = new_selector_objects;
 }
 
-/// Run the run loop for just a single iteration. This is a special mode just
-/// for the app picker, since we don't have `runMode:beforeDate:` yet.
-/// (TODO: implement those to replace this.)
+/// Run the run loop for just a single iteration.
 pub fn run_run_loop_single_iteration(env: &mut Environment, run_loop: id) {
     run_run_loop(env, run_loop, /* single_iteration: */ true, None)
 }

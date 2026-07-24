@@ -1087,9 +1087,17 @@ fn glTexSubImage2D(
     pixels: ConstVoidPtr,
 ) {
     with_ctx_and_mem(env, |gles, mem| unsafe {
-        let pixel_count: GuestUSize = width.checked_mul(height).unwrap().try_into().unwrap();
-        let size = image_size_estimate(pixel_count, format, type_);
-        let pixels = mem.ptr_at(pixels.cast::<u8>(), size).cast::<GLvoid>();
+        // As in glTexImage2D: a null pointer is passed straight through (it
+        // means "read from the bound pixel-unpack buffer", or nothing for a
+        // zero-sized update), rather than dereferenced. This also avoids a
+        // null-page check on a legitimate 0x0 sub-image update.
+        let pixels = if pixels.is_null() {
+            std::ptr::null()
+        } else {
+            let pixel_count: GuestUSize = width.checked_mul(height).unwrap().try_into().unwrap();
+            let size = image_size_estimate(pixel_count, format, type_);
+            mem.ptr_at(pixels.cast::<u8>(), size).cast::<GLvoid>()
+        };
         gles.TexSubImage2D(
             target, level, xoffset, yoffset, width, height, format, type_, pixels,
         )

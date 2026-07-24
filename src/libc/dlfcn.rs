@@ -6,7 +6,7 @@
 //! `dlfcn.h` (`dlopen()` and friends)
 
 use crate::dyld::{export_c_func, FunctionExports};
-use crate::mem::{ConstPtr, MutVoidPtr, Ptr};
+use crate::mem::{ConstPtr, ConstVoidPtr, MutVoidPtr, Ptr};
 use crate::Environment;
 
 const RTLD_DEFAULT: MutVoidPtr = Ptr::from_bits(-2 as _);
@@ -68,8 +68,16 @@ fn dlclose(env: &mut Environment, handle: MutVoidPtr) -> i32 {
     0 // success
 }
 
+// tapHLE does not yet expose host or guest image metadata for arbitrary
+// addresses. Report lookup failure, which is the documented result when the
+// address cannot be associated with a loaded image.
+fn dladdr(_env: &mut Environment, _addr: ConstVoidPtr, _info: MutVoidPtr) -> i32 {
+    0
+}
+
 pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(dlopen(_, _)),
     export_c_func!(dlsym(_, _)),
     export_c_func!(dlclose(_)),
+    export_c_func!(dladdr(_, _)),
 ];

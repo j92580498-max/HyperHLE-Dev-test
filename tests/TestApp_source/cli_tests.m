@@ -5500,11 +5500,13 @@ int test_strftime() {
   id receivedValue;
   const char *cstringValue;
   int intValue;
+  SEL receivedSelector;
 }
 - (void)storeValue:(id)value;
 - (void)clearValue;
 - (void)storeCString:(const char *)str;
 - (void)storeIntPtr:(int *)ptr;
+- (void)storeSelector:(SEL)selector;
 @end
 
 @implementation InvocationTarget
@@ -5519,6 +5521,9 @@ int test_strftime() {
 }
 - (void)storeIntPtr:(int *)ptr {
   intValue = *ptr;
+}
+- (void)storeSelector:(SEL)selector {
+  receivedSelector = selector;
 }
 @end
 
@@ -5779,6 +5784,28 @@ int test_NSInvocation_pointer() {
 
   [pool drain];
   return 0;
+}
+
+// NSInvocation copies and marshals selector-typed arguments just like other
+// single-word Objective-C arguments.
+int test_NSInvocation_selector() {
+  NSAutoreleasePool *pool = [NSAutoreleasePool new];
+
+  InvocationTarget *target = [InvocationTarget new];
+  NSMethodSignature *sig =
+      [NSMethodSignature signatureWithObjCTypes:"v12@0:4:8"];
+  NSInvocation *inv = [NSInvocation invocationWithMethodSignature:sig];
+  [inv setTarget:target];
+  [inv setSelector:NSSelectorFromString(
+                       [NSString stringWithUTF8String:"storeSelector:"] )];
+
+  SEL selector = NSSelectorFromString([NSString stringWithUTF8String:"clearValue"]);
+  [inv setArgument:&selector atIndex:2];
+  [inv invoke];
+
+  int result = (target->receivedSelector == selector) ? 0 : -1;
+  [pool drain];
+  return result;
 }
 
 @interface CharBufferObject : NSObject {
@@ -6582,6 +6609,7 @@ int test_NSNotificationCenter_removeObserver_duringPost() {
 - (int)tally;
 - (BOOL)isEnabled;
 - (id)getPrefixed;
+- (id)optionalValue;
 @end
 
 @implementation KVCGetterTarget
@@ -6599,6 +6627,9 @@ int test_NSNotificationCenter_removeObserver_duringPost() {
 }
 - (id)getPrefixed {
   return @"prefixed";
+}
+- (id)optionalValue {
+  return nil;
 }
 @end
 
@@ -6632,6 +6663,156 @@ int test_NSObject_valueForKey() {
   }
 
   [target release];
+  [pool drain];
+  return result;
+}
+
+// dictionaryWithValuesForKeys: delegates to valueForKey: and substitutes
+// NSNull for a nil property value, so every requested key is represented.
+int test_NSObject_dictionaryWithValuesForKeys() {
+  NSAutoreleasePool *pool = [NSAutoreleasePool new];
+  KVCGetterTarget *target = [KVCGetterTarget new];
+  NSArray *keys = [NSArray arrayWithObjects:@"name", @"optionalValue", nil];
+  NSDictionary *values = [target dictionaryWithValuesForKeys:keys];
+
+  int result = 0;
+  if ([values count] != 2) {
+    result = -1;
+  } else if (![[values objectForKey:@"name"] isEqual:@"monkey"]) {
+    result = -2;
+  } else if ([values objectForKey:@"optionalValue"] != [NSNull null]) {
+    result = -3;
+  }
+
+  [target release];
+  [pool drain];
+  return result;
+}
+
+// NSMutableDictionary inherits NSObject's allocation path, so its capacity
+// factory must still produce mutable dictionary storage.
+int test_NSMutableDictionary_dictionaryWithCapacity() {
+    NSMutableDictionary *dictionary =
+      [NSMutableDictionary dictionaryWithCapacity:2];
+  [dictionary setObject:@"value" forKey:@"key"];
+
+  if ([dictionary count] != 1)
+    return -1;
+  if (![[dictionary objectForKey:@"key"] isEqual:@"value"])
+    return -2;
+  if (![[[dictionary keyEnumerator] nextObject] isEqual:@"key"])
+    return -3;
+  if (![[[dictionary allValues] objectAtIndex:0] isEqual:@"value"])
+    return -4;
+  return 0;
+}
+
+int test_NSAssertionHandler_currentHandler() {
+  return [NSAssertionHandler currentHandler] == [NSAssertionHandler currentHandler]
+             ? 0
+             : -1;
+}
+
+int test_NSException_accessors_and_raise() {
+  NSException *exception =
+      [NSException exceptionWithName:@"test-name"
+                              reason:@"test-reason"
+                            userInfo:nil];
+  if (![[exception name] isEqual:@"test-name"])
+    return -1;
+  if (![[exception reason] isEqual:@"test-reason"])
+    return -2;
+  if ([exception userInfo] != nil)
+    return -3;
+  [exception raise];
+  return 0;
+}
+
+int test_NSMachPort_port() {
+  return [NSMachPort port] != nil ? 0 : -1;
+}
+
+int test_NSRunLoop_addPort() {
+  [[NSRunLoop currentRunLoop] addPort:[NSMachPort port]
+                              forMode:@"NSDefaultRunLoopMode"];
+  return 0;
+}
+
+int test_NSRunLoop_runMode() {
+  return [[NSRunLoop currentRunLoop] runMode:@"NSDefaultRunLoopMode"
+                                  beforeDate:nil]
+             ? -1
+             : 0;
+}
+
+// Hosts without a cellular radio must report the documented no-provider case.
+int test_CTTelephonyNetworkInfo_noCellularProvider() {
+  CTTelephonyNetworkInfo *info = [CTTelephonyNetworkInfo new];
+  int result = [info subscriberCellularProvider] == nil ? 0 : -1;
+  [info release];
+  return result;
+}
+
+int test_NSData_description() {
+  const unsigned char bytes[] = {0x01, 0x23, 0xff};
+  NSData *data = [NSData dataWithBytes:bytes length:sizeof(bytes)];
+  return [[data description] isEqual:@"<0123ff>"] ? 0 : -1;
+}
+
+int test_NSString_percentEscapes() {
+  NSString *escaped = [@"a [b]\303\251"
+      stringByAddingPercentEscapesUsingEncoding:NSUTF8StringEncoding];
+  return [escaped isEqual:@"a%20%5Bb%5D%C3%A9"] ? 0 : -1;
+}
+
+// A concrete NSDictionary subclass only needs to supply the primitive
+// dictionary methods. allKeys is inherited from NSDictionary and builds its
+// result through the subclass's keyEnumerator.
+@interface EnumeratingDictionary : NSDictionary {
+  NSArray *keys;
+}
+@end
+
+@implementation EnumeratingDictionary
+- (instancetype)init {
+  self = [super init];
+  if (self != nil)
+    keys = [[NSArray alloc] initWithObjects:@"first", @"second", nil];
+  return self;
+}
+- (NSUInteger)count {
+  return [keys count];
+}
+- (id)objectForKey:(id)key {
+  if ([key isEqual:@"first"])
+    return @"one";
+  if ([key isEqual:@"second"])
+    return @"two";
+  return nil;
+}
+- (NSEnumerator *)keyEnumerator {
+  return [keys objectEnumerator];
+}
+- (void)dealloc {
+  [keys release];
+  [super dealloc];
+}
+@end
+
+int test_NSDictionary_allKeys_forSubclass() {
+  NSAutoreleasePool *pool = [NSAutoreleasePool new];
+  EnumeratingDictionary *dictionary = [EnumeratingDictionary new];
+  NSArray *keys = [dictionary allKeys];
+
+  int result = 0;
+  if ([keys count] != 2)
+    result = -1;
+  else if (![[keys objectAtIndex:0] isEqual:@"first"])
+    result = -2;
+  else if (![[keys objectAtIndex:1] isEqual:@"second"])
+    result = -3;
+
+  [dictionary release];
   [pool drain];
   return result;
 }
@@ -6708,6 +6889,24 @@ int test_NSObject_setValue_nil() {
   [target release];
   [pool drain];
   return result;
+}
+
+// `self` is an NSObject method inherited by every object. Some code generated
+// by Objective-C compilers uses it as the accessor for a self property.
+int test_NSObject_self() {
+  NSObject *object = [NSObject new];
+  int result = ([object self] == object) ? 0 : -1;
+  [object release];
+  return result;
+}
+
+// Class objects inherit +superclass from NSObject.
+int test_NSObject_superclass() {
+  if ([NSObject superclass] != (Class)nil)
+    return -1;
+  if ([NSString superclass] != [NSObject class])
+    return -2;
+  return 0;
 }
 
 // NSMutableSet's set-algebra mutators, and the NSSet comparisons that go with
@@ -7090,13 +7289,27 @@ struct {
     FUNC_DEF(test_NSInvocation_invokeWithTarget),
     FUNC_DEF(test_NSInvocation_retainArguments),
     FUNC_DEF(test_NSInvocation_pointer),
+    FUNC_DEF(test_NSInvocation_selector),
     FUNC_DEF(test_Initialize),
     FUNC_DEF(test_NSNotificationCenter_addObserver_nilName),
     FUNC_DEF(test_NSNotificationCenter_addObserver_nilName_withObject),
     FUNC_DEF(test_NSNotificationCenter_addObserver_nilName_removeObserver),
     FUNC_DEF(test_NSNotificationCenter_removeObserver_duringPost),
     FUNC_DEF(test_NSObject_valueForKey),
+    FUNC_DEF(test_NSObject_dictionaryWithValuesForKeys),
+    FUNC_DEF(test_NSMutableDictionary_dictionaryWithCapacity),
+    FUNC_DEF(test_NSAssertionHandler_currentHandler),
+    FUNC_DEF(test_NSException_accessors_and_raise),
+    FUNC_DEF(test_NSMachPort_port),
+    FUNC_DEF(test_NSRunLoop_addPort),
+    FUNC_DEF(test_NSRunLoop_runMode),
+    FUNC_DEF(test_CTTelephonyNetworkInfo_noCellularProvider),
+    FUNC_DEF(test_NSData_description),
+    FUNC_DEF(test_NSString_percentEscapes),
+    FUNC_DEF(test_NSDictionary_allKeys_forSubclass),
     FUNC_DEF(test_NSObject_setValue_nil),
+    FUNC_DEF(test_NSObject_self),
+    FUNC_DEF(test_NSObject_superclass),
     FUNC_DEF(test_NSMutableSet_setAlgebra),
     FUNC_DEF(test_UIView_convert_nilView_withoutWindow),
     FUNC_DEF(test_malloc_zone_basic),

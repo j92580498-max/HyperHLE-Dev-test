@@ -5,7 +5,7 @@
  */
 //! `UIWebView`.
 
-use crate::frameworks::foundation::ns_string::to_rust_string;
+use crate::frameworks::foundation::ns_string::{get_static_str, to_rust_string};
 use crate::msg;
 use crate::objc::{id, nil, objc_classes, ClassExports};
 use std::borrow::Cow;
@@ -36,6 +36,13 @@ pub const CLASSES: ClassExports = objc_classes! {
         Cow::default()
     };
     log!("TODO: [(UIWebView*) {:?} loadRequest:{:?} ({})]", this, request, url_string);
+}
+
+- (id)stringByEvaluatingJavaScriptFromString:(id)_script { // NSString*
+    // tapHLE has no JavaScript engine and no loaded document, so evaluation
+    // yields the empty string — which is also what UIWebView returns for a
+    // script whose result has no string value.
+    get_static_str(env, "")
 }
 
 @end

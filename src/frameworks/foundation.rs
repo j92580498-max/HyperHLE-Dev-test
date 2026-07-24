@@ -11,14 +11,16 @@
 //! Being aware of this concept will make common types like `NSArray` and
 //! `NSString` easier to understand.
 
-use crate::dyld::{export_c_func, FunctionExports};
+use crate::dyld::{export_c_func, ConstantExports, FunctionExports, HostConstant};
 use crate::objc::id;
 use crate::Environment;
 
 pub mod _nib_archive_decoder;
 pub mod ns_array;
+pub mod ns_assertion_handler;
 pub mod ns_autorelease_pool;
 pub mod ns_bundle;
+pub mod ns_calendar;
 pub mod ns_character_set;
 pub mod ns_coder;
 pub mod ns_data;
@@ -38,6 +40,7 @@ pub mod ns_keyed_unarchiver;
 pub mod ns_locale;
 pub mod ns_lock;
 pub mod ns_log;
+pub mod ns_mach_port;
 pub mod ns_method_signature;
 pub mod ns_notification;
 pub mod ns_notification_center;
@@ -66,9 +69,11 @@ pub const DYLIB: crate::dyld::HostDylib = crate::dyld::HostDylib {
     aliases: &[],
     class_exports: &[
         _nib_archive_decoder::CLASSES,
+        ns_assertion_handler::CLASSES,
         ns_array::CLASSES,
         ns_autorelease_pool::CLASSES,
         ns_bundle::CLASSES,
+        ns_calendar::CLASSES,
         ns_character_set::CLASSES,
         ns_coder::CLASSES,
         ns_data::CLASSES,
@@ -77,6 +82,7 @@ pub const DYLIB: crate::dyld::HostDylib = crate::dyld::HostDylib {
         ns_dictionary::CLASSES,
         ns_enumerator::CLASSES,
         ns_error::CLASSES,
+        ns_exception::CLASSES,
         ns_file_handle::CLASSES,
         ns_file_manager::CLASSES,
         ns_garbage_collector::CLASSES,
@@ -86,6 +92,7 @@ pub const DYLIB: crate::dyld::HostDylib = crate::dyld::HostDylib {
         ns_keyed_unarchiver::CLASSES,
         ns_locale::CLASSES,
         ns_lock::CLASSES,
+        ns_mach_port::CLASSES,
         ns_notification::CLASSES,
         ns_notification_center::CLASSES,
         ns_null::CLASSES,
@@ -109,6 +116,7 @@ pub const DYLIB: crate::dyld::HostDylib = crate::dyld::HostDylib {
         ns_xml_parser::CLASSES,
     ],
     constant_exports: &[
+        CONSTANTS,
         ns_error::CONSTANTS,
         ns_exception::CONSTANTS,
         ns_file_manager::CONSTANTS,
@@ -208,3 +216,29 @@ fn hash_helper<T: std::hash::Hash>(hashable: &T) -> NSUInteger {
 }
 
 const FUNCTIONS: FunctionExports = &[export_c_func!(NSStringFromRange(_))];
+
+/// Value of the `NSFoundationVersionNumber` global on iPhone OS 3.2. Like
+/// `kCFCoreFoundationVersionNumber`, apps read this `double` for runtime OS
+/// version detection; we report the 3.2 value to match the newest early build
+/// tapHLE targets.
+pub const NSFoundationVersionNumber_iPhoneOS_3_2: f64 = 678.60;
+
+/// The `NSFoundationVersionNumber` symbol is the address of that double. It was
+/// previously an unhandled non-lazy symbol left null, which would crash any app
+/// that dereferenced it.
+const CONSTANTS: ConstantExports = &[
+    (
+        "_NSFoundationVersionNumber",
+        HostConstant::Custom(|env| {
+            env.mem
+                .alloc_and_write(NSFoundationVersionNumber_iPhoneOS_3_2)
+                .cast()
+                .cast_const()
+        }),
+    ),
+    // `NSGregorianCalendar` (the pre-iOS-8 calendar identifier) is an NSString
+    // whose value is "gregorian"; apps pass it to
+    // -[NSCalendar initWithCalendarIdentifier:]. Previously an unhandled
+    // non-lazy symbol left null, so dereferencing it crashed.
+    ("_NSGregorianCalendar", HostConstant::NSString("gregorian")),
+];

@@ -79,7 +79,7 @@ pub struct tm {
     /// year with 1900 subtracted from it
     pub tm_year: i32,
     /// day of the week (where Sunday is the first day)
-    tm_wday: i32,
+    pub tm_wday: i32,
     /// day of the year
     tm_yday: i32,
     /// 1 if daylight saving time is in effect

@@ -5,8 +5,120 @@
  */
 
 use crate::dyld::{ConstantExports, FunctionExports, HostConstant};
+use crate::frameworks::foundation::ns_string;
 use crate::mem::MutVoidPtr;
+use crate::objc::{
+    autorelease, id, msg, nil, objc_classes, release, retain, ClassExports, HostObject, NSZonePtr,
+};
 use crate::{export_c_func, Environment};
+
+struct ExceptionHostObject {
+    name: id,
+    reason: id,
+    user_info: id,
+}
+impl HostObject for ExceptionHostObject {}
+
+pub const CLASSES: ClassExports = objc_classes! {
+
+(env, this, _cmd);
+
+@implementation NSException: NSObject
+
++ (id)allocWithZone:(NSZonePtr)_zone {
+    env.objc.alloc_object(
+        this,
+        Box::new(ExceptionHostObject {
+            name: nil,
+            reason: nil,
+            user_info: nil,
+        }),
+        &mut env.mem,
+    )
+}
+
++ (id)exceptionWithName:(id)name
+                  reason:(id)reason
+                userInfo:(id)user_info {
+    let exception: id = msg![env; this alloc];
+    let exception: id = msg![env; exception initWithName:name reason:reason userInfo:user_info];
+    autorelease(env, exception)
+}
+
++ (())raise:(id)name
+     format:(id)format, ...args {
+    let reason = ns_string::with_format(env, format, args.start());
+    let reason = ns_string::from_rust_string(env, reason);
+    let reason = autorelease(env, reason);
+    let exception: id = msg![env; this exceptionWithName:name reason:reason userInfo:nil];
+    let (): () = msg![env; exception raise];
+}
+
+- (id)initWithName:(id)name
+             reason:(id)reason
+           userInfo:(id)user_info {
+    retain(env, name);
+    retain(env, reason);
+    retain(env, user_info);
+    let host_obj = env.objc.borrow_mut::<ExceptionHostObject>(this);
+    host_obj.name = name;
+    host_obj.reason = reason;
+    host_obj.user_info = user_info;
+    this
+}
+
+- (id)name {
+    env.objc.borrow::<ExceptionHostObject>(this).name
+}
+
+- (id)reason {
+    env.objc.borrow::<ExceptionHostObject>(this).reason
+}
+
+- (id)userInfo {
+    env.objc.borrow::<ExceptionHostObject>(this).user_info
+}
+
+- (id)description {
+    let host_obj = env.objc.borrow::<ExceptionHostObject>(this);
+    if host_obj.reason != nil {
+        host_obj.reason
+    } else {
+        host_obj.name
+    }
+}
+
+// Native Objective-C exception delivery is not implemented yet. Log the
+// exception and return so release builds that use an exception only for a
+// non-critical diagnostic (such as a failed ad request) can continue.
+- (())raise {
+    let host_obj = env.objc.borrow::<ExceptionHostObject>(this);
+    log!(
+        "NSException raised: name={:?}, reason={:?}",
+        host_obj.name,
+        host_obj.reason
+    );
+}
+
+- (id)copyWithZone:(NSZonePtr)_zone {
+    retain(env, this)
+}
+
+- (())dealloc {
+    let &ExceptionHostObject {
+        name,
+        reason,
+        user_info,
+    } = env.objc.borrow::<ExceptionHostObject>(this);
+    release(env, name);
+    release(env, reason);
+    release(env, user_info);
+    env.objc.dealloc_object(this, &mut env.mem);
+}
+
+@end
+
+};
 
 // All constants are NSExceptionName
 pub const CONSTANTS: ConstantExports = &[
@@ -285,4 +397,15 @@ fn NSSetUncaughtExceptionHandler(_env: &mut Environment, handler: MutVoidPtr) {
     );
 }
 
-pub const FUNCTIONS: FunctionExports = &[export_c_func!(NSSetUncaughtExceptionHandler(_))];
+// Compiler-generated `@throw` calls this after an assertion handler has
+// constructed its exception. Native unwinding is not available yet, so keep
+// the diagnostic path non-fatal for release-only failures such as unavailable
+// advertising requests.
+fn objc_exception_throw(_env: &mut Environment, exception: id) {
+    log!("Ignoring Objective-C exception {:?}", exception);
+}
+
+pub const FUNCTIONS: FunctionExports = &[
+    export_c_func!(NSSetUncaughtExceptionHandler(_)),
+    export_c_func!(objc_exception_throw(_)),
+];

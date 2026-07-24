@@ -83,8 +83,33 @@ const CONSTANTS: ConstantExports = &[
         "_kCLHeadingFilterNone",
         HostConstant::Custom(|env| env.mem.alloc_and_write(-1f64).cast().cast_const()),
     ),
+    // The `kCLLocationAccuracy*` values are `CLLocationAccuracy` (double)
+    // globals; the two "best" variants are negative sentinels. Apps read them
+    // by reference, so each is backed by a real guest allocation. Previously
+    // unhandled non-lazy symbols left null, they crashed any app that read one
+    // (e.g. SPY mouse HD's startup location setup).
+    (
+        "_kCLLocationAccuracyBestForNavigation",
+        HostConstant::Custom(|env| env.mem.alloc_and_write(-2f64).cast().cast_const()),
+    ),
+    (
+        "_kCLLocationAccuracyBest",
+        HostConstant::Custom(|env| env.mem.alloc_and_write(-1f64).cast().cast_const()),
+    ),
+    (
+        "_kCLLocationAccuracyNearestTenMeters",
+        HostConstant::Custom(|env| env.mem.alloc_and_write(10f64).cast().cast_const()),
+    ),
+    (
+        "_kCLLocationAccuracyHundredMeters",
+        HostConstant::Custom(|env| env.mem.alloc_and_write(100f64).cast().cast_const()),
+    ),
     (
         "_kCLLocationAccuracyKilometer",
         HostConstant::Custom(|env| env.mem.alloc_and_write(1000f64).cast().cast_const()),
+    ),
+    (
+        "_kCLLocationAccuracyThreeKilometers",
+        HostConstant::Custom(|env| env.mem.alloc_and_write(3000f64).cast().cast_const()),
     ),
 ];

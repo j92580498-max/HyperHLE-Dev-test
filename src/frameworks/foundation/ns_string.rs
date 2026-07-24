@@ -1031,14 +1031,21 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 - (id)stringByAddingPercentEscapesUsingEncoding:(NSStringEncoding)encoding {
     assert!(encoding == NSASCIIStringEncoding || encoding == NSUTF8StringEncoding); // TODO: other encodings
-    // TODO: implement escaping as per RFC 2396
     let str = to_rust_string(env, this);
-    // FIXME: figure out why '[' and ']' are escaped on iOS simulator
-    assert!(str.as_bytes().iter().all(|byte| {
-        (byte.is_ascii_alphanumeric() || b"-_.~".contains(byte)) // unreserved
-        || b"!*'();:@&=+$,/?%#".contains(byte) // reserved
-    }));
-    let new: id = msg![env; this copy];
+    // RFC 2396 leaves unreserved and reserved characters untouched. Escape
+    // all other UTF-8 bytes, including '[' and ']', as iPhone OS does.
+    const HEX: &[u8; 16] = b"0123456789ABCDEF";
+    let mut escaped = String::with_capacity(str.len());
+    for &byte in str.as_bytes() {
+        if byte.is_ascii_alphanumeric() || b"-_.~!*'();:@&=+$,/?%#".contains(&byte) {
+            escaped.push(byte as char);
+        } else {
+            escaped.push('%');
+            escaped.push(HEX[(byte >> 4) as usize] as char);
+            escaped.push(HEX[(byte & 0x0f) as usize] as char);
+        }
+    }
+    let new = from_rust_string(env, escaped);
     autorelease(env, new)
 }
 
@@ -1102,22 +1109,24 @@ pub const CLASSES: ClassExports = objc_classes! {
     //       "/var/automount”, or "/private” from the path
     assert!(!path.starts_with("/private"));
     assert!(!path.starts_with("/var/automount"));
-    // TODO: Reducing empty components and references to the current directory
-    assert!(!path.contains("//"));
-    assert!(!path.contains("/./"));
     // Removing a trailing slash from the last component.
     let path = path_algorithms::trim_trailing_slashes(&path);
-    // For absolute paths only, resolve references to the parent directory
     let new_path_str = if path.starts_with('/') {
-        assert!(!path.starts_with("/.."));
-        // Note: while we are using fs function, it's just string manipulation
-        // here.
+        // For absolute paths, resolve_path already reduces empty components
+        // ("//"), current-directory references ("/./") and parent references
+        // ("/.."), which is exactly the reduction this method must perform.
+        // Note: while we are using an fs function, it's just string
+        // manipulation here.
         let resolved = fs::resolve_path(GuestPath::new(path), None);
-        let new_path = format!("/{}", resolved.join("/"));
-        assert!(!new_path.contains(".."));
-        new_path
+        format!("/{}", resolved.join("/"))
     } else {
-        String::from(path)
+        // For relative paths, reduce empty components and current-directory
+        // references. Apple leaves a leading ".." unresolved for these, so we
+        // do not pop parent references here.
+        path.split('/')
+            .filter(|component| !component.is_empty() && *component != ".")
+            .collect::<Vec<_>>()
+            .join("/")
     };
     log_dbg!("[(NSString *){:?} stringByStandardizingPath] {} -> {}", this, to_rust_string(env, this), new_path_str);
     let new_string = from_rust_string(env, new_path_str);
@@ -1329,6 +1338,29 @@ pub const CLASSES: ClassExports = objc_classes! {
     };
 
     let res: id = msg![env; left stringByAppendingString:right];
+    () = msg![env; this setString:res];
+}
+
+- (())insertString:(id)a_string // NSString*
+           atIndex:(NSUInteger)index {
+    // Concatenate the text before `index`, the inserted string, and the text
+    // after `index`. Inefficient (rebuilds the whole string) but matches the
+    // primitive-based approach of the other mutators above.
+    let length: NSUInteger = msg![env; this length];
+    let left: id = if index == 0 {
+        get_static_str(env, "")
+    } else {
+        let left_range = NSRange { location: 0, length: index };
+        msg![env; this substringWithRange:left_range]
+    };
+    let right: id = if index == length {
+        get_static_str(env, "")
+    } else {
+        let right_range = NSRange { location: index, length: length - index };
+        msg![env; this substringWithRange:right_range]
+    };
+    let res: id = msg![env; left stringByAppendingString:a_string];
+    let res: id = msg![env; res stringByAppendingString:right];
     () = msg![env; this setString:res];
 }
 

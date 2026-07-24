@@ -326,11 +326,14 @@ fn objc_msgSend_inner(
     }
 
     let orig_class = super2.unwrap_or_else(|| ObjC::read_isa(receiver, &env.mem));
-    assert!(
-        orig_class != nil,
-        "Receiver {receiver:?} has a nil isa while sending selector {:?}",
-        selector.as_str(&env.mem)
-    );
+    if orig_class == nil {
+        // A nil isa on a non-nil receiver means a freed object is being messaged
+        // (typically an over-release). Dump guest state so the offending call
+        // site can be found, as the "does not respond to selector" panic does.
+        let selector_str = selector.as_str(&env.mem).to_string();
+        env.dump_current_guest_state();
+        panic!("Receiver {receiver:?} has a nil isa while sending selector {selector_str:?}");
+    }
     if !skip_initialize {
         maybe_initialize_class(env, receiver);
     }

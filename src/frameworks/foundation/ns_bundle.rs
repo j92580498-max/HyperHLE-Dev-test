@@ -153,7 +153,8 @@ pub const CLASSES: ClassExports = objc_classes! {
 - (id)pathForResource:(id)name // NSString*
                ofType:(id)extension // NSString*
           inDirectory:(id)directory { // NSString*
-    assert!(name != nil); // TODO
+    // A nil name is legal: it means "the first resource of this type", so it is
+    // handled by path_for_resource_helper via a directory scan.
 
     // TODO: cache result of lookups
 
@@ -364,14 +365,38 @@ fn path_for_resource_helper(
     directory: id,
     extension: id,
 ) -> id {
-    let mut path: id = msg![env; bundle resourcePath];
+    let mut dir_path: id = msg![env; bundle resourcePath];
     if lproj != nil {
-        path = msg![env; path stringByAppendingPathComponent:lproj];
+        dir_path = msg![env; dir_path stringByAppendingPathComponent:lproj];
     }
     if directory != nil {
-        path = msg![env; path stringByAppendingPathComponent:directory];
+        dir_path = msg![env; dir_path stringByAppendingPathComponent:directory];
     }
-    path = msg![env; path stringByAppendingPathComponent:name];
+
+    if name == nil {
+        // A nil name means "the first resource with this extension" (or the
+        // first entry at all, if the extension is nil too). Scan the directory.
+        let file_manager: id = msg_class![env; NSFileManager defaultManager];
+        let entries: id = msg![env; file_manager directoryContentsAtPath:dir_path];
+        if entries == nil {
+            return nil;
+        }
+        let count: NSUInteger = msg![env; entries count];
+        for i in 0..count {
+            let entry: id = msg![env; entries objectAtIndex:i];
+            if extension != nil {
+                let entry_extension: id = msg![env; entry pathExtension];
+                let matches: bool = msg![env; entry_extension isEqualToString:extension];
+                if !matches {
+                    continue;
+                }
+            }
+            return msg![env; dir_path stringByAppendingPathComponent:entry];
+        }
+        return nil;
+    }
+
+    let mut path: id = msg![env; dir_path stringByAppendingPathComponent:name];
     if extension != nil {
         path = msg![env; path stringByAppendingPathExtension:extension];
     }

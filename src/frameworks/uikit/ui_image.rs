@@ -62,6 +62,11 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 + (id)imageNamed:(id)name { // NSString*
+    // A nil name has no matching resource; UIKit returns nil rather than
+    // searching. (SPY mouse HD calls this from its render loop.)
+    if name == nil {
+        return nil;
+    }
     // TODO: figure out whether this is actually correct in all cases
     let bundle: id = msg_class![env; NSBundle mainBundle];
     let path: id = msg![env; bundle pathForResource:name ofType:nil];

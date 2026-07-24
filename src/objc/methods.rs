@@ -12,7 +12,8 @@ use super::{
     id, nil, objc_super, Class, ClassHostObject, MsgSendSignature, MsgSendSuperSignature, ObjC, SEL,
 };
 use crate::abi::{CallFromGuest, DotDotDot, GuestArg, GuestFunction, GuestRet};
-use crate::mem::{guest_size_of, ConstPtr, GuestUSize, Mem, Ptr, SafeRead};
+use crate::dyld::HostFunction;
+use crate::mem::{guest_size_of, ConstPtr, GuestUSize, Mem, MutPtr, MutVoidPtr, Ptr, SafeRead};
 use crate::Environment;
 use std::any::TypeId;
 
@@ -306,4 +307,263 @@ impl ObjC {
         }
         selector_strings
     }
+
+    /// Borrow a class's host object as a [ClassHostObject], returning [None] for
+    /// `nil`, unknown, unimplemented, or faked classes (whose method tables we
+    /// cannot edit).
+    fn class_host_object(&self, class: Class) -> Option<&ClassHostObject> {
+        if class == nil {
+            return None;
+        }
+        self.get_host_object(class)?
+            .as_any()
+            .downcast_ref::<ClassHostObject>()
+    }
+
+    /// Find the class in `class`'s chain that actually defines `sel`, i.e. the
+    /// class whose own method table holds it. Mirrors what the real runtime's
+    /// `class_getInstanceMethod` returns a `Method` from.
+    fn class_defining_method(&self, class: Class, sel: SEL) -> Option<Class> {
+        let mut class = class;
+        loop {
+            let host = self.class_host_object(class)?;
+            if host.methods.contains_key(&sel) {
+                return Some(class);
+            }
+            class = host.superclass;
+            if class == nil {
+                return None;
+            }
+        }
+    }
+}
+
+/// Guest-visible layout of an Objective-C `Method` (`struct objc_method`). The
+/// `Method` type is opaque to apps, but swizzling reads and writes the `imp`
+/// field through the `method_*` functions below, so we back each `Method` with
+/// a real guest allocation of this shape.
+#[repr(C, packed)]
+struct objc_method {
+    name: SEL,
+    types: ConstPtr<u8>,
+    imp: GuestFunction,
+}
+unsafe impl SafeRead for objc_method {}
+
+/// Turn a resolved [IMP] into a guest-callable function address.
+///
+/// A guest method already has a guest address. A host method does not, so we
+/// synthesise an SVC trampoline: when the guest later calls that address as a
+/// normal `(id, SEL, ...)` function — which is exactly what swizzled code does
+/// with the "original" implementation — the trampoline dispatches straight to
+/// the host implementation, because the SVC calling convention matches a method
+/// call. This does not run the extra +alloc/dealloc bookkeeping that a full
+/// `objc_msgSend` dispatch of a host IMP would; swizzling those methods is out
+/// of scope.
+fn imp_to_guest_function(env: &mut Environment, imp: IMP) -> GuestFunction {
+    match imp {
+        IMP::Guest(guest_imp) => guest_imp,
+        IMP::Host(host_imp) => {
+            let host_function: HostFunction = host_imp;
+            env.dyld.create_guest_function(
+                &mut env.mem,
+                "__tapHLE_swizzled_host_imp",
+                host_function,
+            )
+        }
+    }
+}
+
+/// `class_getInstanceMethod` — returns the opaque `Method` for an instance
+/// method, searching the superclass chain, or `nil` if the class does not
+/// respond to the selector.
+pub(super) fn class_getInstanceMethod(env: &mut Environment, cls: Class, sel: SEL) -> MutVoidPtr {
+    let Some(defining) = env.objc.class_defining_method(cls, sel) else {
+        return Ptr::null();
+    };
+
+    if let Some(&existing) = env.objc.method_objects.get(&(defining, sel)) {
+        return existing;
+    }
+
+    let host = env.objc.class_host_object(defining).unwrap();
+    let imp = *host.methods.get(&sel).unwrap();
+    let types = host
+        .guest_method_signatures
+        .get(&sel)
+        .copied()
+        .unwrap_or(Ptr::null());
+
+    let imp = imp_to_guest_function(env, imp);
+
+    let method_ptr: MutPtr<objc_method> = env.mem.alloc(guest_size_of::<objc_method>()).cast();
+    env.mem.write(
+        method_ptr,
+        objc_method {
+            name: sel,
+            types,
+            imp,
+        },
+    );
+    let method_ptr: MutVoidPtr = method_ptr.cast();
+
+    env.objc.method_objects.insert((defining, sel), method_ptr);
+    env.objc.method_lookup.insert(method_ptr, (defining, sel));
+    method_ptr
+}
+
+/// `class_getMethodImplementation` — returns the `IMP` that a message send of
+/// `sel` to an instance of `cls` would invoke, as a guest-callable function
+/// pointer, or null if the class does not respond. (The real runtime returns a
+/// forwarding handler rather than null in that case; nothing observed needs
+/// that yet.)
+pub(super) fn class_getMethodImplementation(
+    env: &mut Environment,
+    cls: Class,
+    sel: SEL,
+) -> MutVoidPtr {
+    let Some(imp) = env.objc.class_get_method_implementation(cls, sel) else {
+        return Ptr::null();
+    };
+    let imp = imp_to_guest_function(env, imp);
+    Ptr::from_bits(imp.addr_with_thumb_bit())
+}
+
+/// `method_getImplementation` — returns the `IMP` of a `Method` as a
+/// guest-callable function pointer.
+pub(super) fn method_getImplementation(env: &mut Environment, method: MutVoidPtr) -> MutVoidPtr {
+    if method.is_null() {
+        return Ptr::null();
+    }
+    let method: objc_method = env.mem.read(method.cast());
+    Ptr::from_bits(method.imp.addr_with_thumb_bit())
+}
+
+/// `method_setImplementation` — replaces the `IMP` of a `Method`, returning the
+/// previous one. This is the core of method swizzling, so it also updates the
+/// defining class's dispatch table so later message sends use the new IMP.
+pub(super) fn method_setImplementation(
+    env: &mut Environment,
+    method: MutVoidPtr,
+    imp: MutVoidPtr,
+) -> MutVoidPtr {
+    if method.is_null() {
+        return Ptr::null();
+    }
+    let method_ptr: MutPtr<objc_method> = method.cast();
+    let new_imp = GuestFunction::from_addr_with_thumb_bit(imp.to_bits());
+
+    let mut record = env.mem.read(method_ptr);
+    let old_imp = record.imp;
+    record.imp = new_imp;
+    env.mem.write(method_ptr, record);
+
+    if let Some(&(cls, sel)) = env.objc.method_lookup.get(&method) {
+        env.objc
+            .borrow_mut::<ClassHostObject>(cls)
+            .methods
+            .insert(sel, IMP::Guest(new_imp));
+    }
+
+    Ptr::from_bits(old_imp.addr_with_thumb_bit())
+}
+
+/// `method_getName` — returns the selector of a `Method`.
+pub(super) fn method_getName(env: &mut Environment, method: MutVoidPtr) -> SEL {
+    if method.is_null() {
+        return SEL::null();
+    }
+    env.mem.read(method.cast::<objc_method>()).name
+}
+
+/// `method_getTypeEncoding` — returns the Objective-C type encoding string of a
+/// `Method`, or null when one was not recorded.
+pub(super) fn method_getTypeEncoding(env: &mut Environment, method: MutVoidPtr) -> ConstPtr<u8> {
+    if method.is_null() {
+        return Ptr::null();
+    }
+    env.mem.read(method.cast::<objc_method>()).types
+}
+
+/// `method_exchangeImplementations` — atomically swaps the implementations of
+/// two methods, the other primitive apps use for swizzling.
+pub(super) fn method_exchangeImplementations(
+    env: &mut Environment,
+    method1: MutVoidPtr,
+    method2: MutVoidPtr,
+) {
+    if method1.is_null() || method2.is_null() || method1 == method2 {
+        return;
+    }
+    let imp1 = method_getImplementation(env, method1);
+    let imp2 = method_getImplementation(env, method2);
+    method_setImplementation(env, method1, imp2);
+    method_setImplementation(env, method2, imp1);
+}
+
+/// `class_addMethod` — adds an instance method to a class, failing (returning
+/// false) if the class already defines that selector itself.
+pub(super) fn class_addMethod(
+    env: &mut Environment,
+    cls: Class,
+    sel: SEL,
+    imp: MutVoidPtr,
+    types: ConstPtr<u8>,
+) -> bool {
+    if env.objc.class_host_object(cls).is_none() {
+        return false;
+    }
+    if env.objc.class_has_uninherited_method(cls, sel) {
+        return false;
+    }
+    let imp = GuestFunction::from_addr_with_thumb_bit(imp.to_bits());
+    let host = env.objc.borrow_mut::<ClassHostObject>(cls);
+    host.methods.insert(sel, IMP::Guest(imp));
+    host.guest_method_signatures.insert(sel, types);
+    true
+}
+
+/// `class_replaceMethod` — adds a method if the class does not define it, or
+/// replaces the existing one, returning the previous `IMP` (or null when the
+/// method was newly added).
+pub(super) fn class_replaceMethod(
+    env: &mut Environment,
+    cls: Class,
+    sel: SEL,
+    imp: MutVoidPtr,
+    types: ConstPtr<u8>,
+) -> MutVoidPtr {
+    if env.objc.class_host_object(cls).is_none() {
+        return Ptr::null();
+    }
+    if !env.objc.class_has_uninherited_method(cls, sel) {
+        class_addMethod(env, cls, sel, imp, types);
+        return Ptr::null();
+    }
+
+    let old_imp = *env
+        .objc
+        .class_host_object(cls)
+        .unwrap()
+        .methods
+        .get(&sel)
+        .unwrap();
+    let new_imp = GuestFunction::from_addr_with_thumb_bit(imp.to_bits());
+    {
+        let host = env.objc.borrow_mut::<ClassHostObject>(cls);
+        host.methods.insert(sel, IMP::Guest(new_imp));
+        host.guest_method_signatures.insert(sel, types);
+    }
+
+    // Keep a previously handed-out Method object consistent with the table.
+    if let Some(&method_ptr) = env.objc.method_objects.get(&(cls, sel)) {
+        let method_ptr: MutPtr<objc_method> = method_ptr.cast();
+        let mut record = env.mem.read(method_ptr);
+        record.imp = new_imp;
+        record.types = types;
+        env.mem.write(method_ptr, record);
+    }
+
+    let old_imp = imp_to_guest_function(env, old_imp);
+    Ptr::from_bits(old_imp.addr_with_thumb_bit())
 }

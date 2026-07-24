@@ -112,6 +112,22 @@ pub const CLASSES: ClassExports = objc_classes! {
     }
 }
 
+// The following accessors parse the stored URL string. They only apply to
+// non-file URLs; a file URL has no scheme/host/query/fragment here and returns
+// nil, matching NSURL for a `fileURLWithPath:`-style URL's query/fragment.
+- (id)scheme {
+    url_component(env, this, url_scheme_component)
+}
+- (id)host {
+    url_component(env, this, url_host_component)
+}
+- (id)query {
+    url_component(env, this, url_query_component)
+}
+- (id)fragment {
+    url_component(env, this, url_fragment_component)
+}
+
 - (id)description {
     match env.objc.borrow(this) {
         NSURLHostObject::FileURL { ns_string, working_directory } => {
@@ -202,6 +218,64 @@ pub const CLASSES: ClassExports = objc_classes! {
 @end
 
 };
+
+/// Shared implementation of the non-file-URL component accessors
+/// ([NSURL scheme], [host], [query], [fragment]): parse the stored URL string
+/// with `parser` and return the result as an autoreleased NSString, or nil.
+/// File URLs have none of these components here.
+fn url_component(env: &mut Environment, this: id, parser: fn(&str) -> Option<&str>) -> id {
+    let ns_string = match env.objc.borrow(this) {
+        NSURLHostObject::OtherURL { ns_string } => *ns_string,
+        NSURLHostObject::FileURL { .. } => return nil,
+    };
+    let url = to_rust_string(env, ns_string).to_string();
+    match parser(&url) {
+        Some(component) => {
+            let component = component.to_string();
+            let new = from_rust_string(env, component);
+            autorelease(env, new)
+        }
+        None => nil,
+    }
+}
+
+/// Scheme: the text before the first `:`, if it is a valid scheme.
+fn url_scheme_component(url: &str) -> Option<&str> {
+    let (scheme, _rest) = url.split_once(':')?;
+    let valid = !scheme.is_empty()
+        && scheme
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'+' | b'-' | b'.'));
+    valid.then_some(scheme)
+}
+
+/// Host: for a `scheme://host[:port][/...]` URL, the host part of the authority,
+/// with any `user@` prefix and `:port` suffix removed.
+fn url_host_component(url: &str) -> Option<&str> {
+    let after_scheme = url.split_once("://")?.1;
+    let authority = after_scheme
+        .split(['/', '?', '#'])
+        .next()
+        .unwrap_or(after_scheme);
+    let host = authority.rsplit_once('@').map_or(authority, |(_, h)| h);
+    let host = host.split_once(':').map_or(host, |(h, _)| h);
+    (!host.is_empty()).then_some(host)
+}
+
+/// Query: the text after the first `?`, up to an optional `#`.
+fn url_query_component(url: &str) -> Option<&str> {
+    let after_question = url.split_once('?')?.1;
+    Some(
+        after_question
+            .split_once('#')
+            .map_or(after_question, |(q, _)| q),
+    )
+}
+
+/// Fragment: the text after the first `#`.
+fn url_fragment_component(url: &str) -> Option<&str> {
+    Some(url.split_once('#')?.1)
+}
 
 /// Shortcut for host code, provides a view of a URL as a path.
 /// TODO: Try to avoid allocating a new GuestPathBuf in more cases.

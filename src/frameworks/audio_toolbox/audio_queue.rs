@@ -26,7 +26,9 @@ use crate::frameworks::core_foundation::cf_run_loop::{
 };
 use crate::frameworks::foundation::ns_run_loop;
 use crate::frameworks::foundation::ns_string::get_static_str;
-use crate::mem::{guest_size_of, ConstPtr, GuestUSize, Mem, MutPtr, MutVoidPtr, Ptr, SafeRead};
+use crate::mem::{
+    guest_size_of, ConstPtr, ConstVoidPtr, GuestUSize, Mem, MutPtr, MutVoidPtr, Ptr, SafeRead,
+};
 use crate::objc::msg;
 use crate::Environment;
 use std::collections::{HashMap, VecDeque};
@@ -570,6 +572,30 @@ fn AudioQueueGetProperty(
         _ => unreachable!(),
     }
 
+    0 // success
+}
+
+fn AudioQueueSetProperty(
+    _env: &mut Environment,
+    in_aq: AudioQueueRef,
+    in_property_id: AudioQueuePropertyID,
+    in_data: ConstVoidPtr,
+    in_data_size: u32,
+) -> OSStatus {
+    return_if_null!(in_aq);
+
+    // Settable audio-queue properties are configuration hints — level metering,
+    // the format magic cookie, channel assignments, codec policy — that tapHLE's
+    // mixer does not need. Accept and ignore them rather than failing the call;
+    // an app that cannot set an optional property may take an error path it does
+    // not need to.
+    log_dbg!(
+        "TODO: ignoring AudioQueueSetProperty({:?}, {}, {:?}, {:#x})",
+        in_aq,
+        debug_fourcc(in_property_id),
+        in_data,
+        in_data_size,
+    );
     0 // success
 }
 
@@ -1426,6 +1452,7 @@ pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(AudioQueueRemovePropertyListener(_, _, _, _)),
     export_c_func!(AudioQueueGetPropertySize(_, _, _)),
     export_c_func!(AudioQueueGetProperty(_, _, _, _)),
+    export_c_func!(AudioQueueSetProperty(_, _, _, _)),
     export_c_func!(AudioQueuePrime(_, _, _)),
     export_c_func!(AudioQueueStart(_, _)),
     export_c_func!(AudioQueuePause(_)),

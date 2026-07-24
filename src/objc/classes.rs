@@ -967,6 +967,14 @@ impl ObjC {
         }
     }
 
+    pub fn class_get_superclass(&self, class: Class) -> Class {
+        if class == nil {
+            nil
+        } else {
+            self.borrow::<ClassHostObject>(class).superclass
+        }
+    }
+
     pub fn class_is_subclass_of(&self, class: Class, superclass: Class) -> bool {
         if class == superclass {
             return true;
@@ -1113,11 +1121,7 @@ pub(super) fn objc_getClass(env: &mut Environment, name: ConstPtr<u8>) -> id {
 }
 
 pub(super) fn class_getSuperclass(env: &mut Environment, cls: Class) -> Class {
-    if cls == nil {
-        nil
-    } else {
-        env.objc.borrow::<ClassHostObject>(cls).superclass
-    }
+    env.objc.class_get_superclass(cls)
 }
 
 pub(super) fn class_getInstanceSize(env: &mut Environment, cls: Class) -> GuestUSize {
@@ -1129,27 +1133,31 @@ pub(super) fn class_getInstanceSize(env: &mut Environment, cls: Class) -> GuestU
 }
 
 pub(super) fn class_getProperty(
-    env: &mut Environment,
+    _env: &mut Environment,
     cls: Class,
-    name: ConstPtr<u8>,
+    _name: ConstPtr<u8>,
 ) -> objc_property_t {
     if cls == nil {
         return Ptr::null();
     }
-    let c_name = env.mem.cstr_at_utf8(name).unwrap();
-    let class_name_string = env.objc.get_class_name(cls).to_owned();
-    if class_name_string == "UIScreen" && c_name == "scale" {
-        // Even if [UIScreen scale] is implemented, we're not yet having a
-        // proper support for `objc_property_t`, so we prefer to return a NULL
-        // here (e.g. property is not declared).
-        // Some games (such as Mirror's Edge) check for those to conditionally
-        // apply some parameters depending on the iOS version without actually
-        // using the property.
-        // We also prefer to not define this as a game-specific hack, because
-        // some other EA games may rely on the same logic.
-        // TODO: support `objc_property_t` properly
-        log!("TODO: class_getProperty(UIScreen, scale) -> NULL");
-        return Ptr::null();
+    // tapHLE does not model Objective-C property metadata yet. A null result
+    // faithfully tells callers that no declared property is available and is
+    // safer than exposing incomplete opaque metadata.
+    Ptr::null()
+}
+
+/// Return a malloc-compatible property array like Apple's runtime does.
+///
+/// The emulator does not represent declared property metadata yet, so the
+/// only accurate list it can expose is empty. Still setting the count lets
+/// reflection users enumerate safely instead of failing at link time.
+pub(super) fn class_copyPropertyList(
+    env: &mut Environment,
+    _cls: Class,
+    out_count: MutPtr<u32>,
+) -> MutPtr<objc_property_t> {
+    if !out_count.is_null() {
+        env.mem.write(out_count, 0);
     }
-    todo!()
+    Ptr::null()
 }
