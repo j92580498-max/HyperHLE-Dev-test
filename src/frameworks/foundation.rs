@@ -17,6 +17,7 @@ use crate::Environment;
 
 pub mod _nib_archive_decoder;
 pub mod ns_array;
+pub mod ns_assertion_handler;
 pub mod ns_autorelease_pool;
 pub mod ns_bundle;
 pub mod ns_calendar;
@@ -39,6 +40,7 @@ pub mod ns_keyed_unarchiver;
 pub mod ns_locale;
 pub mod ns_lock;
 pub mod ns_log;
+pub mod ns_mach_port;
 pub mod ns_method_signature;
 pub mod ns_notification;
 pub mod ns_notification_center;
@@ -67,6 +69,7 @@ pub const DYLIB: crate::dyld::HostDylib = crate::dyld::HostDylib {
     aliases: &[],
     class_exports: &[
         _nib_archive_decoder::CLASSES,
+        ns_assertion_handler::CLASSES,
         ns_array::CLASSES,
         ns_autorelease_pool::CLASSES,
         ns_bundle::CLASSES,
@@ -79,6 +82,7 @@ pub const DYLIB: crate::dyld::HostDylib = crate::dyld::HostDylib {
         ns_dictionary::CLASSES,
         ns_enumerator::CLASSES,
         ns_error::CLASSES,
+        ns_exception::CLASSES,
         ns_file_handle::CLASSES,
         ns_file_manager::CLASSES,
         ns_garbage_collector::CLASSES,
@@ -88,6 +92,7 @@ pub const DYLIB: crate::dyld::HostDylib = crate::dyld::HostDylib {
         ns_keyed_unarchiver::CLASSES,
         ns_locale::CLASSES,
         ns_lock::CLASSES,
+        ns_mach_port::CLASSES,
         ns_notification::CLASSES,
         ns_notification_center::CLASSES,
         ns_null::CLASSES,

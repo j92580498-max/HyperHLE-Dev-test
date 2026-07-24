@@ -401,6 +401,12 @@ fn all_keys_common(env: &mut Environment, this: id) -> id {
     autorelease(env, res)
 }
 
+/// Return an enumerator over a dictionary's keys from its common host storage.
+fn key_enumerator_common(env: &mut Environment, this: id) -> id {
+    let keys = all_keys_common(env, this);
+    msg![env; keys objectEnumerator]
+}
+
 pub const CLASSES: ClassExports = objc_classes! {
 
 (env, this, _cmd);
@@ -415,10 +421,23 @@ pub const CLASSES: ClassExports = objc_classes! {
 @implementation NSDictionary: NSObject
 
 + (id)allocWithZone:(NSZonePtr)zone {
-    // NSDictionary might be subclassed by something which needs allocWithZone:
-    // to have the normal behaviour. Unimplemented: call superclass alloc then.
-    assert!(this == env.objc.get_known_class("NSDictionary", &mut env.mem));
-    msg_class![env; _tapHLE_NSDictionary allocWithZone:zone]
+    let ns_dictionary = env.objc.get_known_class("NSDictionary", &mut env.mem);
+    if this == ns_dictionary {
+        return msg_class![env; _tapHLE_NSDictionary allocWithZone:zone];
+    }
+
+    // The NSObject implementation of +alloc sends allocWithZone: to the
+    // original receiver. On iPhone OS this must preserve the concrete class
+    // selected by an inherited NSDictionary factory such as
+    // +dictionaryWithCapacity:. Give NSMutableDictionary its mutable backing
+    // object, and let other subclasses use the common dictionary storage.
+    let ns_mutable_dictionary = env.objc.get_known_class("NSMutableDictionary", &mut env.mem);
+    if this == ns_mutable_dictionary {
+        return msg_class![env; _tapHLE_NSMutableDictionary allocWithZone:zone];
+    }
+
+    env.objc
+        .alloc_object(this, Box::<DictionaryHostObject>::default(), &mut env.mem)
 }
 
 + (id)dictionary {
@@ -521,6 +540,21 @@ pub const CLASSES: ClassExports = objc_classes! {
     // TODO: strip '@' and call super
     assert!(!key_str.starts_with('@'));
     msg![env; this objectForKey:key]
+}
+
+// NSDictionary subclasses provide keyEnumerator, so the superclass can build
+// an array for subclasses that do not have tapHLE's DictionaryHostObject.
+- (id)allKeys {
+    let keys: id = msg_class![env; NSMutableArray new];
+    let enumerator: id = msg![env; this keyEnumerator];
+    loop {
+        let key: id = msg![env; enumerator nextObject];
+        if key == nil {
+            break;
+        }
+        let (): () = msg![env; keys addObject:key];
+    }
+    autorelease(env, keys)
 }
 
 - (id)keysSortedByValueUsingSelector:(SEL)comparator {
@@ -628,10 +662,13 @@ pub const CLASSES: ClassExports = objc_classes! {
 @implementation NSMutableDictionary: NSDictionary
 
 + (id)allocWithZone:(NSZonePtr)zone {
-    // NSDictionary might be subclassed by something which needs allocWithZone:
-    // to have the normal behaviour. Unimplemented: call superclass alloc then.
-    assert!(this == env.objc.get_known_class("NSMutableDictionary", &mut env.mem));
-    msg_class![env; _tapHLE_NSMutableDictionary allocWithZone:zone]
+    let ns_mutable_dictionary = env.objc.get_known_class("NSMutableDictionary", &mut env.mem);
+    if this == ns_mutable_dictionary {
+        msg_class![env; _tapHLE_NSMutableDictionary allocWithZone:zone]
+    } else {
+        env.objc
+            .alloc_object(this, Box::<DictionaryHostObject>::default(), &mut env.mem)
+    }
 }
 
 + (id)dictionaryWithCapacity:(NSUInteger)capacity {
@@ -727,6 +764,10 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 - (id)allKeys {
     all_keys_common(env, this)
+}
+
+- (id)keyEnumerator {
+    key_enumerator_common(env, this)
 }
 
 // NSFastEnumeration implementation
@@ -838,6 +879,10 @@ pub const CLASSES: ClassExports = objc_classes! {
     let res = host_obj.lookup(env, key);
     *env.objc.borrow_mut(this) = host_obj;
     res
+}
+
+- (id)keyEnumerator {
+    key_enumerator_common(env, this)
 }
 
 // NSFastEnumeration implementation

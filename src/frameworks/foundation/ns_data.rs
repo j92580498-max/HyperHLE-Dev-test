@@ -5,7 +5,7 @@
  */
 //! `NSData` and `NSMutableData`.
 
-use super::ns_string::to_rust_string;
+use super::ns_string::{from_rust_string, to_rust_string};
 use super::{NSRange, NSUInteger};
 use crate::frameworks::foundation::ns_keyed_unarchiver::decode_current_data;
 use crate::fs::GuestPath;
@@ -14,6 +14,7 @@ use crate::objc::{
     autorelease, id, msg, nil, objc_classes, release, retain, ClassExports, HostObject, NSZonePtr,
 };
 use crate::{msg_class, Environment};
+use std::fmt::Write;
 
 pub(super) struct NSDataHostObject {
     pub(super) bytes: MutVoidPtr,
@@ -223,6 +224,26 @@ pub const CLASSES: ClassExports = objc_classes! {
     let a = to_rust_slice(env, this).to_owned();
     let b = to_rust_slice(env, other);
     a == b
+}
+
+- (id)description {
+    let (bytes, length) = {
+        let host_obj = env.objc.borrow::<NSDataHostObject>(this);
+        (host_obj.bytes, host_obj.length)
+    };
+    let data = if length == 0 {
+        &[]
+    } else {
+        env.mem.bytes_at(bytes.cast(), length)
+    };
+    let mut description = String::with_capacity(2 + data.len() * 2);
+    description.push('<');
+    for byte in data {
+        write!(&mut description, "{byte:02x}").unwrap();
+    }
+    description.push('>');
+    let description = from_rust_string(env, description);
+    autorelease(env, description)
 }
 
 - (())getBytes:(MutPtr<u8>)buffer length:(NSUInteger)length {

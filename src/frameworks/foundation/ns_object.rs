@@ -16,7 +16,7 @@
 //! See also: [crate::objc], especially the `objects` module.
 
 use super::ns_string::{from_rust_string, to_rust_string};
-use super::{NSTimeInterval, NSUInteger};
+use super::{ns_dictionary, NSTimeInterval, NSUInteger};
 use crate::frameworks::foundation::ns_run_loop::{
     add_perform_request, cancel_all_perform_requests_for_target, cancel_perform_requests,
 };
@@ -332,6 +332,25 @@ pub const CLASSES: ClassExports = objc_classes! {
     // may provide key-specific behavior.
     let sel = env.objc.lookup_selector("valueForUndefinedKey:").unwrap();
     msg_send(env, (this, sel, key))
+}
+
+// Apple's KVC implementation obtains each requested value through
+// `valueForKey:` and represents nil values with the NSNull singleton.
+// See https://developer.apple.com/documentation/objectivec/nsobject-swift.class/dictionarywithvalues%28forkeys%3A%29.
+- (id)dictionaryWithValuesForKeys:(id)keys { // NSArray<NSString *> *
+    let count: NSUInteger = msg![env; keys count];
+    let null: id = msg_class![env; NSNull null];
+    let mut entries = Vec::with_capacity(count as usize);
+
+    for index in 0..count {
+        let key: id = msg![env; keys objectAtIndex:index];
+        let value: id = msg![env; this valueForKey:key];
+        let value = if value == nil { null } else { value };
+        entries.push((key, value));
+    }
+
+    let dictionary = ns_dictionary::dict_from_keys_and_objects(env, &entries);
+    autorelease(env, dictionary)
 }
 
 - (id)valueForUndefinedKey:(id)key { // NSString*

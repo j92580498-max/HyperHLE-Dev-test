@@ -8,24 +8,28 @@
   target for this work. Its canonical Archive source URL, filename, and live
   metadata hashes are still not recorded, so do not submit a public
   compatibility report until that verification is complete.
-- Runtime milestone: a Windows release build of this exact artifact passes the
-  prior `_CCCrypt`, `-[NSObject self]`, selector-typed `NSInvocation`,
-  `-[NSInvocationOperation initWithInvocation:]`,
-  `class_copyPropertyList`, and `+[NSObject superclass]` startup blockers.
-  It reaches the game's Origin/ad-data setup, but does not yet show a stable
-  screen or gameplay loop.
-- Current implementation: CommonCrypto AES `CCCrypt`; offline CFNetwork and
-  calendar support; Objective-C method/runtime refinements; Foundation
-  invocation/operation support; and property-reflection fallback. The changes
-  are intentionally reusable rather than game-specific.
-- Current frontier: `-[AS_RequestData dictionaryWithValuesForKeys:]` is the
-  first deterministic failure after the release rerun. Implement Foundation's
-  KVC dictionary helper, then rerun the same exact artifact before changing
-  any rating.
-- Checks passed: `cargo fmt --all -- --check`, `git diff --check`,
-  `cargo metadata --no-deps --format-version 1`, and `cargo build --release`.
-  The TestApp suite was not run: its custom test SDK/LLVM is unavailable in
-  this checkout, and the stale debug target points at an unavailable former
-  worktree.
+- Runtime milestone: a Windows release build of this exact artifact clears
+  KVC's `dictionaryWithValuesForKeys:`, custom `NSDictionary` subclass key
+  enumeration, `NSAssertionHandler`, `NSException`, `NSMachPort`, input-port
+  registration, `dladdr`, `CCHmac`, and `NSData` formatting. It reaches the
+  game's Origin/ad-data setup, executes its offline download-failure handling,
+  and requests locale information, but does not yet show a stable screen or
+  gameplay loop.
+- Current implementation: reusable Foundation KVC/dictionary, data, assertion,
+  exception, Mach-port, and run-loop behavior; CommonCrypto HMAC-SHA1/MD5;
+  and a standard failed `dladdr` lookup. The exception and input-port fallbacks
+  are explicitly bounded until Objective-C unwinding and generic port delivery
+  are implemented.
+- Current frontier: `NSURL` percent encoding in `ns_string.rs` rejects a
+  character used by a later startup request. Expand that encoding model from
+  observed iPhone OS behavior, then rerun the same exact artifact before
+  changing any rating.
+- Checks passed: `cargo metadata --no-deps --format-version 1`,
+  `cargo fmt --all -- --check`, `git diff --check`, and `cargo build --release`.
+  The exact IPA was launched on Windows after the release build. `cargo test
+  --workspace --lib` was attempted but failed before tests because its stale
+  debug target refers to an unavailable former worktree and its wrappers cannot
+  find Boost/CMake; the TestApp suite likewise remains unavailable without its
+  custom SDK/LLVM.
 - No compatibility-database report is due: no star threshold was reached, and
   the canonical public-artifact metadata has not yet been verified.

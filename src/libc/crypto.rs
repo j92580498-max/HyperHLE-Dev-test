@@ -30,6 +30,9 @@ const KCC_ALGORITHM_AES128: u32 = 0;
 const KCC_OPTION_PKCS7_PADDING: u32 = 1;
 const KCC_OPTION_ECB_MODE: u32 = 2;
 const AES_BLOCK_SIZE: usize = 16;
+const CCHMAC_ALGORITHM_SHA1: u32 = 0;
+const CCHMAC_ALGORITHM_MD5: u32 = 1;
+const HMAC_BLOCK_SIZE: usize = 64;
 
 fn CC_MD5(env: &mut Environment, data: ConstVoidPtr, len: u32, md: MutPtr<u8>) -> MutPtr<u8> {
     let mut hasher = Md5::new();
@@ -45,6 +48,65 @@ fn CC_SHA1(env: &mut Environment, data: ConstVoidPtr, len: u32, md: MutPtr<u8>) 
     let digest = hasher.finalize();
     env.mem.bytes_at_mut(md, 20).copy_from_slice(&digest[..]);
     md
+}
+
+/// One-shot CommonCrypto HMAC API for the algorithms available on early
+/// iPhone OS releases.
+fn CCHmac(
+    env: &mut Environment,
+    algorithm: u32,
+    key: ConstVoidPtr,
+    key_length: GuestUSize,
+    data: ConstVoidPtr,
+    data_length: GuestUSize,
+    mac_out: MutVoidPtr,
+) {
+    if mac_out.is_null()
+        || (key_length != 0 && key.is_null())
+        || (data_length != 0 && data.is_null())
+    {
+        log!("CCHmac received an invalid buffer");
+        return;
+    }
+
+    let key = env.mem.bytes_at(key.cast(), key_length);
+    let data = env.mem.bytes_at(data.cast(), data_length);
+    let mac = match algorithm {
+        CCHMAC_ALGORITHM_SHA1 => cchmac::<Sha1>(key, data),
+        CCHMAC_ALGORITHM_MD5 => cchmac::<Md5>(key, data),
+        _ => {
+            log!("CCHmac({algorithm}, ...) is unsupported");
+            return;
+        }
+    };
+    env.mem
+        .bytes_at_mut(mac_out.cast(), mac.len().try_into().unwrap())
+        .copy_from_slice(&mac);
+}
+
+/// HMAC construction shared by the CommonCrypto wrapper and tests.
+fn cchmac<D: Digest + Default>(key: &[u8], data: &[u8]) -> Vec<u8> {
+    let mut key_block = [0u8; HMAC_BLOCK_SIZE];
+    if key.len() > HMAC_BLOCK_SIZE {
+        let digest = D::digest(key);
+        key_block[..digest.len()].copy_from_slice(&digest);
+    } else {
+        key_block[..key.len()].copy_from_slice(key);
+    }
+
+    let mut inner = D::new();
+    for byte in key_block {
+        inner.update([byte ^ 0x36]);
+    }
+    inner.update(data);
+    let inner_digest = inner.finalize();
+
+    let mut outer = D::new();
+    for byte in key_block {
+        outer.update([byte ^ 0x5c]);
+    }
+    outer.update(inner_digest);
+    outer.finalize().to_vec()
 }
 
 /// One-shot CommonCrypto block cipher API.
@@ -209,12 +271,32 @@ fn xor_block(block: &mut [u8; AES_BLOCK_SIZE], chain: &[u8; AES_BLOCK_SIZE]) {
 pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(CC_MD5(_, _, _)),
     export_c_func!(CC_SHA1(_, _, _)),
+    export_c_func!(CCHmac(_, _, _, _, _, _)),
     export_c_func!(CCCrypt(_, _, _, _, _, _, _, _, _, _, _)),
 ];
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn cchmac_matches_rfc_2202_vectors() {
+        let key = [0x0b; 20];
+        assert_eq!(
+            cchmac::<Sha1>(&key, b"Hi There"),
+            [
+                0xb6, 0x17, 0x31, 0x86, 0x55, 0x05, 0x72, 0x64, 0xe2, 0x8b, 0xc0, 0xb6, 0xfb, 0x37,
+                0x8c, 0x8e, 0xf1, 0x46, 0xbe, 0x00,
+            ]
+        );
+        assert_eq!(
+            cchmac::<Md5>(&[0x0b; 16], b"Hi There"),
+            [
+                0x92, 0x94, 0x72, 0x7a, 0x36, 0x38, 0xbb, 0x1c, 0x13, 0xf4, 0x8e, 0xf8, 0x15, 0x8b,
+                0xfc, 0x9d,
+            ]
+        );
+    }
 
     #[test]
     fn cccrypt_aes128_ecb_matches_nist_vector() {
