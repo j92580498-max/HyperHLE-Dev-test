@@ -11,19 +11,18 @@
 - Runtime milestone: a Windows release build of this exact artifact clears
   KVC's `dictionaryWithValuesForKeys:`, custom `NSDictionary` subclass key
   enumeration, `NSAssertionHandler`, `NSException`, `NSMachPort`, input-port
-  registration, `dladdr`, `CCHmac`, and `NSData` formatting. It reaches the
-  game's Origin/ad-data setup, executes its offline download-failure handling,
-  and requests locale information, but does not yet show a stable screen or
-  gameplay loop.
+  registration, `dladdr`, `CCHmac`, `NSData` formatting, and RFC-2396 percent
+  escaping. It reaches the game's Origin/ad-data setup, executes its offline
+  download and tracking failure handling, and requests locale information, but
+  does not yet show a stable screen or gameplay loop.
 - Current implementation: reusable Foundation KVC/dictionary, data, assertion,
   exception, Mach-port, and run-loop behavior; CommonCrypto HMAC-SHA1/MD5;
   and a standard failed `dladdr` lookup. The exception and input-port fallbacks
   are explicitly bounded until Objective-C unwinding and generic port delivery
   are implemented.
-- Current frontier: `NSURL` percent encoding in `ns_string.rs` rejects a
-  character used by a later startup request. Expand that encoding model from
-  observed iPhone OS behavior, then rerun the same exact artifact before
-  changing any rating.
+- Current frontier: `allValues` is missing on tapHLE's concrete immutable
+  dictionary. Implement the same storage-backed behavior as `allKeys`, then
+  rerun the same exact artifact before changing any rating.
 - Checks passed: `cargo metadata --no-deps --format-version 1`,
   `cargo fmt --all -- --check`, `git diff --check`, and `cargo build --release`.
   The exact IPA was launched on Windows after the release build. `cargo test

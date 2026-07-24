@@ -6749,6 +6749,12 @@ int test_NSData_description() {
   return [[data description] isEqual:@"<0123ff>"] ? 0 : -1;
 }
 
+int test_NSString_percentEscapes() {
+  NSString *escaped = [@"a [b]\303\251"
+      stringByAddingPercentEscapesUsingEncoding:NSUTF8StringEncoding];
+  return [escaped isEqual:@"a%20%5Bb%5D%C3%A9"] ? 0 : -1;
+}
+
 // A concrete NSDictionary subclass only needs to supply the primitive
 // dictionary methods. allKeys is inherited from NSDictionary and builds its
 // result through the subclass's keyEnumerator.
@@ -7288,6 +7294,7 @@ struct {
     FUNC_DEF(test_NSRunLoop_addPort),
     FUNC_DEF(test_NSRunLoop_runMode),
     FUNC_DEF(test_NSData_description),
+    FUNC_DEF(test_NSString_percentEscapes),
     FUNC_DEF(test_NSDictionary_allKeys_forSubclass),
     FUNC_DEF(test_NSObject_setValue_nil),
     FUNC_DEF(test_NSObject_self),

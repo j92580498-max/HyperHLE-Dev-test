@@ -182,6 +182,9 @@ typedef enum {
   NSCaseInsensitiveSearch = 1,
 } NSStringCompareOptions;
 
+typedef NSUInteger NSStringEncoding;
+enum { NSASCIIStringEncoding = 1, NSUTF8StringEncoding = 4 };
+
 @interface NSString : NSObject
 + (instancetype)stringWithFormat:(NSString *)format, ...;
 + (instancetype)stringWithUTF8String:(const char *)string;
@@ -195,6 +198,7 @@ typedef enum {
                                              range:(NSRange)range;
 - (BOOL)isEqualToString:(NSString *)other;
 - (NSInteger)compare:(NSString *)other;
+- (NSString *)stringByAddingPercentEscapesUsingEncoding:(NSStringEncoding)encoding;
 @end
 @interface NSMutableString : NSString
 - (void)deleteCharactersInRange:(NSRange)range;
