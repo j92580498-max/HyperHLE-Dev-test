@@ -6702,6 +6702,8 @@ int test_NSMutableDictionary_dictionaryWithCapacity() {
     return -2;
   if (![[[dictionary keyEnumerator] nextObject] isEqual:@"key"])
     return -3;
+  if (![[[dictionary allValues] objectAtIndex:0] isEqual:@"value"])
+    return -4;
   return 0;
 }
 

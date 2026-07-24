@@ -766,6 +766,17 @@ pub const CLASSES: ClassExports = objc_classes! {
     all_keys_common(env, this)
 }
 
+- (id)allValues {
+    let host_obj: DictionaryHostObject = std::mem::take(env.objc.borrow_mut(this));
+    let values: Vec<id> = host_obj.map.values().flatten().map(|&(_key, value)| value).collect();
+    *env.objc.borrow_mut(this) = host_obj;
+    for &value in &values {
+        retain(env, value);
+    }
+    let values = ns_array::from_vec(env, values);
+    autorelease(env, values)
+}
+
 - (id)keyEnumerator {
     key_enumerator_common(env, this)
 }

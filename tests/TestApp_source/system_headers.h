@@ -151,6 +151,7 @@ static inline NSRange NSMakeRange(NSUInteger loc, NSUInteger len) {
 - (ObjectType)objectForKey:(KeyType)aKey;
 - (NSEnumerator *)keyEnumerator;
 - (NSArray<KeyType> *)allKeys;
+- (NSArray<ObjectType> *)allValues;
 - (BOOL)isEqualToDictionary:(NSDictionary *)otherDictionary;
 - (NSArray<KeyType> *)keysSortedByValueUsingSelector:(SEL)comparator;
 @end
