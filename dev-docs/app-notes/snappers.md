@@ -11,17 +11,18 @@
 - Availability check (2026-07-24): Apple’s US bundle-ID lookup returned no
   current listing for this exact build. This is a project-scope availability
   fact, not a legal conclusion.
-- Windows evidence on an uncommitted release build (2026-07-24): a fresh
-  launch reached the menu, tutorial, Level Select, and Level 1. Tapping the
-  Level 1 target reduced `Taps left` from 1 to 0 and displayed
-  `Completed! Score: 50`; the process remained active for at least eight
-  seconds after the tap.
+- Windows evidence on committed release build `169bf157` (2026-07-24): a
+  fresh launch reached the menu, tutorial, Level Select, and Level 1. Tapping
+  the Level 1 target reduced `Taps left` from 1 to 0 and displayed
+  `Completed! Score: 50`; the process remained active for at least ten seconds
+  after the tap.
 - Reusable paths added during that run: missing Objective-C method signature
   queries return `nil`; `ExtAudioFile` exposes file frame length; mutable
   strings and arrays implement the collection mutations the game uses;
   `NSValue` supports non-retained object wrappers; `NSURL` resolves a relative
   string against a base URL; and run-loop dispatch discards an unused object
   argument for zero-argument selectors.
-- Highest clean committed milestone: pending a rerun of the exact commit.
-- Next discriminator: rerun the verified artifact on the committed revision,
-  then submit the 3-star report and merge the reusable fixes to `trunk`.
+- Highest clean committed milestone: 3 stars on `169bf157`, pending database
+  publication and merge to `trunk`.
+- Next discriminator: submit the 3-star report, merge `169bf157` to `trunk`,
+  and push both the integration branch and this continuation branch.
