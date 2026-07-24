@@ -100,6 +100,12 @@ static inline NSRange NSMakeRange(NSUInteger loc, NSUInteger len) {
 - (BOOL)runMode:(id)mode beforeDate:(id)limitDate;
 @end
 
+// CoreTelephony
+
+@interface CTTelephonyNetworkInfo : NSObject
+- (id)subscriberCellularProvider;
+@end
+
 @class NSArray, NSEnumerator;
 
 @interface NSOperation : NSObject

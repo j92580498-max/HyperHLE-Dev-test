@@ -6745,6 +6745,14 @@ int test_NSRunLoop_runMode() {
              : 0;
 }
 
+// Hosts without a cellular radio must report the documented no-provider case.
+int test_CTTelephonyNetworkInfo_noCellularProvider() {
+  CTTelephonyNetworkInfo *info = [CTTelephonyNetworkInfo new];
+  int result = [info subscriberCellularProvider] == nil ? 0 : -1;
+  [info release];
+  return result;
+}
+
 int test_NSData_description() {
   const unsigned char bytes[] = {0x01, 0x23, 0xff};
   NSData *data = [NSData dataWithBytes:bytes length:sizeof(bytes)];
@@ -7295,6 +7303,7 @@ struct {
     FUNC_DEF(test_NSMachPort_port),
     FUNC_DEF(test_NSRunLoop_addPort),
     FUNC_DEF(test_NSRunLoop_runMode),
+    FUNC_DEF(test_CTTelephonyNetworkInfo_noCellularProvider),
     FUNC_DEF(test_NSData_description),
     FUNC_DEF(test_NSString_percentEscapes),
     FUNC_DEF(test_NSDictionary_allKeys_forSubclass),
