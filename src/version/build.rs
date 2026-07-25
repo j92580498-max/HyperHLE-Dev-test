@@ -63,7 +63,12 @@ fn rerun_if_tracked_file_changes(workspace_root: &Path) {
 
 pub fn main() {
     let out_dir = PathBuf::from(std::env::var("OUT_DIR").unwrap());
-    let package_root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    // Read CARGO_MANIFEST_DIR at run time, not via env!(): env!() bakes this
+    // worktree's absolute path into the build-script binary, which cargo may
+    // reuse from a since-deleted worktree. Cargo always sets it when running a
+    // build script.
+    let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap();
+    let package_root = Path::new(&manifest_dir);
     let workspace_root = package_root.join("../..");
 
     // Try to get the version using tapHLE's own tag namespace, otherwise fall

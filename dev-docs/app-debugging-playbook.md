@@ -153,9 +153,16 @@ only crash later when generated code loads through the unresolved slot.
 Rust and Cargo may retain absolute paths to an old worktree in `target` build
 metadata. If a diagnostic build unexpectedly names a deleted sibling checkout,
 do not recreate that sibling. Confirm the current repository and target path,
-then invalidate only the affected cached build scope or use the already proven
-release profile. Never treat a failure caused by stale build metadata or a
-missing optional debug dependency as an app compatibility result.
+then invalidate only the affected cached build scope. Never treat a failure
+caused by stale build metadata or a missing optional debug dependency as an app
+compatibility result. Prefer fixing such a reference at its source over working
+around it: a build script that locates files through `env!("CARGO_MANIFEST_DIR")`
+bakes the compiling worktree's absolute path into the build-script binary, which
+cargo can reuse from a since-deleted worktree; reading `CARGO_MANIFEST_DIR` at
+run time (`std::env::var`) is stale-proof because cargo sets it fresh per
+invocation. The native wrapper crates (`dynarmic`, `openal`) build their C/C++
+via CMake and need `cmake` on `PATH`; a from-scratch debug build of those crates
+will fail without it.
 
 When the fault is an assertion at an HLE graphics boundary, recover the exact
 guest API call and enum before relaxing it. Some old apps make invalid GL calls

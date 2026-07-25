@@ -27,7 +27,12 @@ fn link_framework(framework: &str) {
 fn main() {
     let os = env::var("CARGO_CFG_TARGET_OS").expect("CARGO_CFG_TARGET_OS was not set");
     if cfg!(feature = "static") {
-        let package_root = Path::new(env!("CARGO_MANIFEST_DIR"));
+        // Read CARGO_MANIFEST_DIR at run time, not via env!(): env!() bakes
+        // this worktree's absolute path into the build-script binary, which
+        // cargo may reuse from a since-deleted worktree. Cargo always sets it
+        // when running a build script.
+        let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap();
+        let package_root = Path::new(&manifest_dir);
         let workspace_root = package_root.join("../../..");
 
         let mut build = cmake::Config::new(workspace_root.join("vendor/openal-soft"));
@@ -39,6 +44,11 @@ fn main() {
             let _ = std::fs::remove_dir_all(&out_dir);
         }
         build.out_dir(out_dir);
+
+        // The vendored openal-soft declares an old `cmake_minimum_required`.
+        // CMake 4.x removed compatibility with policies older than 3.5, so tell
+        // it to configure anyway. This mirrors the dynarmic wrapper.
+        build.define("CMAKE_POLICY_VERSION_MINIMUM", "3.5");
 
         build.define("LIBTYPE", "STATIC");
 
