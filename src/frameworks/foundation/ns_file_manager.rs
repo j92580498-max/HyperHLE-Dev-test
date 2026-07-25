@@ -28,6 +28,8 @@ const NSUserDomainMask: NSSearchPathDomainMask = 1;
 pub const NSFileModificationDate: &str = "NSFileModificationDate";
 pub const NSFilePosixPermissions: &str = "NSFilePosixPermissions";
 pub const NSFileSize: &str = "NSFileSize";
+const NSFileOwnerAccountName: &str = "NSFileOwnerAccountName";
+const NSFileGroupOwnerAccountName: &str = "NSFileGroupOwnerAccountName";
 const NSFileSystemFreeSize: &str = "NSFileSystemFreeSize";
 const NSFileSystemSize: &str = "NSFileSystemSize";
 pub const NSFileType: &str = "NSFileType";
@@ -44,6 +46,14 @@ pub const CONSTANTS: ConstantExports = &[
         HostConstant::NSString(NSFilePosixPermissions),
     ),
     ("_NSFileSize", HostConstant::NSString(NSFileSize)),
+    (
+        "_NSFileOwnerAccountName",
+        HostConstant::NSString(NSFileOwnerAccountName),
+    ),
+    (
+        "_NSFileGroupOwnerAccountName",
+        HostConstant::NSString(NSFileGroupOwnerAccountName),
+    ),
     (
         "_NSFileSystemFreeSize",
         HostConstant::NSString(NSFileSystemFreeSize),
