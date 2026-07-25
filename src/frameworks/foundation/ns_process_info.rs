@@ -60,6 +60,11 @@ pub const CLASSES: ClassExports = objc_classes! {
     PHYSICAL_MEMORY.into()
 }
 
+- (i32)processIdentifier {
+    assert_process_info_singleton(env, this); // TODO
+    crate::libc::unistd::getpid(env)
+}
+
 - (id)environment {
     assert_process_info_singleton(env, this); // TODO
     msg_class![env; NSDictionary dictionary]

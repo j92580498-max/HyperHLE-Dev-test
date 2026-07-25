@@ -127,6 +127,26 @@ pub const CLASSES: ClassExports = objc_classes! {
     this
 }
 
+// Minimal key-value observing. Registration is accepted so apps that observe
+// optional/background state (e.g. social-SDK device status) do not crash, but
+// change notifications are not delivered: tapHLE does not swizzle setters for
+// automatic KVO, and manual willChange/didChange notifications are not modeled.
+- (())addObserver:(id)_observer
+       forKeyPath:(id)_key_path
+          options:(NSUInteger)_options
+          context:(MutVoidPtr)_context {
+    log_dbg!("TODO: ignoring KVO addObserver: on {:?}", this);
+}
+- (())removeObserver:(id)_observer
+          forKeyPath:(id)_key_path {
+    log_dbg!("TODO: ignoring KVO removeObserver: on {:?}", this);
+}
+- (())removeObserver:(id)_observer
+          forKeyPath:(id)_key_path
+             context:(MutVoidPtr)_context {
+    log_dbg!("TODO: ignoring KVO removeObserver:context: on {:?}", this);
+}
+
 // `self` is used by code generated for some Objective-C property accessors.
 // It is inherited by every NSObject subclass and simply returns the receiver.
 - (id)self {

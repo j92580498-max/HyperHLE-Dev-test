@@ -75,6 +75,37 @@ pub const CLASSES: ClassExports = objc_classes! {
    }
 }
 
++ (id)bundleWithIdentifier:(id)identifier { // NSString*
+    // We only model the main bundle. Return it when the requested identifier
+    // matches, otherwise nil — a separate framework or plugin bundle looked up
+    // by identifier is not available here.
+    let main_bundle: id = msg_class![env; NSBundle mainBundle];
+    let main_id: id = msg![env; main_bundle bundleIdentifier];
+    let matches: bool =
+        identifier != nil && main_id != nil && msg![env; identifier isEqualToString:main_id];
+    if matches {
+        main_bundle
+    } else {
+        nil
+    }
+}
+
++ (id)bundleWithPath:(id)path { // NSString*
+    // Model a bundle rooted at the given path. The iPhone OS bundle layout is
+    // flat, so resourcePath == bundlePath and resource lookups resolve relative
+    // to this path (see -resourcePath / -pathForResource:...).
+    retain(env, path);
+    let host_object = NSBundleHostObject {
+        bundle: None,
+        bundle_path: path,
+        bundle_identifier: nil,
+        bundle_url: None,
+        info_dictionary: None,
+    };
+    let new = env.objc.alloc_object(this, Box::new(host_object), &mut env.mem);
+    autorelease(env, new)
+}
+
 + (id)preferredLocalizationsFromArray:(id)localizations_array { // NSArray<NSString *> *
     let preferredLocalizations = CFBundleCopyPreferredLocalizationsFromArray(env, localizations_array);
     autorelease(env, preferredLocalizations)
