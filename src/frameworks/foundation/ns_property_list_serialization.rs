@@ -42,7 +42,6 @@ pub const CLASSES: ClassExports = objc_classes! {
                     format:(NSPropertyListFormat)format
                 errorDescription:(MutPtr<id>)error_string { // NSString **
     assert_eq!(format, NSPropertyListBinaryFormat_v1_0); // TODO
-    assert!(error_string.is_null()); // TODO
 
     let value = serialize_plist(env, plist);
     log_dbg!("dataFromPropertyList value {:?}", value);
@@ -52,7 +51,12 @@ pub const CLASSES: ClassExports = objc_classes! {
     log_dbg!("dataFromPropertyList buf len {}", len);
     let ptr = env.mem.alloc(len);
     env.mem.bytes_at_mut(ptr.cast(), len).copy_from_slice(&buf[..]);
-    msg_class![env; NSData dataWithBytesNoCopy:ptr length:len]
+    let data: id = msg_class![env; NSData dataWithBytesNoCopy:ptr length:len];
+    // Serialization succeeded, so clear the caller's error out-parameter.
+    if !error_string.is_null() {
+        env.mem.write(error_string, nil);
+    }
+    data
 }
 
 + (id)propertyListFromData:(id)data // NSData *
