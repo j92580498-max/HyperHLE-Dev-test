@@ -16,12 +16,14 @@
   current listing for this exact build. This is a project-scope availability
   fact, not a legal conclusion.
 
-## Highest milestone (dirty worktree, 2026-07-25)
+## Highest milestone (2026-07-25)
 
-The app boots to its **main menu** ("Warlords: Call to Arms v1.4" with Play /
-Instructions / Options / Credits over the title art) and stays alive
-indefinitely. Reached by a chain of small, general emulator additions (each was
-the exact next hard blocker, in order):
+The app boots to a **correct, unclipped landscape main menu** ("Warlords: Call
+to Arms v1.4" with Play / Instructions / Options / Credits over the title art)
+and stays alive indefinitely — a clean 2-star stable screen. It runs with
+`--landscape-native` (wired into `tapHLE_default_options.txt` for
+`greyhoundgames.warlordshdapp`). Reached by a chain of small, general emulator
+additions (each was the exact next hard blocker, in order):
 
 1. `objc_msgSendSuper2_stret` — struct-return super2 dispatch (the WIP that
    started this branch).
@@ -36,35 +38,33 @@ These are all reusable and graduate to `trunk`.
 
 ## Proven facts
 
-- Rendering path is EAGL (OpenGL). The captured submitted renderbuffer is
-  **768×1024** (iPad portrait), i.e. the CAEAGLLayer inherits the portrait
-  `UIScreen` bounds.
-- Warlords is a **landscape-native renderer**: it draws a 1024×768 landscape
-  scene (viewport 1024 wide) into that 768×1024 portrait renderbuffer, so the
-  raw buffer shows upright landscape art clipped on the right (1024→768) with a
-  ~256px empty band on the long axis. tapHLE then applies its presentation
-  rotation for `--landscape-left`, so on screen the menu appears rotated 90°
+- Rendering path is EAGL (OpenGL), fullscreen fast path. Warlords is a
+  **landscape-native renderer**: with the portrait-shaped screen it drew a
+  1024×768 scene into a 768×1024 renderbuffer (right edge clipped, ~256px band
+  on the long axis) and tapHLE then rotated it, so the menu came out sideways
   and cut off.
+- With `--landscape-native` the emulated screen is landscape (1024×768), so the
+  fullscreen EAGL layer/renderbuffer is 1024×768, the app draws into it 1:1, and
+  it is presented with identity rotation. Captured renderbuffer is now 1024×768
+  and the full menu renders correctly (title, both unit sprites, all four menu
+  items, corner icon).
+- Contrast with a portrait+rotation landscape game (Ricky): it presents a
+  480×320 Core Animation frame via composition and is unchanged by this option.
 
 ## Rejected hypotheses
 
-- "A different `--landscape-*` flag fixes the orientation." No — the clipping is
-  a renderbuffer-size mismatch (768 wide vs the app's 1024-wide viewport); no
-  presentation-side flag changes the drawable width.
+- "A different `--landscape-*` flag fixes it." No — the clip was a
+  renderbuffer-size mismatch (768 wide vs the app's 1024-wide viewport); it took
+  a landscape-shaped screen (`--landscape-native`), not a presentation-side flag.
+- "`--force-composition` fixes it." No — it changes the present path but not the
+  portrait drawable the app renders into, so the clip persists.
 
 ## Next discriminator
 
-The orientation/clipping is the frontier. tapHLE models landscape by keeping the
-EAGL layer at portrait `UIScreen` bounds and rotating at presentation, which
-assumes the guest draws portrait-native. Warlords instead relies on UIKit
-rotating its full-screen view via a transform so the view's (and thus the EAGL
-layer's) bounds are landscape 1024×768. tapHLE does not apply that view-transform
-rotation to EAGL layer bounds. The fix is to give a landscape-only app's
-full-screen EAGL layer landscape-native bounds and skip the presentation
-rotation for it (with matching touch-coordinate mapping) — a real orientation
-change to validate against known-good portrait-native games before landing.
-Only after a correctly-oriented, uncut menu renders should input be driven
-(Play → level/campaign select → a battle) toward a 3-star gameplay-loop result.
+Drive input from the menu toward a 3-star gameplay loop: tap **Play**, advance
+through any campaign/level select, and confirm a battle starts and persists.
+Touch coordinates are now in the 1024×768 landscape space with identity
+rotation. Verify the tap recipe and record it here before claiming 3 stars.
 
 ## Checks run (this session)
 
