@@ -11,8 +11,10 @@ use super::{CGFloat, CGPoint, CGRect, CGSize};
 use crate::dyld::{export_c_func, FunctionExports};
 use crate::font::Font;
 use crate::frameworks::core_foundation::cf_data::CFDataRef;
+use crate::frameworks::core_foundation::cf_string::CFStringRef;
 use crate::frameworks::core_foundation::{CFRelease, CFRetain, CFTypeRef};
 use crate::frameworks::core_graphics::cg_geometry::CGRectZero;
+use crate::frameworks::foundation::ns_string::to_rust_string;
 use crate::frameworks::foundation::unichar;
 use crate::mem::{ConstPtr, GuestUSize, MutPtr};
 use crate::objc::{id, msg, msg_class, objc_classes, ClassExports, HostObject};
@@ -37,6 +39,48 @@ pub const CLASSES: ClassExports = objc_classes! {
 @end
 
 };
+
+/// Pick a bundled font that best matches a requested PostScript/family name.
+///
+/// tapHLE ships only the Liberation family (plus a Japanese fallback), so an
+/// arbitrary installed-font name cannot be reproduced exactly. Real devices
+/// return NULL for a font that is not installed, but apps that ask for one by
+/// name generally expect a usable font back, so we substitute the closest
+/// bundled style rather than fail. The classification is by well-known name
+/// substrings; it is deliberately coarse.
+fn font_for_name(name: &str) -> Font {
+    let lower = name.to_ascii_lowercase();
+    let bold = lower.contains("bold") || lower.contains("black") || lower.contains("heavy");
+    let italic = lower.contains("italic") || lower.contains("oblique");
+    let mono = lower.contains("courier") || lower.contains("mono") || lower.contains("typewriter");
+    let serif = !mono
+        && (lower.contains("times")
+            || lower.contains("serif")
+            || lower.contains("georgia")
+            || lower.contains("papyrus"));
+    match (mono, serif, bold, italic) {
+        (true, _, true, true) => Font::mono_bold_italic(),
+        (true, _, true, false) => Font::mono_bold(),
+        (true, _, false, true) => Font::mono_italic(),
+        (true, _, false, false) => Font::mono_regular(),
+        (false, true, true, true) => Font::serif_bold_italic(),
+        (false, true, true, false) => Font::serif_bold(),
+        (false, true, false, true) => Font::serif_italic(),
+        (false, true, false, false) => Font::serif_regular(),
+        (false, false, true, true) => Font::sans_bold_italic(),
+        (false, false, true, false) => Font::sans_bold(),
+        (false, false, false, true) => Font::sans_italic(),
+        (false, false, false, false) => Font::sans_regular(),
+    }
+}
+
+fn CGFontCreateWithFontName(env: &mut Environment, name: CFStringRef) -> CGFontRef {
+    let name_str = to_rust_string(env, name).to_string();
+    let font = font_for_name(&name_str);
+    let host_obj = Box::new(CGFontHostObject { font });
+    let class = env.objc.get_known_class("_tapHLE_CGFont", &mut env.mem);
+    env.objc.alloc_object(class, host_obj, &mut env.mem)
+}
 
 fn CGFontCreateWithDataProvider(env: &mut Environment, provider: CGDataProviderRef) -> CGFontRef {
     let bytes = cg_data_provider::borrow_bytes(env, provider);
@@ -185,6 +229,7 @@ fn CGFontGetNumberOfGlyphs(env: &mut Environment, font: CGFontRef) -> GuestUSize
 }
 
 pub const FUNCTIONS: FunctionExports = &[
+    export_c_func!(CGFontCreateWithFontName(_)),
     export_c_func!(CGFontCreateWithDataProvider(_)),
     export_c_func!(CGFontRetain(_)),
     export_c_func!(CGFontRelease(_)),

@@ -568,15 +568,37 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 - (NSRange)rangeOfCharacterFromSet:(id)set { // NSCharacterSet *
     let length: NSUInteger = msg![env; this length];
-    let mut idx: NSUInteger = 0;
-    while idx < length {
+    let range = NSRange { location: 0, length };
+    msg![env; this rangeOfCharacterFromSet:set options:0u32 range:range]
+}
+
+- (NSRange)rangeOfCharacterFromSet:(id)set // NSCharacterSet *
+                          options:(NSStringCompareOptions)options
+                            range:(NSRange)search_range {
+    let length: NSUInteger = msg![env; this length];
+    let end = search_range.location.checked_add(search_range.length).unwrap();
+    assert!(end <= length);
+    // Character-set membership is unaffected by literal/case-insensitive flags;
+    // only NSBackwardsSearch changes behaviour, selecting the last match rather
+    // than the first. Scanning the whole range and keeping the last hit handles
+    // both directions.
+    let backwards = options & NSBackwardsSearch != 0;
+    let mut found: Option<NSUInteger> = None;
+    let mut idx = search_range.location;
+    while idx < end {
         let c: u16 = msg![env; this characterAtIndex:idx];
         if msg![env; set characterIsMember:c] {
-            return NSRange { location: idx, length: 1 };
+            found = Some(idx);
+            if !backwards {
+                break;
+            }
         }
         idx += 1;
     }
-    NSRange { location: NSNotFound as NSUInteger, length: 0 }
+    match found {
+        Some(i) => NSRange { location: i, length: 1 },
+        None => NSRange { location: NSNotFound as NSUInteger, length: 0 },
+    }
 }
 
 - (id)description {
