@@ -297,7 +297,23 @@ part of the compatibility test.
 
 Reuse a proven input recipe. Change one step at the frontier rather than
 inventing a new route on every launch. A successful click path is evidence and
-belongs in the app note.
+belongs in the app note as a **click map**: the ordered list of taps that
+navigates the app from launch to its current frontier. Record one for every app
+that needs more than a launch to reach its milestone, and keep it current as the
+frontier advances. A good click map lets the next agent (or a re-verification
+run) reproduce the milestone mechanically instead of re-discovering the route,
+and it makes a "did this regress?" check objective.
+
+Each click-map step records: the screen it starts on, the client-area tap
+coordinate, and the screen it leads to. Client coordinates are only meaningful
+against a stated **window size and orientation**, because tapHLE maps a client
+tap into app space through the viewport and rotation — a landscape-native
+1024×768 window, a portrait 768×1024 window, and a scaled window all map the same
+client point differently. So the header of a click map states the exact launch
+options (e.g. `--landscape-native`), the resulting window size, and the menu-load
+wait before the first tap. Prefer coordinates that hit the centre of a generous
+target so small layout differences do not miss. When a tap is timing-sensitive,
+note the wait after it.
 
 ### Capture the rendered frame when desktop capture is black
 
@@ -569,7 +585,8 @@ more than one focused turn. Keep it sanitized and concise:
 - Branch and last pushed commit:
 - Canonical artifact URL, filename, SHA-256, bundle ID/version:
 - Highest clean committed milestone:
-- Proven input recipe:
+- Click map (launch options, window size/orientation, menu-load wait, then the
+  ordered `screen -> client (x,y) -> resulting screen` taps):
 - Proven facts:
 - Rejected hypotheses:
 - Current uncommitted diagnostics or code:
@@ -577,6 +594,10 @@ more than one focused turn. Keep it sanitized and concise:
 - Known risks/regressions to watch:
 - Next discriminator or implementation step:
 ```
+
+The click map is the reproducible route from launch to the frontier; see "Reuse
+a proven input recipe" above for what each step records and why the window
+size/orientation header is required.
 
 Do not put app code, decompiled listings, assets, screenshots, raw logs, keys,
 or personal paths in the note. Exact public provenance, hashes, symbol names,
