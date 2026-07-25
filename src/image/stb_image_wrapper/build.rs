@@ -10,7 +10,14 @@ fn rerun_if_changed(path: &Path) {
 }
 
 fn main() {
-    let package_root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    // Read CARGO_MANIFEST_DIR at run time. env!() bakes this worktree's
+    // absolute path into the compiled build-script binary, which cargo can
+    // reuse from a since-deleted sibling worktree, leaving a dead path passed
+    // to the C/C++ compiler. Cargo always sets this variable when running a
+    // build script, so a runtime read is correct for whichever tree is
+    // building.
+    let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap();
+    let package_root = Path::new(&manifest_dir);
     let workspace_root = package_root.join("../../..");
 
     cc::Build::new()
