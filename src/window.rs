@@ -80,8 +80,17 @@ fn size_for_orientation(
     family: DeviceFamily,
     orientation: DeviceOrientation,
     scale_hack: NonZeroU32,
+    landscape_native: bool,
 ) -> (u32, u32) {
     let (width, height) = family.portrait_size();
+    // In landscape-native mode the device's natural (portrait) shape is itself
+    // landscape, so swap the base dimensions. The orientation is forced to
+    // Portrait in this mode, so no rotation is applied on top.
+    let (width, height) = if landscape_native {
+        (height, width)
+    } else {
+        (width, height)
+    };
     let scale_hack = scale_hack.get();
     match orientation {
         DeviceOrientation::Portrait => (width * scale_hack, height * scale_hack),
@@ -235,6 +244,9 @@ pub struct Window {
     splash_image: Option<Image>,
     device_family: DeviceFamily,
     device_orientation: DeviceOrientation,
+    /// See [crate::options::Options::landscape_native]. When set, the emulated
+    /// screen is landscape-shaped and [Self::rotation_matrix] is the identity.
+    landscape_native: bool,
     controller_ctx: sdl2::GameControllerSubsystem,
     controllers: Vec<sdl2::controller::GameController>,
     dpad_state: DpadState,
@@ -297,7 +309,15 @@ impl Window {
         // TODO: some apps specify their orientation in Info.plist, we could use
         // that here.
         let device_family = options.device_family.unwrap_or(DeviceFamily::iPhone);
-        let device_orientation = options.initial_orientation;
+        let landscape_native = options.landscape_native;
+        // In landscape-native mode the screen is already landscape-shaped, so
+        // the device is treated as being in its natural (Portrait/identity)
+        // orientation: no presentation rotation is applied on top of it.
+        let device_orientation = if landscape_native {
+            DeviceOrientation::Portrait
+        } else {
+            options.initial_orientation
+        };
         let fullscreen = options.fullscreen;
 
         let mut window = if Self::rotatable_fullscreen() {
@@ -322,8 +342,12 @@ impl Window {
                 .unwrap();
             window
         } else {
-            let (width, height) =
-                size_for_orientation(device_family, device_orientation, scale_hack);
+            let (width, height) = size_for_orientation(
+                device_family,
+                device_orientation,
+                scale_hack,
+                landscape_native,
+            );
             let window = video_ctx
                 .window(title, width, height)
                 .position_centered()
@@ -384,6 +408,7 @@ impl Window {
             splash_image: launch_image,
             device_family,
             device_orientation,
+            landscape_native,
             controller_ctx,
             controllers: Vec::new(),
             dpad_state: DpadState {
@@ -446,6 +471,7 @@ impl Window {
                     window.device_family,
                     window.device_orientation,
                     NonZeroU32::new(1).unwrap(),
+                    window.landscape_native,
                 );
                 (0, 0, width, height)
             } else {
@@ -1282,6 +1308,11 @@ impl Window {
     /// else, because the user can physically rotate the screen.
     pub fn rotate_device(&mut self, new_orientation: DeviceOrientation) {
         assert!(self.on_main_stack);
+        // A landscape-native screen has a fixed orientation; ignore rotation
+        // requests so the identity presentation is preserved.
+        if self.landscape_native {
+            return;
+        }
         if new_orientation == self.device_orientation {
             return;
         }
@@ -1291,7 +1322,12 @@ impl Window {
                 set_sdl2_orientation(new_orientation);
                 rotate_fullscreen_size(new_orientation, self.window.size())
             } else {
-                size_for_orientation(self.device_family, new_orientation, self.scale_hack)
+                size_for_orientation(
+                    self.device_family,
+                    new_orientation,
+                    self.scale_hack,
+                    self.landscape_native,
+                )
             };
 
             // macOS quirk: when resizing the window, the new framebuffer's size
@@ -1357,6 +1393,7 @@ impl Window {
             self.device_family,
             DeviceOrientation::Portrait,
             NonZeroU32::new(1).unwrap(),
+            self.landscape_native,
         )
     }
 
@@ -1366,8 +1403,12 @@ impl Window {
     /// The aspect ratio of this region always reflects the guest app's view of
     /// the world, but the scale and orientation might not.
     pub fn viewport(&self) -> (u32, u32, u32, u32) {
-        let (app_width, app_height) =
-            size_for_orientation(self.device_family, self.device_orientation, self.scale_hack);
+        let (app_width, app_height) = size_for_orientation(
+            self.device_family,
+            self.device_orientation,
+            self.scale_hack,
+            self.landscape_native,
+        );
         if !self.fullscreen && !Self::rotatable_fullscreen() {
             return (0, 0, app_width, app_height);
         }

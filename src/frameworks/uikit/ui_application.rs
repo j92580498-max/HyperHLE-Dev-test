@@ -180,7 +180,8 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (CGRect)statusBarFrame {
-    let (width, height) = env.window().device_family().portrait_size();
+    // Landscape-native mode reports a landscape-shaped screen.
+    let (width, height) = env.window().size_unrotated_unscaled();
     status_bar_frame(
         width as f32,
         height as f32,
