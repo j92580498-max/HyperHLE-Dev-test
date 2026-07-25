@@ -16,14 +16,28 @@
   current listing for this exact build. This is a project-scope availability
   fact, not a legal conclusion.
 
-## Highest milestone (2026-07-25)
+## Highest milestone (2026-07-25): 3-star gameplay loop
 
-The app boots to a **correct, unclipped landscape main menu** ("Warlords: Call
-to Arms v1.4" with Play / Instructions / Options / Credits over the title art)
-and stays alive indefinitely — a clean 2-star stable screen. It runs with
-`--landscape-native` (wired into `tapHLE_default_options.txt` for
-`greyhoundgames.warlordshdapp`). Reached by a chain of small, general emulator
-additions (each was the exact next hard blocker, in order):
+Driven by real foreground input, the app runs its full campaign loop into a
+live real-time battle: main menu -> Play -> Campaign -> "Choose Your Race" ->
+"Upgrade Army" -> the strategic (Risk-style) campaign map -> tap a territory ->
+attack-confirmation dialog -> the battle screen, where selecting a unit and
+touching a lane spawns it into combat. The battle renders and persists. This
+is a 3-star result (gameplay loop starts and persists).
+
+Two general fixes were needed past the 2-star menu (both graduate to trunk):
+`CGBitmapContextCreate` zero-`bytes_per_row` handling, and
+`+[NSPropertyListSerialization dataFromPropertyList:format:errorDescription:]`
+accepting a non-null error out-parameter.
+
+Proven input recipe (client coords, 1024x768 landscape-native window; ~15 s
+menu wait, then real foreground mouse taps): Play (95,418); Campaign (95,415);
+Start Campaign (870,745); Continue (910,745); territory "Vorth" (700,370);
+Attack (88,358); Play Now (380,602) to dismiss the tutorial; select spear unit
+(58,75); spawn on a lane (450,400).
+
+The 2-star menu milestone below still holds and is reached by this earlier
+chain of general emulator additions (each was the exact next hard blocker):
 
 1. `objc_msgSendSuper2_stret` — struct-return super2 dispatch (the WIP that
    started this branch).
@@ -61,10 +75,11 @@ These are all reusable and graduate to `trunk`.
 
 ## Next discriminator
 
-Drive input from the menu toward a 3-star gameplay loop: tap **Play**, advance
-through any campaign/level select, and confirm a battle starts and persists.
-Touch coordinates are now in the 1024×768 landscape space with identity
-rotation. Verify the tap recipe and record it here before claiming 3 stars.
+3 stars is reached. Beyond it is human-tested territory (4+): play a battle to
+a win/loss, confirm the strategic map updates and the campaign advances across
+multiple territories, and check audio and sustained input. An agent must not
+assign 4-5 stars. Watch for later blockers during a full battle (more units,
+projectiles, win/lose screens) and any audio-path TODOs.
 
 ## Checks run (this session)
 

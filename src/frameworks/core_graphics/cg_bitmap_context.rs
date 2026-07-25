@@ -59,18 +59,19 @@ pub fn CGBitmapContextCreate(
         _ => unimplemented!("support other color spaces"),
     };
 
-    let (data, data_is_owned, bytes_per_row) = if data.is_null() {
-        let bytes_per_row = if bytes_per_row == 0 {
-            width.checked_mul(component_count).unwrap()
-        } else {
-            bytes_per_row
-        };
+    // A zero bytes_per_row means "calculate it for me", regardless of whether
+    // the caller supplied the backing data or asked us to allocate it.
+    let bytes_per_row = if bytes_per_row == 0 {
+        width.checked_mul(component_count).unwrap()
+    } else {
+        bytes_per_row
+    };
+    let (data, data_is_owned) = if data.is_null() {
         let total_size = bytes_per_row.checked_mul(height).unwrap();
         let data = env.mem.alloc(total_size);
-        (data, true, bytes_per_row)
+        (data, true)
     } else {
-        assert!(bytes_per_row != 0);
-        (data, false, bytes_per_row)
+        (data, false)
     };
 
     let host_object = CGContextHostObject {
