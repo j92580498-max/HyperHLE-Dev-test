@@ -127,6 +127,17 @@ pub const CLASSES: ClassExports = objc_classes! {
     msg![env; this initWithBytes:bytes length:length]
 }
 
+- (id)subdataWithRange:(NSRange)range {
+    let loc = range.location;
+    let len = range.length;
+    let host_object = env.objc.borrow::<NSDataHostObject>(this);
+    let base = host_object.bytes;
+    let length = host_object.length;
+    assert!(loc.checked_add(len).unwrap() <= length);
+    let ptr: ConstVoidPtr = Ptr::from_bits(base.to_bits() + loc);
+    msg_class![env; NSData dataWithBytes:ptr length:len]
+}
+
 - (id)initWithContentsOfURL:(id)url { // NSURL *
     if msg![env; url isFileURL] {
         let ns_path: id = msg![env; url path];

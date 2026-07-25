@@ -241,4 +241,29 @@ const CONSTANTS: ConstantExports = &[
     // -[NSCalendar initWithCalendarIdentifier:]. Previously an unhandled
     // non-lazy symbol left null, so dereferencing it crashed.
     ("_NSGregorianCalendar", HostConstant::NSString("gregorian")),
+    // NSHTTPCookie property keys. Their values are the documented dictionary
+    // keys; apps (e.g. via networking SDKs) reference them, and an unhandled
+    // non-lazy symbol left null crashes on dereference.
+    ("_NSHTTPCookieName", HostConstant::NSString("Name")),
+    ("_NSHTTPCookieValue", HostConstant::NSString("Value")),
+    ("_NSHTTPCookieDomain", HostConstant::NSString("Domain")),
+    ("_NSHTTPCookiePath", HostConstant::NSString("Path")),
+    (
+        "_NSUnderlyingErrorKey",
+        HostConstant::NSString("NSUnderlyingError"),
+    ),
+    // Security framework keychain query keys. tapHLE has no keychain, so these
+    // only need non-null values; the documented CFString values are used so a
+    // query dictionary is at least self-consistent. A keychain lookup will find
+    // nothing, which callers treat as "no saved item".
+    ("_kSecReturnData", HostConstant::NSString("r_Data")),
+    (
+        "_kSecReturnAttributes",
+        HostConstant::NSString("r_Attributes"),
+    ),
+    (
+        "_kSecReturnPersistentRef",
+        HostConstant::NSString("r_PersistentRef"),
+    ),
+    ("_kSecValueData", HostConstant::NSString("v_Data")),
 ];

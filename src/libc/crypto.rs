@@ -13,6 +13,7 @@ use aes::{Aes128, Aes192, Aes256};
 use digest::Digest;
 use md5::Md5;
 use sha1::Sha1;
+use sha2::{Sha224, Sha256, Sha384, Sha512};
 
 type CCCryptorStatus = i32;
 
@@ -47,6 +48,35 @@ fn CC_SHA1(env: &mut Environment, data: ConstVoidPtr, len: u32, md: MutPtr<u8>) 
     hasher.update(env.mem.bytes_at(data.cast(), len));
     let digest = hasher.finalize();
     env.mem.bytes_at_mut(md, 20).copy_from_slice(&digest[..]);
+    md
+}
+
+/// Shared one-shot body for the CC_SHA2 family. `D` is the digest type and its
+/// output length determines how many bytes are written to `md`.
+fn cc_sha2<D: Digest>(env: &mut Environment, data: ConstVoidPtr, len: u32, md: MutPtr<u8>) {
+    let mut hasher = D::new();
+    hasher.update(env.mem.bytes_at(data.cast(), len));
+    let digest = hasher.finalize();
+    let out_len = digest.len() as u32;
+    env.mem
+        .bytes_at_mut(md, out_len)
+        .copy_from_slice(&digest[..]);
+}
+
+fn CC_SHA224(env: &mut Environment, data: ConstVoidPtr, len: u32, md: MutPtr<u8>) -> MutPtr<u8> {
+    cc_sha2::<Sha224>(env, data, len, md);
+    md
+}
+fn CC_SHA256(env: &mut Environment, data: ConstVoidPtr, len: u32, md: MutPtr<u8>) -> MutPtr<u8> {
+    cc_sha2::<Sha256>(env, data, len, md);
+    md
+}
+fn CC_SHA384(env: &mut Environment, data: ConstVoidPtr, len: u32, md: MutPtr<u8>) -> MutPtr<u8> {
+    cc_sha2::<Sha384>(env, data, len, md);
+    md
+}
+fn CC_SHA512(env: &mut Environment, data: ConstVoidPtr, len: u32, md: MutPtr<u8>) -> MutPtr<u8> {
+    cc_sha2::<Sha512>(env, data, len, md);
     md
 }
 
@@ -271,6 +301,10 @@ fn xor_block(block: &mut [u8; AES_BLOCK_SIZE], chain: &[u8; AES_BLOCK_SIZE]) {
 pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(CC_MD5(_, _, _)),
     export_c_func!(CC_SHA1(_, _, _)),
+    export_c_func!(CC_SHA224(_, _, _)),
+    export_c_func!(CC_SHA256(_, _, _)),
+    export_c_func!(CC_SHA384(_, _, _)),
+    export_c_func!(CC_SHA512(_, _, _)),
     export_c_func!(CCHmac(_, _, _, _, _, _)),
     export_c_func!(CCCrypt(_, _, _, _, _, _, _, _, _, _, _)),
 ];
