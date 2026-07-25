@@ -14,13 +14,16 @@ use crate::frameworks::foundation::ns_objc_runtime::NSStringFromClass;
 use crate::frameworks::foundation::ns_string::{from_rust_string, get_static_str, to_rust_string};
 use crate::frameworks::foundation::NSInteger;
 use crate::frameworks::uikit::ui_application::{
-    UIInterfaceOrientation, UIInterfaceOrientationPortrait,
+    UIInterfaceOrientation, UIInterfaceOrientationLandscapeLeft,
+    UIInterfaceOrientationLandscapeRight, UIInterfaceOrientationPortrait,
+    UIInterfaceOrientationPortraitUpsideDown,
 };
 use crate::frameworks::uikit::ui_view::set_view_controller;
 use crate::objc::{
     id, msg, msg_class, nil, objc_classes, release, retain, todo_objc_setter, Class, ClassExports,
     HostObject, NSZonePtr,
 };
+use crate::window::DeviceOrientation;
 use crate::Environment;
 
 pub mod ui_navigation_controller;
@@ -192,6 +195,18 @@ pub const CLASSES: ClassExports = objc_classes! {
     env.objc
         .borrow::<UIViewControllerHostObject>(this)
         .parent_view_controller
+}
+
+- (UIInterfaceOrientation)interfaceOrientation {
+    // We model a single screen, so a controller's interface orientation is the
+    // window's current orientation (the same value as
+    // -[UIApplication statusBarOrientation]).
+    match env.window().current_rotation() {
+        DeviceOrientation::Portrait => UIInterfaceOrientationPortrait,
+        DeviceOrientation::PortraitUpsideDown => UIInterfaceOrientationPortraitUpsideDown,
+        DeviceOrientation::LandscapeLeft => UIInterfaceOrientationLandscapeLeft,
+        DeviceOrientation::LandscapeRight => UIInterfaceOrientationLandscapeRight,
+    }
 }
 
 - (id)navigationController {
