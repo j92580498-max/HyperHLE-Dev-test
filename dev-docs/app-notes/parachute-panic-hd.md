@@ -34,26 +34,56 @@ Each was the exact next startup blocker; all are reusable beyond this game:
    `NSUnderlyingErrorKey`, and keychain keys `kSecReturnData/Attributes/`
    `PersistentRef`, `kSecValueData`.
 
-## Frontier: Scoreloop needs a Security/Keychain implementation
+## Frontier (2026-07-26): still no frame; parked as a poor value target
 
-Scoreloop builds a **Keychain query dictionary** and repeatedly derefs the next
-still-null `kSec*` constant at the same guest PC (`0xcb18e`, a `ldr r3,[r2]`
-after loading a null non-lazy symbol). Remaining unhandled at last run:
-`kSecMatchItemList`, `kSecMatchLimit`, `kSecMatchLimitOne`, and
-`kABPersonEmailProperty` (AddressBook). Adding the constants only advances to
-the next; once the query dict is complete the app will call
-`SecItemCopyMatching` / `SecItemAdd` etc., which tapHLE does not implement.
+The keychain frontier below is **cleared**. Startup now gets past Scoreloop's
+keychain query and several steps beyond it, but has still never drawn a frame.
+Work here is paused by agreement with the maintainer in favour of the other
+apps on the target list; everything found on the way is general and already on
+`trunk`.
 
-## Next discriminator
+### Cleared since the keychain frontier
 
-Implement enough Security framework for Scoreloop: the remaining `kSec*`
-constants (`kSecClass`, `kSecClassGenericPassword`, `kSecAttrService`,
-`kSecAttrAccount`, `kSecMatch*`, ...) and the `SecItem*` functions, returning a
-graceful "item not found" so the SDK proceeds offline. Then re-check the next
-blocker (likely more Scoreloop networking). Only after a frame renders should
-gameplay be driven. This is a self-contained Security/Keychain subsystem, a good
-scoped `feat/` if pursued; the reusable startup fixes above already graduate to
-trunk regardless.
+1. A real Security framework: the `kSec*` query constants plus working
+   `SecItemAdd` / `SecItemCopyMatching` / `SecItemUpdate` / `SecItemDelete`
+   over an in-memory generic-password store. (`744fa375`)
+2. `-[NSOperationQueue setSuspended:]` / `-isSuspended`, with a pending list so
+   operations added while suspended run in order on resume. (`744fa375`)
+3. `NSNumberFormatter`, which did not exist at all. (`aa10bf46`)
+
+### Why it is parked
+
+Scoreloop subclasses `NSNumberFormatter` as `CreditsFormatter` and configures
+it exhaustively. Each missing setter aborts the app, and each costs a full
+release rebuild to discover:
+
+`setCurrencyCode:` -> `setPositivePrefix:` -> `setMultiplier:` ->
+`setPaddingPosition:` -> `setMinusSign:` -> ...
+
+Enumerating the binary's `__objc_selrefs` up front (the technique that worked on
+Glass Tower 3) did **not** bound this: `setMinusSign:` is reached through a
+selector the sweep did not surface, so the real surface is larger than a static
+list of formatter-shaped names predicts. The remaining set is the
+`NSNumberFormatter` symbol properties — minus sign, plus sign, percent symbol,
+zero symbol, nil symbol, exponent symbol, and so on.
+
+That work is all shallow and mechanical, but it is a long tail, and behind it
+sit further Scoreloop subsystems (networking, the request queue) before
+anything renders. Six distinct subsystems have been implemented for this app so
+far and it has not reached a first frame, which is a poor return compared with
+apps that have not been tried at all.
+
+### If resumed, do this
+
+Implement the whole `NSNumberFormatter` symbol-property block in one pass —
+`minusSign`, `plusSign`, `percentSymbol`, `perMillSymbol`, `zeroSymbol`,
+`nilSymbol`, `notANumberSymbol`, `positiveInfinitySymbol`,
+`negativeInfinitySymbol`, `exponentSymbol`, `currencyGroupingSeparator`,
+`currencyDecimalSeparator`, `internationalCurrencySymbol` — as stored
+properties, several of which genuinely affect output and should be wired into
+`-stringFromNumber:` alongside the affixes already there. Only then resume the
+crash-to-crash loop, and re-assess after the *next* subsystem boundary rather
+than continuing indefinitely.
 
 ## Checks run
 
