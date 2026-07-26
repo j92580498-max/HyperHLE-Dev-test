@@ -47,8 +47,39 @@ struct UIViewControllerHostObject {
     /// The full-screen view controller presented by this controller. Retained.
     /// `UIViewController*`
     modal_view_controller: id,
+    /// Whether `viewDidLoad` has already been sent for the current view.
+    /// UIKit sends it exactly once each time the view is loaded, whichever
+    /// route loaded it; see [send_view_did_load_if_needed].
+    view_did_load_sent: bool,
 }
 impl HostObject for UIViewControllerHostObject {}
+
+/// Send `viewDidLoad` to `controller` if its view is loaded and it has not
+/// been sent already.
+///
+/// A view controller's view has two routes into existence, and `viewDidLoad`
+/// belongs to both. The programmatic route is `-loadView`, driven lazily by
+/// `-view`. The other route is unarchiving from a nib that already carries the
+/// controller's view, where `-initWithCoder:` connects the view directly and
+/// `-loadView` never runs. Sending `viewDidLoad` only from the first route
+/// leaves nib-instantiated controllers without it, which silently skips
+/// whatever setup the app put there — a real app used it to compute the
+/// screen-to-engine coordinate mapping for touches, so every tap landed at the
+/// origin.
+///
+/// The caller is responsible for choosing the moment: for the nib route this
+/// must be after outlet connection and `awakeFromNib`, so the handler sees a
+/// fully connected controller.
+pub fn send_view_did_load_if_needed(env: &mut Environment, controller: id) {
+    let host_object = env
+        .objc
+        .borrow_mut::<UIViewControllerHostObject>(controller);
+    if host_object.view_did_load_sent || host_object.view == nil {
+        return;
+    }
+    host_object.view_did_load_sent = true;
+    () = msg![env; controller viewDidLoad];
+}
 
 type UIModalTransitionStyle = NSInteger;
 
@@ -93,6 +124,7 @@ pub const CLASSES: ClassExports = objc_classes! {
         bundle,
         parent_view_controller: _,
         modal_view_controller,
+        view_did_load_sent: _,
     } = env.objc.borrow(this);
 
     if modal_view_controller != nil {
@@ -169,6 +201,11 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 - (())setView:(id)new_view { // UIView*
     let host_obj = env.objc.borrow_mut::<UIViewControllerHostObject>(this);
+    if new_view == nil {
+        // The view was unloaded. UIKit sends viewDidLoad again the next time
+        // it is loaded, so arm it again rather than suppressing it forever.
+        host_obj.view_did_load_sent = false;
+    }
     let old_view = std::mem::replace(&mut host_obj.view, new_view);
     if old_view != nil {
         set_view_controller(env, old_view, nil);
@@ -183,12 +220,12 @@ pub const CLASSES: ClassExports = objc_classes! {
     let view = env.objc.borrow_mut::<UIViewControllerHostObject>(this).view;
     if view == nil {
         () = msg![env; this loadView];
-        let view = env.objc.borrow_mut::<UIViewControllerHostObject>(this).view;
-        () = msg![env; this viewDidLoad];
-        view
-    } else {
-        view
     }
+    // A nib-instantiated controller already has its view here, but may not
+    // have been sent viewDidLoad yet if nothing has asked for the view since
+    // the nib was loaded.
+    send_view_did_load_if_needed(env, this);
+    env.objc.borrow_mut::<UIViewControllerHostObject>(this).view
 }
 
 - (id)parentViewController {

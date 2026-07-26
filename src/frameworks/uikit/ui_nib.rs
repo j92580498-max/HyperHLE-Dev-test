@@ -12,6 +12,7 @@
 use crate::frameworks::foundation::ns_string::{get_static_str, to_rust_string};
 use crate::frameworks::foundation::{ns_string, NSUInteger};
 use crate::frameworks::uikit::ui_view::ui_control::UIControlEvents;
+use crate::frameworks::uikit::ui_view_controller;
 use crate::fs::GuestPathBuf;
 use crate::mem::ConstVoidPtr;
 use crate::objc::{
@@ -413,6 +414,23 @@ fn load_nib_file(env: &mut Environment, ui_nib: id, path: GuestPathBuf) -> Resul
             break;
         }
         () = msg![env; next awakeFromNib];
+    }
+
+    // A view controller unarchived from a nib gets its view from the nib
+    // rather than from -loadView, so nothing has sent it viewDidLoad yet.
+    // Send it now: the outlets are connected and awakeFromNib has run, so the
+    // controller is as complete as UIKit makes it before viewDidLoad.
+    let view_controller_class = env.objc.get_known_class("UIViewController", &mut env.mem);
+    let enumerator: id = msg![env; objects objectEnumerator];
+    loop {
+        let next: id = msg![env; enumerator nextObject];
+        if next == nil {
+            break;
+        }
+        let class: Class = msg![env; next class];
+        if env.objc.class_is_subclass_of(class, view_controller_class) {
+            ui_view_controller::send_view_did_load_if_needed(env, next);
+        }
     }
 
     // Make visible windows visible
