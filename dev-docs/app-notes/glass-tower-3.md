@@ -9,68 +9,109 @@
   - SHA-256: `123514a494fa81448264b56f128b8dd18eaf2e61594cf73a966b484c9a99e645`
 - Embedded identity (`tapHLE --info`): display name `GlassTower3`, bundle
   `com.idevua.glasstower3`, version `2.0.1`, minimum OS `4.0`, iPhone + iPad.
-- Options: none tried yet beyond the default.
-- tapHLEdb: no report yet. **Not rated** — it does not reach a stable screen.
+- Options: none. Window is 320x480 portrait.
+- tapHLEdb: App 12, version 12, report 20 (2026-07-26, tapHLE `1db8dcea`,
+  ★★★☆☆).
 
-## Current state: does not launch (below 2 stars)
+## Highest milestone: 3-star (In game), tapHLE `1db8dcea`
 
-On `a91876fa` the app still aborts during startup, but much later than before.
-Nothing has been rated, and no report has been submitted.
+Reproduced from a clean committed release build (window title
+`GlassTower3 (tapHLE 1db8dcea)`, no `-dirty`) against the hash-verified bytes.
 
-This is the first app in this series that needs the **iOS 4** API surface
-rather than the iPhone OS 3 one, which is why it hits so much missing ground.
+Main menu -> SELECT LEVEL (a 20-tile grid with a total-score and stars header)
+-> level 1. In level 1 the tower renders with the Lives/Score HUD, tapping a
+block removes it, the physics runs, score popups (`+20`, `-20`) and shatter
+particles appear, and later levels' furniture — chains, magnets, hazard-striped
+blocks — draws correctly. The rising-bonus tutorial overlay appears and the
+game keeps running behind it.
 
-## Startup failures cleared so far
+### Click map
 
-Each was a general emulator gap, each is fixed on `trunk`, and each moved the
-abort strictly later. In the order they were hit:
+No launch options; window 320x480 portrait; wait ~18 s for the title menu.
 
-1. `-[CALayer setMasksToBounds:]` — absent. (`b2023dfa`)
-2. `-[CALayer setBorderWidth:]` / `setBorderColor:` — absent. (`b2023dfa`)
-3. `-[UILabel setAdjustsFontSizeToFitWidth:]` — was `assert!(!adjusts)`, so any
-   app setting it aborted. Now implemented as real shrink-to-fit, with
+1. Title menu -> `(160, 130)` PLAY -> SELECT LEVEL.
+2. SELECT LEVEL -> `(58, 118)` level tile 1 -> level 1 gameplay.
+3. Level 1 -> `(118, 155)`, `(110, 240)`, `(160, 300)` blocks -> removed, with
+   physics, particles and score changes.
+
+Levels are randomly generated, so the exact tower differs per run; tap any
+block rather than expecting a fixed layout.
+
+## What was wrong
+
+This is the first app in this series needing the **iOS 4** API surface rather
+than iPhone OS 3, so it uncovered a long chain of gaps. Every one was general;
+none needed an app-specific workaround. In the order they were hit:
+
+1. `-[CALayer setMasksToBounds:]`, `setBorderWidth:`, `setBorderColor:` — all
+   absent. Stored and read back; the compositor still neither clips nor
+   strokes, which was already a TODO there. (`b2023dfa`)
+2. `-[UILabel setAdjustsFontSizeToFitWidth:]` was `assert!(!adjusts)`, so any
+   app setting it aborted. Implemented as real shrink-to-fit, with
    `-[UIFont fontWithSize:]` added to support it. (`b2023dfa`)
-4. `ADBannerView` — the whole iAd framework was missing. Added as a banner that
-   never fills and says so through the delegate. (`b2023dfa`)
-5. `+[UIView animateWithDuration:animations:completion:]` — the iOS 4
-   block-based animation API was missing. Added on top of the existing
-   begin/commit machinery, with the completion block delivered when the
-   animation actually stops. (`b2023dfa`)
-6. `NSClassFromString(@"GKLeaderboardViewController")` panicked instead of
-   returning nil. The app is *probing* for Game Center, which is exactly what
-   the function is for. (`69d3915c`)
+3. `ADBannerView` — the iAd framework was missing entirely. Added as a banner
+   that never fills and reports that through the delegate. (`b2023dfa`)
+4. `+[UIView animateWithDuration:animations:completion:]` — the iOS 4
+   block-based animation API was missing. (`b2023dfa`)
+5. `NSClassFromString(@"GKLeaderboardViewController")` panicked instead of
+   returning nil. (`69d3915c`)
+6. The completion block above was **retained rather than copied**. See below.
+   (`72f36741`)
+7. `-[NSArray pathsMatchingExtensions:]` and `srandomdev()` — absent.
+   (`72f36741`)
+8. `glEnableClientState(GL_POINT_SIZE_ARRAY_OES)` asserted instead of
+   reporting `GL_INVALID_ENUM`. (`3b6a663c`)
+9. `glPointSizePointerOES` was not exported at all. (`dc1f8a03`)
 
-Note on 6: `GKLeaderboardViewController` is **not** an undefined class symbol in
-the binary — the app resolves it by name at run time. So this is genuine
-feature detection, not a link-time dependency, and returning nil is the answer
-the app is written to handle. Do not "fix" this by implementing the class.
+### The one worth remembering: stack blocks must be copied
 
-## Current frontier
-
-Startup now reaches guest code and dies there:
+Item 6 was a bug introduced by item 4, and it is the trap the debugging
+playbook warns about. Clang passes `+animateWithDuration:...:completion:` a
+**stack** block literal, valid only while that call is on the stack. The
+completion object outlives it by design — the block runs when the animation
+stops, from the run loop. Retaining it left the block's invoke pointer aimed at
+a dead frame, and the failure appeared far away as:
 
 ```text
-Error during CPU execution: MemoryError
+Attempted null-page access at 0x0 (0x4 bytes)   PC: 0x00000004  LR: 0x3000a000
 ```
 
-That is a guest memory fault, not a missing selector, so the next step is a
-different kind of work from the six above. Per the debugging playbook: resolve
-the faulting PC to its owning image, read the register dump, and disassemble
-around that address before designing anything. The registers and stack trace
-are already printed automatically before the panic.
+with a stack trace that named only a host function. Nothing pointed at the
+animation code. What identified it was a `TAPHLE_TRACE_SELECTORS=all` run: the
+last two traced messages before the fault were
+`_tapHLE_UIView_BlockCompletion tapHLE_animationDidStop:finished:context:` and
+`NSNumber boolValue`, i.e. the fault was on the very next thing that method
+did — invoke the block. The Blocks ABI requires `-copy`, which promotes the
+literal to the heap.
 
-## Useful facts already established
+Note this also means `LR` in the `0x3000a...` range was a red herring: it looked
+like libgcc's unwinder, which suggested a missing `___objc_personality_v0` (that
+symbol *is* genuinely unresolved at startup). It was not the cause. Do not chase
+that warning.
 
-- External class references (undefined `_OBJC_CLASS_$_*` symbols) are all
-  classes tapHLE already has: Foundation, UIKit, StoreKit, AVFoundation,
-  OpenGLES, plus `ADBannerView`. So there is no second missing framework
-  waiting behind the current fault — anything else is resolved by name.
-- Layer-related selectors the app uses: `setMasksToBounds:`, `setBorderWidth:`,
-  `setBorderColor:`, `setCornerRadius:`, `setBounds:`, `setPosition:`,
-  `setHidden:`, and UIView's `setClipsToBounds:`. All are now implemented,
-  though the compositor still neither clips nor strokes borders.
-- The app uses StoreKit (`SKPaymentQueue`, `SKProductsRequest`), so a purchase
-  path may appear later; the free level pack should not need it.
+### Diagnostics that paid for themselves
+
+Item 8's fix logged the offending enum once instead of asserting, and the very
+next run printed `glEnableClientState(0x8b9c)` — confirming the
+`GL_POINT_SIZE_ARRAY_OES` guess already sitting in a TODO next to the `ARRAYS`
+table, and leading straight to item 9.
+
+## Known limitations at this rating
+
+- Only level 1 was played, for a handful of blocks. Whether a level can be
+  *completed*, whether the level advances, and what losing all three lives does
+  are unknown.
+- Point sprites are drawn at a uniform `glPointSize` because
+  `GL_POINT_SIZE_ARRAY_OES` is not modelled, so particle sizes are wrong. It is
+  not visually obvious at this zoom but it is a real inaccuracy.
+- OPTIONS, HELP, USER LEVELS, the shop (`$`) and Game Center were never opened.
+  StoreKit classes are referenced, so a purchase path may appear there.
+- `___objc_personality_v0` is an unresolved non-lazy symbol at startup. Nothing
+  has been observed to depend on it, but an app that actually throws an
+  Objective-C exception would presumably fail in the unwinder.
+- Audio was not measured.
+- `CALayer` masksToBounds and borders are stored but not honoured when
+  compositing.
 
 ## Checks run
 
@@ -78,13 +119,11 @@ are already printed automatically before the panic.
 - `cargo test --workspace --lib` (91 passed)
 - `cargo build --release`
 - Regression sweep on Windows over Baby Monkey, Fantastic Mr. Fox, Flight
-  Control HD, Percy Jackson, Ricky, SPY mouse HD, Snappers, Warlords HD and
-  Glass Tower 2: all still reach their expected screens.
+  Control HD, Percy Jackson, Ricky, SPY mouse HD, Snappers and Warlords HD: all
+  still reach their expected screens, five with byte-identical frames.
 
 ## Next discriminator
 
-Resolve the `MemoryError` fault: take the printed PC, subtract the image base,
-and disassemble that address in the extracted `GlassTower3` binary to identify
-the owning function. Decide from the faulting operands whether this is a
-missing non-lazy data import (the playbook's `___stack_chk_guard` pattern), an
-uninitialised C++ container, or a genuine HLE bug.
+Complete level 1 and see whether the game advances to level 2, and what the
+inter-level screen shows. That is the boundary between this rating and a 4-star
+human test.
