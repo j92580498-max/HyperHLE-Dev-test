@@ -47,6 +47,7 @@ pub mod sysctl;
 pub mod time;
 pub mod unistd;
 pub mod wchar;
+pub mod zlib;
 
 pub const DYLIB: crate::dyld::HostDylib = crate::dyld::HostDylib {
     path: "/usr/lib/libSystem.B.dylib",
@@ -105,6 +106,7 @@ pub const DYLIB: crate::dyld::HostDylib = crate::dyld::HostDylib {
         signal::FUNCTIONS,
         stack_protector::FUNCTIONS,
         stdio::FUNCTIONS,
+        zlib::FUNCTIONS,
         stdio::printf::FUNCTIONS,
         stdlib::FUNCTIONS,
         stdlib::qsort::FUNCTIONS,
@@ -138,6 +140,7 @@ pub struct State {
     stdlib: stdlib::State,
     string: string::State,
     pub stdio: stdio::State,
+    pub zlib: zlib::State,
     time: time::State,
     errno: errno::State,
     clocale: clocale::State,
