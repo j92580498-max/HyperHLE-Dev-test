@@ -27,6 +27,7 @@ use crate::mem::{guest_size_of, ConstPtr, MutPtr, MutVoidPtr, Ptr, SafeRead};
 use crate::objc::classes::InitializationStatus;
 use crate::Environment;
 use std::any::TypeId;
+use std::sync::LazyLock;
 
 /// Call an Objective-C++ lifecycle method on one exact class implementation.
 /// Normal message dispatch is deliberately bypassed because every class-local
@@ -302,6 +303,50 @@ fn maybe_initialize_class(env: &mut Environment, receiver: id) {
 /// Similarly, the return value of `objc_msgSend` is whatever value is returned
 /// by the method implementation. We are relying on CallFromGuest not
 /// overwriting it.
+/// Name of an environment variable holding a comma-separated list of selector
+/// names to trace, e.g. `touchesBegan:withEvent:,setAppMode:`.
+///
+/// Every matching dispatch logs the receiving class and the selector. This is a
+/// bounded alternative to enabling `log_dbg` for this module, which logs every
+/// message send and is far too noisy to use on a running game. The special
+/// value `all` traces everything, which is only useful for a very short window.
+pub const TRACE_SELECTORS_ENV_VAR: &str = "TAPHLE_TRACE_SELECTORS";
+
+/// Log a dispatch when its selector was named in [TRACE_SELECTORS_ENV_VAR].
+fn trace_selector(env: &mut Environment, receiver: id, selector: SEL, super2: Option<Class>) {
+    static TRACED: LazyLock<Vec<String>> = LazyLock::new(|| {
+        std::env::var(TRACE_SELECTORS_ENV_VAR)
+            .unwrap_or_default()
+            .split(',')
+            .map(|entry| entry.trim().to_string())
+            .filter(|entry| !entry.is_empty())
+            .collect()
+    });
+    if TRACED.is_empty() {
+        return;
+    }
+
+    let selector_str = selector.as_str(&env.mem);
+    if !TRACED.iter().any(|t| t == "all" || t == selector_str) {
+        return;
+    }
+    let selector_str = selector_str.to_string();
+
+    // Name the receiver by class where possible. A nil receiver and a freed
+    // object both have no readable class, and both are worth seeing: they are
+    // the usual reason a traced message appears to do nothing.
+    let class_name = if receiver == nil {
+        "nil".to_string()
+    } else {
+        let class = super2.unwrap_or_else(|| ObjC::read_isa(receiver, &env.mem));
+        match env.objc.try_get_class_name(class) {
+            Some(name) => name.to_string(),
+            None => "<no class>".to_string(),
+        }
+    };
+    log!("trace: [{} ({:?}) {}]", class_name, receiver, selector_str);
+}
+
 #[allow(non_snake_case)]
 fn objc_msgSend_inner(
     env: &mut Environment,
@@ -316,6 +361,7 @@ fn objc_msgSend_inner(
         selector.as_str(&env.mem),
         receiver
     );
+    trace_selector(env, receiver, selector, super2);
     let message_type_info = env.objc.message_type_info.take();
 
     if receiver == nil {
