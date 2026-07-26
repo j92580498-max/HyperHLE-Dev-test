@@ -130,6 +130,35 @@ A copied filename is not identity.
 Do not duplicate IPAs between run directories. Keep them outside Git and pass
 their absolute path to tapHLE.
 
+## Check the binary is decrypted before blaming the emulator
+
+An App Store binary ships FairPlay-encrypted. A dump obtained without
+decryption still has `LC_ENCRYPTION_INFO` with `cryptid = 1`, and its `__TEXT`
+is ciphertext. tapHLE will load such a slice happily and then execute garbage.
+
+The signature is distinctive and easy to misread as an emulator bug: the last
+line logged is `Loading <arch> slice for "<app>"`, and then the process dies or
+hangs with **no Rust panic**, no register dump, and nothing on stderr even with
+`RUST_BACKTRACE=1`. There is no missing selector to chase, because no guest code
+has meaningfully run.
+
+Check `cryptid` before investigating any load-time failure of that shape. From
+the IPA, without extracting anything to disk:
+
+```python
+import zipfile, struct
+d = zipfile.ZipFile(ipa).read(exe_member)
+# walk the fat header if magic is 0xcafebabe, then per slice walk the load
+# commands and look for LC_ENCRYPTION_INFO (0x21) / _64 (0x2C); the cryptid is
+# the u32 at offset 16 in that command.
+```
+
+`cryptid = 1` means the artifact cannot be tested, whatever the emulator does.
+That is a fact about the file, not a compatibility result: record it as the
+reason the app is untestable and move on, rather than filing it as an emulator
+limitation. Two apps in one session (JungleZuma, Max Adventure Free) were
+misdiagnosed as a shared Mach-O loader bug before this was checked.
+
 ## Follow an evidence ladder
 
 Use the lowest-cost layer that can answer the current question:

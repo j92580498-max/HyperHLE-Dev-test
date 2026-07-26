@@ -12,43 +12,31 @@
   iPad. The Archive item is named only `app-id-233`, so `--info` is the only
   source of this app's identity.
 - tapHLEdb: App 27, version 27, report 35 (2026-07-26, tapHLE `afcc4cf5`,
-  ★☆☆☆☆).
+  1 star). See the caveat below on how to read that rating.
 
-## Current state: 1-star, dies during load
+## This artifact is encrypted and cannot be tested
 
-The last line logged is:
+**Both slices have `cryptid = 1`.** The binary is still FairPlay-encrypted, so
+tapHLE loads a slice and then executes ciphertext. The observed behaviour — the
+last log line is `Loading armv7 slice for "MaxAdventureFree"`, then the process
+dies with no Rust panic, no register dump and nothing on stderr under
+`RUST_BACKTRACE=1` — is exactly what that produces.
 
-```text
-tapHLE::mach_o: Loading armv7 slice for "MaxAdventureFree"
-```
+**Report 35's 1-star rating describes an untestable artifact, not a tapHLE
+limitation.** Nothing about this app has actually been evaluated.
 
-and then the process dies. There is **no Rust panic message**, on stderr or in
-`tapHLE_log.txt`, with `RUST_BACKTRACE=1` set. Under the visible harness the
-window that appears is tapHLE's own "tapHLE crashed!" message box.
+### A hypothesis this refuted
 
-## This is the same signature as JungleZuma
+Before checking `cryptid`, this app and JungleZuma were recorded as sharing one
+Mach-O/dyld loader bug, on the reasoning that two unrelated apps failing at the
+same point with the same absent panic was unlikely to be coincidence. That was
+wrong: both are simply encrypted. The shared signature was real, the shared
+cause was not the loader.
 
-`jungle-zuma.md` records an app that also stops right at Mach-O load with no
-panic. Two different apps, from different publishers, failing at the same point
-with the same absence of a Rust panic, is much more likely to be **one bug in
-the Mach-O/dyld load path** than two coincidences.
+The durable lesson is now in `dev-docs/app-debugging-playbook.md` under
+"Check the binary is decrypted before blaming the emulator".
 
-Treat them as a single investigation. Fixing it would move two list entries at
-once, which makes it better value than either app alone.
+## Next step
 
-## What distinguishes it from an ordinary panic
-
-An ordinary tapHLE failure prints a panic line and usually a guest register
-dump. Neither appears here, so this is not a Rust `panic!`/`unwrap` — it is
-either a native fault (segmentation fault, stack overflow) inside the loader, or
-an abort that bypasses the panic hook. JungleZuma additionally *hangs* rather
-than exiting when run in the foreground, which is consistent with an infinite
-loop that eventually exhausts the stack.
-
-## Next discriminator
-
-Run one of the two under a debugger, or add a bounded iteration guard and a
-`log_dbg!` per load command in `src/mach_o.rs`, and see which command it stops
-on. That single observation should explain both apps. Do not add speculative
-Objective-C surface for either of them until this is understood: nothing in
-either app has run yet, so no missing selector can be the cause.
+Obtain a decrypted copy, or drop this app as a target. No emulator work is
+worth doing against these bytes.

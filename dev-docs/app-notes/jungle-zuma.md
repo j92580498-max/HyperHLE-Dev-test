@@ -14,7 +14,20 @@
   artwork, but `UIDeviceFamily` says iPhone, so tapHLE picks a 320x480 screen.
 - tapHLEdb: no report. **Not rated** — it never reaches a screen.
 
-## Current state: hangs during app loading
+## CORRECTION: the artifact is encrypted, so it cannot be tested
+
+**`cryptid = 1`.** This IPA's `__TEXT` is still FairPlay-encrypted, so tapHLE
+loads the slice and then executes ciphertext. Everything below was written
+before that was checked and treats the failure as an emulator bug; it is not.
+
+The `LeeroyJenkins` marker noted below shows a cracking tool ran, but it did not
+decrypt the binary. Report 24 (1 star) therefore describes an untestable
+artifact rather than a tapHLE limitation, and should be read that way.
+
+To make progress, a **decrypted** copy of this app is needed. Do not
+investigate the loader for this app.
+
+## Original (superseded) analysis: hangs during app loading
 
 On tapHLE `2c3c2dcf` the process starts, prints the bundle info, creates the
 GLES1-on-GL2 context, logs the driver, and then **hangs indefinitely**. Run
