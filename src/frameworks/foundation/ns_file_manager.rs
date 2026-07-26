@@ -79,9 +79,23 @@ fn NSSearchPathForDirectoriesInDomains(
     domain_mask: NSSearchPathDomainMask,
     expand_tilde: bool,
 ) -> id {
-    // TODO: other cases not implemented
-    assert!(domain_mask == NSUserDomainMask);
     assert!(expand_tilde);
+
+    // An iPhone OS app is confined to its sandbox, so the user domain is the
+    // only one with directories it can use. A caller asking for another domain
+    // gets an empty array, which is the documented answer for "no such
+    // directory exists" and what a sandboxed app already has to handle. It is
+    // also common for a caller to pass NSAllDomainsMask and simply take the
+    // first entry, so the user domain is still served when it is included.
+    if domain_mask & NSUserDomainMask == 0 {
+        log_dbg!(
+            "NSSearchPathForDirectoriesInDomains({}, {:#x}) excludes the user domain, returning an empty array",
+            directory,
+            domain_mask
+        );
+        let empty = ns_array::from_vec(env, Vec::new());
+        return autorelease(env, empty);
+    }
 
     let dir = match directory {
         NSApplicationDirectory => {

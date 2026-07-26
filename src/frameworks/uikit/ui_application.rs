@@ -23,6 +23,7 @@ pub struct State {
     /// [UIApplication sharedApplication]
     shared_application: Option<id>,
     pub(super) status_bar_hidden: bool,
+    pub(super) network_activity_indicator_visible: bool,
 }
 
 struct UIApplicationHostObject {
@@ -163,6 +164,17 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 - (())setStatusBarStyle:(UIStatusBarStyle)style {
     todo_objc_setter!(this, style);
+}
+
+// The network activity spinner lives in the status bar, which tapHLE does not
+// draw, so there is nothing to show. The value is still stored, because an app
+// that switches it on and off around requests may read it back to decide
+// whether a request is already in flight.
+- (bool)isNetworkActivityIndicatorVisible {
+    env.framework_state.uikit.ui_application.network_activity_indicator_visible
+}
+- (())setNetworkActivityIndicatorVisible:(bool)visible {
+    env.framework_state.uikit.ui_application.network_activity_indicator_visible = visible;
 }
 - (())setStatusBarStyle:(UIStatusBarStyle)style
                animated:(bool)_animated {
