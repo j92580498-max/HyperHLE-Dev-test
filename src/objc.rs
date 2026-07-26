@@ -23,6 +23,7 @@ use crate::objc::messages::ThreadInitializer;
 use crate::MutexId;
 use std::collections::HashMap;
 
+mod arc;
 mod blocks;
 mod classes;
 mod messages;
@@ -126,7 +127,7 @@ pub const DYLIB: HostDylib = HostDylib {
     aliases: &["/usr/lib/libobjc.dylib"],
     class_exports: &[blocks::CLASSES],
     constant_exports: &[CONSTANTS, blocks::CONSTANTS],
-    function_exports: &[FUNCTIONS, blocks::FUNCTIONS],
+    function_exports: &[FUNCTIONS, arc::FUNCTIONS, blocks::FUNCTIONS],
 };
 
 const CONSTANTS: ConstantExports = &[
