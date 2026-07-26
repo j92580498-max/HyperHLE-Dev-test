@@ -980,6 +980,33 @@ pub const CLASSES: ClassExports = objc_classes! {
     *env.objc.borrow_mut(other) = host_obj;
 }
 
+// Documented as removing every entry and then adding the other dictionary's
+// entries. The source's entries are copied out before anything is removed, so
+// that passing the receiver itself does not empty it.
+- (())setDictionary:(id)other { // NSDictionary *
+    let entries: Vec<(id, id)> = if other == nil {
+        Vec::new()
+    } else {
+        let host_obj: DictionaryHostObject = std::mem::take(env.objc.borrow_mut(other));
+        let entries = host_obj.map.values().flatten().copied().collect();
+        *env.objc.borrow_mut(other) = host_obj;
+        entries
+    };
+    // Retain across the clear: the receiver may be the only owner of these.
+    for &(k, v) in &entries {
+        retain(env, k);
+        retain(env, v);
+    }
+    () = msg![env; this removeAllObjects];
+    for &(k, v) in &entries {
+        () = msg![env; this setObject:v forKey:k];
+    }
+    for &(k, v) in &entries {
+        release(env, k);
+        release(env, v);
+    }
+}
+
 - (id)description {
     build_description(env, this)
 }

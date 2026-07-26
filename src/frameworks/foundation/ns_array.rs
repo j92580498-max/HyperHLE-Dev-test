@@ -13,7 +13,7 @@ use super::{
     _nib_archive_decoder, ns_keyed_unarchiver, ns_string, ns_url, NSComparisonResult, NSNotFound,
     NSRange, NSUInteger,
 };
-use crate::abi::{CallFromHost, GuestFunction};
+use crate::abi::{CallFromHost, DotDotDot, GuestFunction};
 use crate::frameworks::foundation::ns_keyed_archiver::{
     encode_object, get_value_to_encode_for_current_key,
 };
@@ -383,30 +383,11 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (id)initWithObjects:(id)firstObj, ...args {
-    retain(env, firstObj);
-    let mut objects = vec![firstObj];
-    let mut varargs = args.start();
-    loop {
-        let next_arg: id = varargs.next(env);
-        if next_arg.is_null() {
-            break;
-        }
-        retain(env, next_arg);
-        objects.push(next_arg);
-    }
-    env.objc.borrow_mut::<ArrayHostObject>(this).array = objects;
-    this
+    init_with_objects_varargs_inner(env, this, firstObj, args)
 }
 
 - (id)initWithObjects:(ConstPtr<id>)objects_ptr count:(NSUInteger)count {
-    let mut objects = Vec::new();
-    for i in 0..count {
-        let obj: id = env.mem.read(objects_ptr + i);
-        retain(env, obj);
-        objects.push(obj);
-    }
-    env.objc.borrow_mut::<ArrayHostObject>(this).array = objects;
-    this
+    init_with_objects_count_inner(env, this, objects_ptr, count)
 }
 
 - (())dealloc {
@@ -534,6 +515,17 @@ pub const CLASSES: ClassExports = objc_classes! {
     }
     env.objc.borrow_mut::<ArrayHostObject>(this).array = objects;
     this
+}
+
+// Inherited from NSArray. These are not reached through _tapHLE_NSArray,
+// because the mutable class descends from NSMutableArray rather than from the
+// immutable implementation, so they have to be provided here as well.
+- (id)initWithObjects:(id)firstObj, ...args {
+    init_with_objects_varargs_inner(env, this, firstObj, args)
+}
+
+- (id)initWithObjects:(ConstPtr<id>)objects_ptr count:(NSUInteger)count {
+    init_with_objects_count_inner(env, this, objects_ptr, count)
 }
 
 // NSCoding implementation
@@ -669,6 +661,40 @@ pub const CLASSES: ClassExports = objc_classes! {
 - (())addObject:(id)object {
     retain(env, object);
     env.objc.borrow_mut::<ArrayHostObject>(this).array.push(object);
+}
+
+- (())addObjectsFromArray:(id)other { // NSArray*
+    let enumerator: id = msg![env; other objectEnumerator];
+    loop {
+        let next: id = msg![env; enumerator nextObject];
+        if next == nil {
+            break;
+        }
+        () = msg![env; this addObject:next];
+    }
+}
+
+// Documented as equivalent to removing everything and then adding the other
+// array's objects, which is exactly how it is implemented here. `other` may be
+// this same array, so its contents are read before anything is removed.
+- (())setArray:(id)other { // NSArray*
+    let mut objects = Vec::new();
+    let enumerator: id = msg![env; other objectEnumerator];
+    loop {
+        let next: id = msg![env; enumerator nextObject];
+        if next == nil {
+            break;
+        }
+        retain(env, next);
+        objects.push(next);
+    }
+    let old = std::mem::replace(
+        &mut env.objc.borrow_mut::<ArrayHostObject>(this).array,
+        objects,
+    );
+    for object in old {
+        release(env, object);
+    }
 }
 
 - (())removeObject:(id)object {
@@ -849,6 +875,48 @@ fn object_enumerator_inner_helper(env: &mut Environment, arr: id, vec: Vec<id>) 
         .get_known_class("_tapHLE_NSArray_ObjectEnumerator", &mut env.mem);
     let enumerator = env.objc.alloc_object(class, host_object, &mut env.mem);
     autorelease(env, enumerator)
+}
+
+/// Shared body of `-[NSArray initWithObjects:]`, the nil-terminated variadic
+/// initializer. `NSMutableArray` inherits it from `NSArray`, so both concrete
+/// classes need it.
+fn init_with_objects_varargs_inner(
+    env: &mut Environment,
+    arr: id,
+    first_obj: id,
+    args: DotDotDot,
+) -> id {
+    retain(env, first_obj);
+    let mut objects = vec![first_obj];
+    let mut varargs = args.start();
+    loop {
+        let next_arg: id = varargs.next(env);
+        if next_arg.is_null() {
+            break;
+        }
+        retain(env, next_arg);
+        objects.push(next_arg);
+    }
+    env.objc.borrow_mut::<ArrayHostObject>(arr).array = objects;
+    arr
+}
+
+/// Shared body of `-[NSArray initWithObjects:count:]`, the C-array
+/// initializer. As above, `NSMutableArray` inherits it too.
+fn init_with_objects_count_inner(
+    env: &mut Environment,
+    arr: id,
+    objects_ptr: ConstPtr<id>,
+    count: NSUInteger,
+) -> id {
+    let mut objects = Vec::with_capacity(count as usize);
+    for i in 0..count {
+        let obj: id = env.mem.read(objects_ptr + i);
+        retain(env, obj);
+        objects.push(obj);
+    }
+    env.objc.borrow_mut::<ArrayHostObject>(arr).array = objects;
+    arr
 }
 
 fn mutable_copy_inner(env: &mut Environment, arr: id) -> id {
