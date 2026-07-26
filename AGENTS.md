@@ -164,6 +164,24 @@ An agent may assign at most three stars (two for reaching a stable screen, three
 for a gameplay loop that starts and persists); four and five stars require human
 testing.
 
+**Never guess an app's identity. Read it from `tapHLE --info`, before you
+compose the report.** The bundle identifier, the version, and the display name
+are facts about the artifact, and every one of them must be copied from
+`--info` output. It is not acceptable to infer any of them from the app's name,
+the Archive filename, the Archive item name, the developer, or from what a
+reverse-DNS identifier "should" look like.
+
+This is a hard rule rather than a preference because the identifier is the field
+the database matches on. A guessed one silently creates a second app row, and
+reports are immutable: the only remedy is a superseding report plus a moderator
+rejecting the bad one. Real identifiers routinely defeat guessing — three apps
+on the 2026-07-26 target list turned out to be plain `Minecrafted`,
+`com.eeenmachine.` (with a trailing dot and no app segment), and
+`com.disney.JellyCar3` for a game published by Walaber.
+
+Running `--info` after drafting the report does not satisfy this. Run it first,
+copy the values, then write the submission.
+
 A report separates **who submitted it** from **what produced it**, and both must
 be truthful. The submitter is the GitHub account or API token that posted it. The
 producer is `source_type`: use `agent` for any result an agent produced, even
