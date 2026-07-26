@@ -49,6 +49,15 @@ pub(super) struct CALayerHostObject {
     pub(super) opacity: f32,
     pub(super) background_color: Option<CGColorHostObject>,
     pub(super) corner_radius: CGFloat,
+    /// Stored and reported back, but not yet honoured when compositing: see the
+    /// clipping TODO in [super::composition].
+    pub(super) masks_to_bounds: bool,
+    /// Stored and reported back, but the compositor does not stroke a border
+    /// yet.
+    pub(super) border_width: CGFloat,
+    /// Stored and reported back, but the compositor does not stroke a border
+    /// yet.
+    pub(super) border_color: Option<CGColorHostObject>,
     pub(super) needs_display: bool,
     pub(super) needs_display_on_bounds_change: bool,
     /// `CGImageRef*`
@@ -127,6 +136,9 @@ pub const CLASSES: ClassExports = objc_classes! {
         opacity: 1.0,
         background_color: None, // transparency
         corner_radius: 0.0,
+        masks_to_bounds: false,
+        border_width: 0.0,
+        border_color: None,
         needs_display: false,
         needs_display_on_bounds_change: false,
         contents: nil,
@@ -350,6 +362,22 @@ pub const CLASSES: ClassExports = objc_classes! {
     env.objc.borrow_mut::<CALayerHostObject>(this).opaque = opaque;
 }
 
+// Stored and reported back, so a guest that sets it and reads it back sees
+// what it wrote, but the compositor does not clip sublayers to the layer's
+// bounds yet. See the clipping TODO in the composition module.
+- (bool)masksToBounds {
+    env.objc.borrow::<CALayerHostObject>(this).masks_to_bounds
+}
+- (())setMasksToBounds:(bool)masks_to_bounds {
+    if masks_to_bounds {
+        log_once!(
+            "[CALayer setMasksToBounds:true] is stored but sublayers are not \
+             clipped yet"
+        );
+    }
+    env.objc.borrow_mut::<CALayerHostObject>(this).masks_to_bounds = masks_to_bounds;
+}
+
 - (f32)opacity {
     env.objc.borrow::<CALayerHostObject>(this).opacity
 }
@@ -384,6 +412,36 @@ pub const CLASSES: ClassExports = objc_classes! {
     if is_implicit_animation_enabled(env, this) && old_color_ref != nil && new_color_ref != nil {
         add_default_implied_basic_animation(env, this, "backgroundColor", old_color_ref, new_color_ref);
     }
+}
+
+// Stored and reported back so a guest reads back what it wrote, but the
+// compositor does not stroke a border yet.
+- (CGFloat)borderWidth {
+    env.objc.borrow::<CALayerHostObject>(this).border_width
+}
+- (())setBorderWidth:(CGFloat)border_width {
+    if border_width != 0.0 {
+        log_once!("[CALayer setBorderWidth:] is stored but no border is drawn yet");
+    }
+    env.objc.borrow_mut::<CALayerHostObject>(this).border_width = border_width;
+}
+
+- (CGColorRef)borderColor {
+    if let Some(border_color) = env.objc.borrow::<CALayerHostObject>(this).border_color {
+        let class = env.objc.get_known_class("_tapHLE_CGColor", &mut env.mem);
+        let obj = env.objc.alloc_object(class, Box::new(border_color), &mut env.mem);
+        autorelease(env, obj)
+    } else {
+        nil
+    }
+}
+- (())setBorderColor:(CGColorRef)new_color_ref {
+    let new_color = if new_color_ref == nil {
+        None
+    } else {
+        Some(*env.objc.borrow::<CGColorHostObject>(new_color_ref))
+    };
+    env.objc.borrow_mut::<CALayerHostObject>(this).border_color = new_color;
 }
 
 - (CGFloat)cornerRadius {

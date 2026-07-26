@@ -12,7 +12,7 @@ use crate::frameworks::core_graphics::{CGFloat, CGPoint, CGRect, CGSize};
 use crate::frameworks::foundation::ns_string::{from_rust_string, get_static_str, to_rust_string};
 use crate::frameworks::foundation::NSInteger;
 use crate::objc::{
-    autorelease, id, msg, msg_class, objc_classes, release, retain, ClassExports, HostObject,
+    autorelease, id, msg, msg_class, objc_classes, release, retain, Class, ClassExports, HostObject,
 };
 use crate::Environment;
 use std::collections::HashMap;
@@ -170,6 +170,23 @@ pub const CLASSES: ClassExports = objc_classes! {
     release(env, this);
     let font: id = msg_class![env; UIFont fontWithName:font_name size:font_size];
     retain(env, font)
+}
+
+// The same typeface at a different size. Resolving through the name keeps the
+// font-substitution table as the single place that maps a name to a FontKind.
+- (id)fontWithSize:(CGFloat)fontSize {
+    let host_object = env.objc.borrow::<UIFontHostObject>(this);
+    if host_object.size == fontSize {
+        return this;
+    }
+    let host_object = UIFontHostObject {
+        kind: host_object.kind,
+        size: fontSize,
+        name: host_object.name.clone(),
+    };
+    let class: Class = msg![env; this class];
+    let new = env.objc.alloc_object(class, Box::new(host_object), &mut env.mem);
+    autorelease(env, new)
 }
 
 - (CGFloat)pointSize {
