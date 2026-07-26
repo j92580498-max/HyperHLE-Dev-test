@@ -48,8 +48,21 @@ gets that far. Only if it writes through `gzwrite` is the new zlib code
 implicated — and it should be checked against a real gzip file first, since
 nothing has yet exercised the write path end to end.
 
-JellyCar 2 and 3 are still unlaunched and should be tried now that zlib exists;
-they may not share this second failure.
+### JellyCar 3 was launched; it does not share this failure
+
+JellyCar 3 1.2 needed `+[NSBundle pathsForResourcesOfType:inDirectory:]` and
+its instance counterpart, both of which were missing (added on `trunk`). With
+those it gets past resource enumeration and now faults in guest code with
+`Error during CPU execution: MemoryError`, at a different point from JellyCar 1
+and with no `scenes.xml` message.
+
+**A hypothesis that was tested and failed:** `pathsForResourcesOfType:` looked
+like the obvious way JellyCar 1 would build its scenes list from the bundle's
+`.scene` files, so adding it might have fixed both. It did not — JellyCar 1's
+behaviour is byte-for-byte unchanged. Whatever writes `scenes.xml` is
+something else, so do not re-try that idea.
+
+JellyCar 2 is still unlaunched.
 
 ## Original (superseded) blocker: no zlib at all
 
