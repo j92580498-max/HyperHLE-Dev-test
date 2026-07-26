@@ -119,6 +119,36 @@ pub const CLASSES: ClassExports = objc_classes! {
     autorelease(env, preferredLocalizations)
 }
 
+// The class-method form. Unlike the instance method, `directory` here is an
+// absolute path to search rather than a subdirectory of a bundle, so this does
+// not go through -resourcePath.
++ (id)pathsForResourcesOfType:(id)extension // NSString*
+                  inDirectory:(id)directory { // NSString*
+    let result: id = msg_class![env; NSMutableArray array];
+    if directory == nil {
+        return result;
+    }
+    let file_manager: id = msg_class![env; NSFileManager defaultManager];
+    let entries: id = msg![env; file_manager directoryContentsAtPath:directory];
+    if entries == nil {
+        return result;
+    }
+    let count: NSUInteger = msg![env; entries count];
+    for i in 0..count {
+        let entry: id = msg![env; entries objectAtIndex:i];
+        if extension != nil {
+            let entry_extension: id = msg![env; entry pathExtension];
+            let matches: bool = msg![env; entry_extension isEqualToString:extension];
+            if !matches {
+                continue;
+            }
+        }
+        let full: id = msg![env; directory stringByAppendingPathComponent:entry];
+        () = msg![env; result addObject:full];
+    }
+    result
+}
+
 - (())dealloc {
     let &NSBundleHostObject {
         bundle: _,
@@ -255,6 +285,39 @@ pub const CLASSES: ClassExports = objc_classes! {
     // Nothing was ever loaded, so there is nothing to unload. Apple documents
     // this as returning NO when the bundle's code is not loaded.
     false
+}
+
+// Every resource of a type, rather than the first one. An app builds a level
+// list this way instead of hard-coding filenames.
+- (id)pathsForResourcesOfType:(id)extension // NSString*
+                  inDirectory:(id)directory { // NSString*, may be nil
+    let mut dir_path: id = msg![env; this resourcePath];
+    if directory != nil {
+        dir_path = msg![env; dir_path stringByAppendingPathComponent:directory];
+    }
+
+    let result: id = msg_class![env; NSMutableArray array];
+    let file_manager: id = msg_class![env; NSFileManager defaultManager];
+    let entries: id = msg![env; file_manager directoryContentsAtPath:dir_path];
+    if entries == nil {
+        return result;
+    }
+    let count: NSUInteger = msg![env; entries count];
+    for i in 0..count {
+        let entry: id = msg![env; entries objectAtIndex:i];
+        // A nil type means every resource, which is what the documentation
+        // says and what a caller enumerating a whole directory relies on.
+        if extension != nil {
+            let entry_extension: id = msg![env; entry pathExtension];
+            let matches: bool = msg![env; entry_extension isEqualToString:extension];
+            if !matches {
+                continue;
+            }
+        }
+        let full: id = msg![env; dir_path stringByAppendingPathComponent:entry];
+        () = msg![env; result addObject:full];
+    }
+    result
 }
 
 - (id)pathForResource:(id)name // NSString*
