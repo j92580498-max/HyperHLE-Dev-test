@@ -1469,6 +1469,20 @@ pub const CLASSES: ClassExports = objc_classes! {
     this
 }
 
+// See the note on the same method in _tapHLE_NSMutableString. Both concrete
+// classes need it: _tapHLE_NSString and _tapHLE_NSMutableString are siblings
+// under NSString, so neither inherits the other's implementations.
+- (id)initWithBytesNoCopy:(MutPtr<u8>)bytes
+                   length:(NSUInteger)len
+                 encoding:(NSStringEncoding)encoding
+             freeWhenDone:(bool)free_when_done {
+    let new: id = msg![env; this initWithBytes:(bytes.cast_const()) length:len encoding:encoding];
+    if free_when_done {
+        env.mem.free(bytes.cast());
+    }
+    new
+}
+
 - (id)initWithCharacters:(ConstPtr<unichar>)characters length:(NSUInteger)len {
     assert!(!characters.is_null());
     let num_bytes = len * 2;
@@ -1687,6 +1701,21 @@ pub const CLASSES: ClassExports = objc_classes! {
     *env.objc.borrow_mut(this) = host_object;
 
     this
+}
+
+// The no-copy variant. tapHLE's NSString always owns decoded storage, so the
+// bytes are copied regardless; what the caller is actually promising is that it
+// will not touch the buffer again, and `freeWhenDone` transfers ownership of it
+// to the string. Honour that by freeing it here, since nothing else will.
+- (id)initWithBytesNoCopy:(MutPtr<u8>)bytes
+                   length:(NSUInteger)len
+                 encoding:(NSStringEncoding)encoding
+             freeWhenDone:(bool)free_when_done {
+    let new: id = msg![env; this initWithBytes:(bytes.cast_const()) length:len encoding:encoding];
+    if free_when_done {
+        env.mem.free(bytes.cast());
+    }
+    new
 }
 
 - (id)initWithFormat:(id)format, // NSString*

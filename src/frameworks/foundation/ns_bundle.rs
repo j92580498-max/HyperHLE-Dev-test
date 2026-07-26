@@ -15,8 +15,8 @@ use crate::frameworks::foundation::ns_string::{
 };
 use crate::mem::{ConstVoidPtr, MutPtr, Ptr};
 use crate::objc::{
-    autorelease, id, msg, msg_class, nil, objc_classes, release, retain, ClassExports, HostObject,
-    NSZonePtr,
+    autorelease, id, msg, msg_class, nil, objc_classes, release, retain, Class, ClassExports,
+    HostObject, NSZonePtr,
 };
 use crate::Environment;
 use std::collections::{HashMap, HashSet};
@@ -64,6 +64,14 @@ pub const CLASSES: ClassExports = objc_classes! {
 (env, this, _cmd);
 
 @implementation NSBundle: NSObject
+
+// Every class a guest app can name lives either in its own executable or in a
+// framework tapHLE implements on the host; in both cases the bundle the app can
+// see is the main bundle. Apps use this to find resources shipped alongside a
+// class, which is exactly where those resources are.
++ (id)bundleForClass:(Class)_class {
+    msg_class![env; NSBundle mainBundle]
+}
 
 + (id)mainBundle {
     if let Some(bundle) = env.framework_state.foundation.ns_bundle.main_bundle {
@@ -179,6 +187,55 @@ pub const CLASSES: ClassExports = objc_classes! {
     // TODO: cache result
     let exec_path: id = msg![env; this executablePath];
     msg_class![env; NSURL fileURLWithPath:exec_path]
+}
+
+// Loading a bundle's code at run time.
+//
+// A resource-only bundle — no CFBundleExecutable, which is what a `.bundle` of
+// images inside an app is — has no code to load, so it is trivially loaded and
+// usable for resource lookup. That is the case apps actually hit: an embedded
+// SDK ships its classes in the main executable and its artwork in a bundle
+// beside it, then calls -load before looking resources up.
+//
+// A bundle that really does carry an executable cannot be loaded: tapHLE links
+// the main executable and the system libraries it knows at startup and has no
+// run-time Mach-O loader (see the dlopen TODO in libc::dlfcn). Report that
+// honestly with NO rather than claiming a success that leaves the caller
+// messaging classes that do not exist.
+- (bool)load {
+    let bundle_is_main = env.objc.borrow::<NSBundleHostObject>(this).bundle.is_none();
+    if bundle_is_main {
+        // The main executable is loaded before any guest code runs.
+        return true;
+    }
+    let executable_path: id = msg![env; this objectForInfoDictionaryKey:(ns_string::get_static_str(env, "CFBundleExecutable"))];
+    if executable_path == nil {
+        log_dbg!("[(NSBundle*){:?} load] resource-only bundle, nothing to load", this);
+        return true;
+    }
+    log!(
+        "TODO: [(NSBundle*){:?} load] wants to load bundle code at run time, which tapHLE cannot do; reporting failure",
+        this
+    );
+    false
+}
+
+- (bool)isLoaded {
+    msg![env; this load]
+}
+
+- (bool)loadAndReturnError:(MutPtr<id>)error { // NSError**
+    let loaded: bool = msg![env; this load];
+    if !loaded && !error.is_null() {
+        env.mem.write(error, nil);
+    }
+    loaded
+}
+
+- (bool)unload {
+    // Nothing was ever loaded, so there is nothing to unload. Apple documents
+    // this as returning NO when the bundle's code is not loaded.
+    false
 }
 
 - (id)pathForResource:(id)name // NSString*

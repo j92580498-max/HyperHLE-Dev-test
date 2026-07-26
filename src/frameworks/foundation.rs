@@ -42,6 +42,7 @@ pub mod ns_lock;
 pub mod ns_log;
 pub mod ns_mach_port;
 pub mod ns_method_signature;
+pub mod ns_net_service;
 pub mod ns_notification;
 pub mod ns_notification_center;
 pub mod ns_null;
@@ -80,6 +81,7 @@ pub const DYLIB: crate::dyld::HostDylib = crate::dyld::HostDylib {
         ns_data::CLASSES,
         ns_date::CLASSES,
         ns_date_formatter::CLASSES,
+        ns_net_service::CLASSES,
         ns_number_formatter::CLASSES,
         ns_dictionary::CLASSES,
         ns_enumerator::CLASSES,
