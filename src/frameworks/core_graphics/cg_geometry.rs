@@ -270,6 +270,24 @@ fn CGRectContainsPoint(_env: &mut Environment, rect: CGRect, point: CGPoint) -> 
         && rect.origin.y + rect.size.height > point.y
 }
 
+/// Whether `rect2` lies entirely within `rect1`.
+///
+/// Core Graphics documents an empty rectangle as contained by any rectangle,
+/// and nothing as containing an empty one except via that rule, so the empty
+/// case is answered before the edge comparisons.
+fn CGRectContainsRect(_env: &mut Environment, rect1: CGRect, rect2: CGRect) -> bool {
+    if rect2.size.width <= 0.0 || rect2.size.height <= 0.0 {
+        return true;
+    }
+    if rect1.size.width <= 0.0 || rect1.size.height <= 0.0 {
+        return false;
+    }
+    rect1.origin.x <= rect2.origin.x
+        && rect1.origin.y <= rect2.origin.y
+        && rect1.origin.x + rect1.size.width >= rect2.origin.x + rect2.size.width
+        && rect1.origin.y + rect1.size.height >= rect2.origin.y + rect2.size.height
+}
+
 fn CGRectIntersectsRect(_env: &mut Environment, rect1: CGRect, rect2: CGRect) -> bool {
     rect1.origin.x.max(rect2.origin.x)
         <= (rect1.origin.x + rect1.size.width).min(rect2.origin.x + rect2.size.width)
@@ -412,6 +430,7 @@ pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(CGSizeEqualToSize(_, _)),
     export_c_func!(CGRectEqualToRect(_, _)),
     export_c_func!(CGRectContainsPoint(_, _)),
+    export_c_func!(CGRectContainsRect(_, _)),
     export_c_func!(CGRectIntersectsRect(_, _)),
     export_c_func!(CGRectIntersection(_, _)),
     export_c_func!(CGRectGetMinX(_)),

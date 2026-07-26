@@ -34,6 +34,7 @@ pub mod ns_exception;
 pub mod ns_file_handle;
 pub mod ns_file_manager;
 pub mod ns_garbage_collector;
+pub mod ns_http_cookie_storage;
 pub mod ns_index_path;
 pub mod ns_invocation;
 pub mod ns_keyed_archiver;
@@ -84,6 +85,7 @@ pub const DYLIB: crate::dyld::HostDylib = crate::dyld::HostDylib {
         ns_date::CLASSES,
         ns_counted_set::CLASSES,
         ns_date_formatter::CLASSES,
+        ns_http_cookie_storage::CLASSES,
         ns_net_service::CLASSES,
         ns_number_formatter::CLASSES,
         ns_sort_descriptor::CLASSES,
@@ -144,6 +146,7 @@ pub const DYLIB: crate::dyld::HostDylib = crate::dyld::HostDylib {
 #[derive(Default)]
 pub struct State {
     ns_bundle: ns_bundle::State,
+    ns_http_cookie_storage: ns_http_cookie_storage::State,
     ns_file_manager: ns_file_manager::State,
     ns_locale: ns_locale::State,
     ns_notification_center: ns_notification_center::State,

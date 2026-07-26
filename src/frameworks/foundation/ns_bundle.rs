@@ -136,6 +136,25 @@ pub const CLASSES: ClassExports = objc_classes! {
     env.objc.dealloc_object(this, &mut env.mem)
 }
 
+// The bundle-scoped form of NSClassFromString. Every class a guest can name is
+// either in its own executable or in a host-implemented framework, so the
+// answer does not actually depend on which bundle is asked. Like
+// NSClassFromString, an unimplemented class is nil rather than a panic: this is
+// a feature-detection idiom.
+- (Class)classNamed:(id)name { // NSString*
+    if name == nil {
+        return nil;
+    }
+    let name = ns_string::to_rust_string(env, name).to_string();
+    match env.objc.get_known_class_if_implemented(&name, &mut env.mem) {
+        Some(class) => class,
+        None => {
+            log!("[(NSBundle*) classNamed:\"{}\"] -> nil: no implementation of that class.", name);
+            nil
+        }
+    }
+}
+
 - (id)bundlePath {
     env.objc.borrow::<NSBundleHostObject>(this).bundle_path
 }
