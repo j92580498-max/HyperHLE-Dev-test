@@ -299,6 +299,19 @@ pub fn from_rust_ordering(ordering: std::cmp::Ordering) -> NSComparisonResult {
     }
 }
 
+/// Clear a caller's `NSError**` out-parameter.
+///
+/// These initialisers report failure by returning nil, which is what callers
+/// check. tapHLE has no NSError detail worth inventing here, so the pointer is
+/// set to nil rather than left holding stale memory — and, importantly, rather
+/// than asserting that the caller did not ask for an error at all, which used
+/// to abort any app that passed one.
+fn report_no_error(env: &mut Environment, error: MutPtr<id>) {
+    if !error.is_null() {
+        env.mem.write(error, nil);
+    }
+}
+
 pub const CLASSES: ClassExports = objc_classes! {
 
 (env, this, _cmd);
@@ -1526,10 +1539,18 @@ pub const CLASSES: ClassExports = objc_classes! {
 - (id)initWithContentsOfFile:(id)path // NSString*
                     encoding:(NSStringEncoding)encoding
                        error:(MutPtr<id>)error { // NSError**
+    // A nil path is not an error to raise on: there is nothing to read, so the
+    // documented nil return is the answer. The single-argument variant already
+    // did this; without it here, to_rust_string() below panicked on nil.
+    if path == nil {
+        report_no_error(env, error);
+        release(env, this);
+        return nil;
+    }
     // TODO: avoid copy?
     let path = to_rust_string(env, path);
     let Ok(bytes) = env.fs.read(GuestPath::new(&path)) else {
-        assert!(error.is_null()); // TODO: error handling
+        report_no_error(env, error);
         release(env, this);
         return nil;
     };
@@ -1543,9 +1564,14 @@ pub const CLASSES: ClassExports = objc_classes! {
 - (id)initWithContentsOfURL:(id)url // NSURL*
                     encoding:(NSStringEncoding)encoding
                        error:(MutPtr<id>)error { // NSError**
+    if url == nil {
+        report_no_error(env, error);
+        release(env, this);
+        return nil;
+    }
     let data: id = msg_class![env; NSData dataWithContentsOfURL:url];
     if data == nil {
-        assert!(error.is_null()); // TODO: error handling
+        report_no_error(env, error);
         release(env, this);
         return nil;
     }
