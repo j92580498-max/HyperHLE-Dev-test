@@ -73,6 +73,23 @@ pub const CLASSES: ClassExports = objc_classes! {
     autorelease(env, new)
 }
 
+// The options/error variant. NSDataReadingOptions only asks for mapping or
+// uncached reads, both of which are performance hints that this implementation
+// is free to ignore, so the result is the same data either way. On failure the
+// error is reported as nil rather than a fabricated NSError: a caller that
+// checks the return value for nil — which is the documented way to detect
+// failure — is served correctly, and inventing an error object would be
+// claiming detail tapHLE does not have.
++ (id)dataWithContentsOfFile:(id)path
+                     options:(NSUInteger)_options
+                       error:(MutPtr<id>)error { // NSError**
+    let new: id = msg![env; this dataWithContentsOfFile:path];
+    if new == nil && !error.is_null() {
+        env.mem.write(error, nil);
+    }
+    new
+}
+
 + (id)dataWithContentsOfMappedFile:(id)path {
     let new: id = msg![env; this alloc];
     let new: id = msg![env; new initWithContentsOfMappedFile:path];
