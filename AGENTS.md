@@ -414,7 +414,26 @@ should contain only files that carry lasting value.
 Credit material coding-agent authorship in every commit the agent creates.
 Use a standard `Co-authored-by:` trailer with the agent or tool identity; Codex
 commits use `Co-authored-by: OpenAI Codex <codex@openai.com>`. Do not add an
-agent trailer when the agent did not materially help create the commit. Older
+agent trailer when the agent did not materially help create the commit.
+
+"Every commit" includes **merge commits**. A merge an agent performs is a
+commit it created, so it carries the same trailer block. This is easy to miss
+because `git merge -m` takes the message inline and the trailers are then
+silently absent: the result is a history where every second commit is
+uncredited. Write the message to a file and pass it with `-F`, because unlike
+`git commit`, `git merge` does **not** accept `-F -` for stdin:
+
+```sh
+printf '%s
+' 'Merge <branch>' '' 'Agent-model: ...' 'Agent-surface: ...'     'Co-authored-by: ...' > "$msg"
+git merge --no-ff <branch> -F "$msg"
+```
+
+Check the result with:
+
+```sh
+git log --format='%h %s coauthor=%(trailers:key=Co-authored-by,valueonly)' -10
+``` Older
 agent-created commits that predate this rule are recorded without history
 rewrites in `dev-docs/agent-provenance.md`.
 
