@@ -35,6 +35,21 @@ pub struct State {
     started_animations: Vec<id>,
     finished_animations: Vec<(id, id, bool, bool, Option<String>)>,
 }
+/// Whether `object` implements `selector`.
+///
+/// Delegate protocol methods in Cocoa are usually optional, so sending one
+/// blind turns a delegate that implements only the callbacks it cares about
+/// into a "does not respond to selector" abort.
+fn responds_to(env: &mut Environment, object: id, selector: &str) -> bool {
+    if object == nil {
+        return false;
+    }
+    let Some(sel) = env.objc.lookup_selector(selector) else {
+        return false;
+    };
+    msg![env; object respondsToSelector:sel]
+}
+
 impl State {
     pub fn create_presentation_layer(
         &mut self,
@@ -259,7 +274,9 @@ impl State {
     pub fn update_started_and_finished_animations(self, env: &mut Environment) {
         for animation in self.started_animations {
             let delegate = msg![env; animation delegate];
-            if delegate != nil {
+            // Both CAAnimationDelegate methods are optional, so a delegate that
+            // only wants one of them is normal and must not be sent the other.
+            if responds_to(env, delegate, "animationDidStart:") {
                 () = msg![env; delegate animationDidStart: animation];
             }
         }
@@ -269,7 +286,7 @@ impl State {
         }
         for (layer, animation, finished, removed_on_completion, key) in self.finished_animations {
             let delegate = msg![env; animation delegate];
-            if delegate != nil {
+            if responds_to(env, delegate, "animationDidStop:finished:") {
                 () = msg![env; delegate animationDidStop: animation finished: finished];
             }
 

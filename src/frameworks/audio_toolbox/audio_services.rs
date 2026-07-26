@@ -181,8 +181,12 @@ fn AudioServicesPlaySystemSound(env: &mut Environment, sys_sound_id: SystemSound
                 );
             }
         } else {
-            panic!(
-                "Incorrect/unsupported system sound {:x} played!",
+            // An ID tapHLE never handed out, or one already disposed. The API
+            // returns void and has no way to report this, and the real
+            // framework simply does not play anything, so neither does this.
+            // Aborting here turned a silent sound into a dead app.
+            log!(
+                "Warning: AudioServicesPlaySystemSound({:#x}) names a sound that was never created, ignoring",
                 sys_sound_id
             );
         }

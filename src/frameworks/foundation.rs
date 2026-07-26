@@ -23,6 +23,7 @@ pub mod ns_bundle;
 pub mod ns_calendar;
 pub mod ns_character_set;
 pub mod ns_coder;
+pub mod ns_counted_set;
 pub mod ns_data;
 pub mod ns_date;
 pub mod ns_date_formatter;
@@ -55,6 +56,7 @@ pub mod ns_property_list_serialization;
 pub mod ns_run_loop;
 pub mod ns_scanner;
 pub mod ns_set;
+pub mod ns_sort_descriptor;
 pub mod ns_string;
 pub mod ns_thread;
 pub mod ns_time_zone;
@@ -80,9 +82,11 @@ pub const DYLIB: crate::dyld::HostDylib = crate::dyld::HostDylib {
         ns_coder::CLASSES,
         ns_data::CLASSES,
         ns_date::CLASSES,
+        ns_counted_set::CLASSES,
         ns_date_formatter::CLASSES,
         ns_net_service::CLASSES,
         ns_number_formatter::CLASSES,
+        ns_sort_descriptor::CLASSES,
         ns_dictionary::CLASSES,
         ns_enumerator::CLASSES,
         ns_error::CLASSES,

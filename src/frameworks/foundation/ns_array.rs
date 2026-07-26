@@ -9,6 +9,7 @@ use super::ns_enumerator::{fast_enumeration_helper, NSFastEnumerationState};
 use super::ns_property_list_serialization::{
     deserialize_plist_from_file, NSPropertyListBinaryFormat_v1_0,
 };
+use super::ns_sort_descriptor;
 use super::{
     _nib_archive_decoder, ns_keyed_unarchiver, ns_string, ns_url, NSComparisonResult, NSNotFound,
     NSRange, NSUInteger,
@@ -487,6 +488,12 @@ pub const CLASSES: ClassExports = objc_classes! {
     autorelease(env, new)
 }
 
+- (id)sortedArrayUsingDescriptors:(id)descriptors { // NSArray* of NSSortDescriptor*
+    let new = msg![env; this mutableCopy];
+    () = msg![env; new sortUsingDescriptors:descriptors];
+    autorelease(env, new)
+}
+
 @end
 
 // Special variant for use by CFArray with NULL callbacks: objects aren't
@@ -624,6 +631,45 @@ pub const CLASSES: ClassExports = objc_classes! {
             array.swap(l, r);
         },
     );
+    let (env, _) = user_data;
+    env.objc.borrow_mut::<ArrayHostObject>(this).array = array;
+}
+
+// Inherited from NSArray, so they must be provided on this concrete class
+// too: _tapHLE_NSMutableArray descends from NSMutableArray, not from
+// _tapHLE_NSArray, so it inherits none of the immutable class's methods.
+- (id)sortedArrayUsingSelector:(SEL)comparator {
+    let new = msg![env; this mutableCopy];
+    () = msg![env; new sortUsingSelector:comparator];
+    autorelease(env, new)
+}
+
+- (id)sortedArrayUsingDescriptors:(id)descriptors { // NSArray* of NSSortDescriptor*
+    let new = msg![env; this mutableCopy];
+    () = msg![env; new sortUsingDescriptors:descriptors];
+    autorelease(env, new)
+}
+
+// Sorting by NSSortDescriptors, which order by a key path and can be chained:
+// the first descriptor that distinguishes two elements decides.
+- (())sortUsingDescriptors:(id)descriptors { // NSArray* of NSSortDescriptor*
+    let host_object: &mut ArrayHostObject = env.objc.borrow_mut(this);
+    let mut array = std::mem::take(&mut host_object.array);
+    let len = array.len().try_into().unwrap();
+    let mut user_data = (env, &mut array);
+    qsort_generic(
+        &mut user_data,
+        len,
+        &mut |(env, array), l, r| {
+            let (l, r): (usize, usize) = (l.try_into().unwrap(), r.try_into().unwrap());
+            ns_sort_descriptor::compare_with_descriptors(env, descriptors, array[l], array[r])
+        },
+        &mut |(_, array), l, r| {
+            let (l, r): (usize, usize) = (l.try_into().unwrap(), r.try_into().unwrap());
+            array.swap(l, r);
+        },
+    );
+
     let (env, _) = user_data;
     env.objc.borrow_mut::<ArrayHostObject>(this).array = array;
 }
