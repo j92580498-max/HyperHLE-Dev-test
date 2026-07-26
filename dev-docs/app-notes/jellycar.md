@@ -21,7 +21,37 @@ blocker.
 - tapHLEdb: JellyCar is app 23, version 23, report 31 (2026-07-26, tapHLE
   `9d6ee348`, ★☆☆☆☆). JellyCar 2 and 3 were not launched — see below.
 
-## Current state: 1-star, no frame
+## UPDATE: zlib landed; the blocker below is cleared
+
+The gzip file API is implemented on `trunk` in `d6fde9d1` (gzopen, gzread,
+gzwrite, gzclose, gzeof, gztell, gzrewind, gzseek, gzgetc, gzerror), so the
+`gzopen` abort described below no longer happens.
+
+**JellyCar 1.5.4 now runs further and fails elsewhere:**
+
+```text
+ERROR! no root element in bundle file:.../Documents/scenes.xml
+...
+Error during CPU execution: MemoryError
+```
+
+That message comes from the app's own XML parser, and it is **not** a
+compression problem: the bundle contains no `.gz` files at all, only plain
+`.scene` and `.softbody` files, so `scenes.xml` is something the app builds in
+its Documents directory at first run. It is reading back an empty or malformed
+one and then faulting.
+
+Next discriminator: find where `scenes.xml` is written. Trace the file APIs
+(`TAPHLE_LOG_MODULES=tapHLE::libc::posix_io,tapHLE::libc::stdio`) on a fresh run
+directory and see whether the app writes it at all, writes it empty, or never
+gets that far. Only if it writes through `gzwrite` is the new zlib code
+implicated — and it should be checked against a real gzip file first, since
+nothing has yet exercised the write path end to end.
+
+JellyCar 2 and 3 are still unlaunched and should be tried now that zlib exists;
+they may not share this second failure.
+
+## Original (superseded) blocker: no zlib at all
 
 JellyCar 1.5.4 aborts during startup:
 
