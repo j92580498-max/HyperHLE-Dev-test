@@ -68,6 +68,13 @@ pub const CLASSES: ClassExports = objc_classes! {
     autorelease(env, new)
 }
 
+// The convenience initialiser, with the same defaults +requestWithURL: uses.
+- (id)initWithURL:(id)url {
+    msg![env; this initWithURL:url
+                   cachePolicy:NSURLRequestUseProtocolCachePolicy
+               timeoutInterval:60.0]
+}
+
 - (id)initWithURL:(id)url
         cachePolicy:(NSURLRequestCachePolicy)cache_policy
     timeoutInterval:(NSTimeInterval)timeout_interval {
