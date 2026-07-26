@@ -424,6 +424,28 @@ fn glPointSize(env: &mut Environment, size: GLfloat) {
 fn glPointSizex(env: &mut Environment, size: GLfixed) {
     with_ctx_and_mem(env, |gles, _mem| unsafe { gles.PointSizex(size) })
 }
+/// `GL_OES_point_size_array`: a per-point size array for point sprites.
+///
+/// Accepted and ignored. Desktop GL 2.1's fixed-function pipeline has no
+/// equivalent, so tapHLE does not model the array: `glEnableClientState`
+/// already reports `GL_POINT_SIZE_ARRAY_OES` as `GL_INVALID_ENUM`, leaving the
+/// array disabled, and every point is therefore drawn at the current
+/// `glPointSize`. Ignoring the pointer keeps that story consistent.
+///
+/// The visible consequence is that a particle system using per-point sizes
+/// draws uniformly sized particles. Emulating it properly needs a shader path.
+/// TODO: implement alongside GL_POINT_SIZE_ARRAY_OES in the ARRAYS table.
+fn glPointSizePointerOES(
+    _env: &mut Environment,
+    _type: GLenum,
+    _stride: GLsizei,
+    _pointer: ConstVoidPtr,
+) {
+    log_once!(
+        "glPointSizePointerOES() is ignored: point sprites are drawn at the uniform \
+         current glPointSize"
+    );
+}
 fn glPointParameterf(env: &mut Environment, pname: GLenum, param: GLfloat) {
     with_ctx_and_mem(env, |gles, _mem| unsafe {
         gles.PointParameterf(pname, param)
@@ -2132,6 +2154,7 @@ pub const FUNCTIONS: FunctionExports = &[
     // Points
     export_c_func!(glPointSize(_)),
     export_c_func!(glPointSizex(_)),
+    export_c_func!(glPointSizePointerOES(_, _, _)),
     export_c_func!(glPointParameterf(_, _)),
     export_c_func!(glPointParameterx(_, _)),
     export_c_func!(glPointParameterfv(_, _)),
