@@ -220,7 +220,7 @@ pub const CLASSES: ClassExports = objc_classes! {
     let bytes: ConstVoidPtr = msg![env; this bytes];
     let length: NSUInteger = msg![env; this length];
     let new = msg_class![env; NSMutableData alloc];
-    msg![env; new initWithBytes:(bytes.cast_mut()) length:length]
+    msg![env; new initWithBytes:bytes length:length]
 }
 
 - (ConstVoidPtr)bytes {
