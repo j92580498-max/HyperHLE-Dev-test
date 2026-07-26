@@ -238,3 +238,7 @@ www.fishlabs.net.GalaxyOnFire: --landscape-right --button-to-touch=A,427,274 --b
 
 # Palm Heroes
 com.palmheroes.PalmHeroes: --landscape-right
+
+# Glass Tower HD
+ru.idigger.Glass-Tower: --force-composition
+
