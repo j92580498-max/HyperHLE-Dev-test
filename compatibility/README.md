@@ -88,7 +88,7 @@ If canonical provenance or the submission token is missing, record that exact
 blocker and keep threshold publication open; do not silently leave the report
 or the `trunk` promotion undone.
 
-**Run `tapHLE --info` before composing a report, every time.** The bundle
+**Never guess an app's identity — read it from `tapHLE --info` before you compose the report.** This is a hard rule, not a preference; see `AGENTS.md`. The bundle
 identifier is the field the endpoint matches on, so guessing it silently
 creates a duplicate app row that a moderator then has to reject, and the
 report cannot be edited afterwards — only superseded. Real identifiers are
