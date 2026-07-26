@@ -44,7 +44,7 @@ macro_rules! log_no_panic {
 /// when debugging.
 macro_rules! log_dbg {
     ($($arg:tt)+) => {
-        if $crate::log::ENABLED_MODULES.contains(&module_path!()) {
+        if $crate::log::debug_enabled_for(module_path!()) {
             log!($($arg)*);
         }
     }
@@ -113,4 +113,89 @@ macro_rules! echo_no_panic {
 
 /// Put modules to enable [log_dbg] for here, e.g. "tapHLE::mem" to see when
 /// memory is allocated and freed.
+///
+/// This is the compile-time list. Prefer the `TAPHLE_LOG_MODULES` environment
+/// variable (see [debug_enabled_for]) when investigating an app, so that a
+/// trace question does not cost a rebuild.
 pub const ENABLED_MODULES: &[&str] = &[];
+
+/// Name of an environment variable holding a comma-separated list of module
+/// paths to enable [log_dbg] output for, without recompiling.
+///
+/// Each entry is matched as a path prefix at a module boundary, so
+/// `tapHLE::frameworks::uikit` enables every module beneath it, and the
+/// special value `all` enables everything. Example:
+///
+/// ```text
+/// TAPHLE_LOG_MODULES=tapHLE::frameworks::uikit::ui_touch,tapHLE::mem
+/// ```
+pub const LOG_MODULES_ENV_VAR: &str = "TAPHLE_LOG_MODULES";
+
+/// Whether [log_dbg] output is enabled for `module`.
+///
+/// This is only for use by logging macros!
+pub fn debug_enabled_for(module: &str) -> bool {
+    static FROM_ENV: LazyLock<Vec<String>> = LazyLock::new(|| {
+        std::env::var(LOG_MODULES_ENV_VAR)
+            .unwrap_or_default()
+            .split(',')
+            .map(|entry| entry.trim().to_string())
+            .filter(|entry| !entry.is_empty())
+            .collect()
+    });
+
+    if ENABLED_MODULES.contains(&module) {
+        return true;
+    }
+    FROM_ENV.iter().any(|entry| {
+        entry == "all"
+            || entry == module
+            // A prefix only matches at a module boundary, so that "tapHLE::mem"
+            // does not also enable a hypothetical "tapHLE::memcache".
+            || (module.starts_with(entry.as_str())
+                && module[entry.len()..].starts_with("::"))
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// [debug_enabled_for] reads the environment once, so exercise the
+    /// matching rule directly rather than through the cached lookup.
+    fn matches(entries: &[&str], module: &str) -> bool {
+        entries.iter().any(|entry| {
+            *entry == "all"
+                || *entry == module
+                || (module.starts_with(entry) && module[entry.len()..].starts_with("::"))
+        })
+    }
+
+    #[test]
+    fn exact_module_matches() {
+        assert!(matches(&["tapHLE::mem"], "tapHLE::mem"));
+    }
+
+    #[test]
+    fn parent_module_enables_children() {
+        assert!(matches(
+            &["tapHLE::frameworks::uikit"],
+            "tapHLE::frameworks::uikit::ui_touch"
+        ));
+    }
+
+    #[test]
+    fn prefix_only_matches_at_a_module_boundary() {
+        assert!(!matches(&["tapHLE::mem"], "tapHLE::memcache"));
+    }
+
+    #[test]
+    fn all_enables_everything() {
+        assert!(matches(&["all"], "tapHLE::anything::at::all"));
+    }
+
+    #[test]
+    fn unrelated_module_does_not_match() {
+        assert!(!matches(&["tapHLE::mem"], "tapHLE::cpu"));
+    }
+}

@@ -10,8 +10,8 @@ use crate::frameworks::core_graphics::{CGPoint, CGRect};
 use crate::frameworks::foundation::{NSInteger, NSTimeInterval, NSUInteger};
 use crate::mem::MutVoidPtr;
 use crate::objc::{
-    autorelease, id, msg, msg_class, nil, objc_classes, release, retain, ClassExports, HostObject,
-    NSZonePtr,
+    autorelease, id, msg, msg_class, nil, objc_classes, release, retain, Class, ClassExports,
+    HostObject, NSZonePtr,
 };
 use crate::window::{Coords, Event, FingerId};
 use crate::Environment;
@@ -276,8 +276,12 @@ fn handle_touches_down(env: &mut Environment, map: HashMap<FingerId, Coords>) {
             continue;
         } else {
             log_dbg!(
-                "Found view {:?} with frame {:?} for touch at {:?} in window {:?}",
+                "Found view {:?} ({}) with frame {:?} for touch at {:?} in window {:?}",
                 view,
+                {
+                    let c: Class = msg![env; view class];
+                    env.objc.get_class_name(c).to_string()
+                },
                 {
                     let f: CGRect = msg![env; view frame];
                     f
