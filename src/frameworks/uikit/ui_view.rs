@@ -20,6 +20,7 @@ pub mod ui_window;
 use core::panic;
 
 use super::ui_graphics::{UIGraphicsPopContext, UIGraphicsPushContext};
+use crate::abi::CallFromHost;
 use crate::frameworks::core_animation::ca_animation::{
     kCAFillModeBackwards, CAMediaTimingFillMode,
 };
@@ -38,8 +39,8 @@ use crate::frameworks::foundation::ns_string::{from_rust_string, get_static_str,
 use crate::frameworks::foundation::{ns_array, NSInteger, NSTimeInterval, NSUInteger};
 use crate::mem::{ConstVoidPtr, GuestUSize};
 use crate::objc::{
-    autorelease, id, msg, msg_class, msg_send, nil, objc_classes, release, retain,
-    todo_objc_setter, Class, ClassExports, HostObject, NSZonePtr, ObjC, SEL,
+    autorelease, block_invoke_function, id, msg, msg_class, msg_send, nil, objc_classes, release,
+    retain, todo_objc_setter, Class, ClassExports, HostObject, NSZonePtr, ObjC, SEL,
 };
 use crate::Environment;
 
@@ -73,7 +74,9 @@ pub struct State {
     pub animation_block_count: usize,
 }
 
-pub(super) struct UIViewHostObject {
+/// Public so that a UIView subclass living in another framework (for example
+/// iAd's ADBannerView) can embed it as its superclass host object.
+pub struct UIViewHostObject {
     /// CALayer or subclass.
     layer: id,
     /// Subviews in back-to-front order. These are strong references.
@@ -117,6 +120,13 @@ struct UIViewAnimationDelegateHostObject {
     finished_animation_count: u32,
 }
 impl HostObject for UIViewAnimationDelegateHostObject {}
+
+#[derive(Default)]
+struct UIViewBlockCompletionHostObject {
+    /// The completion block, retained. `void (^)(BOOL finished)`.
+    completion: id,
+}
+impl HostObject for UIViewBlockCompletionHostObject {}
 
 pub fn set_view_controller(env: &mut Environment, view: id, controller: id) {
     let host_obj = env.objc.borrow_mut::<UIViewHostObject>(view);
@@ -225,6 +235,107 @@ pub const CLASSES: ClassExports = objc_classes! {
     log_dbg!("[UIView setAnimationDidStopSelector:{:?} ({})]", selector, selector_str);
     let selector_nsstring = from_rust_string(env, selector_str.to_string());
     () = msg_class![env; CATransaction setValue:selector_nsstring forKey:(get_static_str(env, tapHLE_kCATransactionAnimationDidStopSelector))];
+}
+
+// iOS 4's block-based animation API. It is defined in terms of the older
+// begin/commit API, which already owns the transaction, delegate and timing
+// machinery; the only new part is running the two blocks at the right moments.
+//
+// The completion block must not run until the animation has actually stopped —
+// apps use it to remove a view that has just faded out — so it is delivered
+// through the same animation-delegate path as setAnimationDidStopSelector:.
+// When the animations block schedules nothing there is no animation to wait
+// for and no delegate callback will ever arrive, so completion is called
+// directly, which is also what UIKit does.
++ (())animateWithDuration:(NSTimeInterval)duration
+               animations:(id)animations // block
+               completion:(id)completion { // block, may be nil
+    () = msg_class![env; UIView beginAnimations:nil context:(ConstVoidPtr::null())];
+    () = msg_class![env; UIView setAnimationDuration:duration];
+
+    if animations != nil {
+        let invoke = block_invoke_function(env, animations);
+        () = invoke.call_from_host(env, (animations,));
+    }
+
+    let scheduled_any = !ca_transaction::ThreadLocalState::get_current_transaction(env)
+        .unwrap()
+        .get_animations()
+        .is_empty();
+
+    let block_delegate = if completion != nil && scheduled_any {
+        let block_delegate: id = msg_class![env; _tapHLE_UIView_BlockCompletion new];
+        () = msg![env; block_delegate setCompletionBlock:completion];
+        () = msg_class![env; UIView setAnimationDelegate:block_delegate];
+        let selector = env
+            .objc
+            .lookup_selector("tapHLE_animationDidStop:finished:context:")
+            .unwrap();
+        () = msg_class![env; UIView setAnimationDidStopSelector:selector];
+        block_delegate
+    } else {
+        nil
+    };
+
+    () = msg_class![env; UIView commitAnimations];
+
+    if block_delegate != nil {
+        // setAnimationDelegate: took its own reference.
+        release(env, block_delegate);
+    } else if completion != nil {
+        let invoke = block_invoke_function(env, completion);
+        () = invoke.call_from_host(env, (completion, true));
+    }
+}
+
++ (())animateWithDuration:(NSTimeInterval)duration
+               animations:(id)animations { // block
+    () = msg_class![env; UIView animateWithDuration:duration animations:animations completion:nil];
+}
+
++ (())animateWithDuration:(NSTimeInterval)duration
+                    delay:(NSTimeInterval)delay
+                  options:(NSUInteger)_options
+               animations:(id)animations // block
+               completion:(id)completion { // block, may be nil
+    // TODO: UIViewAnimationOptions (curve, autoreverse, repeat, allow user
+    // interaction). Delay is honoured because the older API already supports it.
+    () = msg_class![env; UIView beginAnimations:nil context:(ConstVoidPtr::null())];
+    () = msg_class![env; UIView setAnimationDuration:duration];
+    () = msg_class![env; UIView setAnimationDelay:delay];
+
+    if animations != nil {
+        let invoke = block_invoke_function(env, animations);
+        () = invoke.call_from_host(env, (animations,));
+    }
+
+    let scheduled_any = !ca_transaction::ThreadLocalState::get_current_transaction(env)
+        .unwrap()
+        .get_animations()
+        .is_empty();
+
+    let block_delegate = if completion != nil && scheduled_any {
+        let block_delegate: id = msg_class![env; _tapHLE_UIView_BlockCompletion new];
+        () = msg![env; block_delegate setCompletionBlock:completion];
+        () = msg_class![env; UIView setAnimationDelegate:block_delegate];
+        let selector = env
+            .objc
+            .lookup_selector("tapHLE_animationDidStop:finished:context:")
+            .unwrap();
+        () = msg_class![env; UIView setAnimationDidStopSelector:selector];
+        block_delegate
+    } else {
+        nil
+    };
+
+    () = msg_class![env; UIView commitAnimations];
+
+    if block_delegate != nil {
+        release(env, block_delegate);
+    } else if completion != nil {
+        let invoke = block_invoke_function(env, completion);
+        () = invoke.call_from_host(env, (completion, true));
+    }
 }
 
 + (())beginAnimations:(id)animation_id // NSString*
@@ -669,8 +780,16 @@ pub const CLASSES: ClassExports = objc_classes! {
     msg![env; layer setHidden:hidden]
 }
 
+// UIKit's clipsToBounds is the view-level name for the layer's masksToBounds,
+// so forward rather than storing a second copy. The compositor does not clip
+// yet; see the TODO in the composition module.
+- (bool)clipsToBounds {
+    let layer = env.objc.borrow::<UIViewHostObject>(this).layer;
+    msg![env; layer masksToBounds]
+}
 - (())setClipsToBounds:(bool)clips {
-    todo_objc_setter!(this, clips);
+    let layer = env.objc.borrow::<UIViewHostObject>(this).layer;
+    msg![env; layer setMasksToBounds:clips]
 }
 
 - (bool)isOpaque {
@@ -913,6 +1032,44 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 - (CGFloat)contentScaleFactor {
     1.0 // TODO
+}
+
+@end
+
+// Adapts the block-based animation API's completion block to the older
+// delegate-and-selector callback, so both routes share one implementation of
+// "when has the animation actually stopped?".
+@implementation _tapHLE_UIView_BlockCompletion: NSObject
+
++ (id)allocWithZone:(NSZonePtr)_zone {
+    let host_object = Box::<UIViewBlockCompletionHostObject>::default();
+    env.objc.alloc_object(this, host_object, &mut env.mem)
+}
+
+- (())setCompletionBlock:(id)block {
+    retain(env, block);
+    let host_object = env.objc.borrow_mut::<UIViewBlockCompletionHostObject>(this);
+    let old = std::mem::replace(&mut host_object.completion, block);
+    release(env, old);
+}
+
+// The old delegate callback passes `finished` boxed in an NSNumber, which is
+// UIKit's documented signature for it.
+- (())tapHLE_animationDidStop:(id)_animation_id // NSString*
+                     finished:(id)finished // NSNumber*
+                      context:(ConstVoidPtr)_context {
+    let finished: bool = if finished == nil { true } else { msg![env; finished boolValue] };
+    let completion = env.objc.borrow::<UIViewBlockCompletionHostObject>(this).completion;
+    if completion != nil {
+        let invoke = block_invoke_function(env, completion);
+        () = invoke.call_from_host(env, (completion, finished));
+    }
+}
+
+- (())dealloc {
+    let completion = env.objc.borrow::<UIViewBlockCompletionHostObject>(this).completion;
+    release(env, completion);
+    env.objc.dealloc_object(this, &mut env.mem)
 }
 
 @end
