@@ -283,6 +283,9 @@ impl Environment {
                     // UIInterfaceOrientation values are flipped relative to
                     // (UI)DeviceOrientation values (content has to rotate in
                     // the opposite direction to how the device rotates).
+                    "UIInterfaceOrientationPortrait" | "UIDeviceOrientationPortrait" => {
+                        window::DeviceOrientation::Portrait
+                    }
                     "UIInterfaceOrientationPortraitUpsideDown" => {
                         window::DeviceOrientation::PortraitUpsideDown
                     }
