@@ -432,9 +432,37 @@ pub const CLASSES: ClassExports = objc_classes! {
     file_attributes_common(env, guest_path)
 }
 
+// Setting attributes. tapHLE's guest filesystem models file contents, not
+// POSIX permissions, ownership or the extended attributes apps set here (the
+// usual one being a do-not-back-up flag). Reporting success is what lets an app
+// carry on: it set an attribute that has no observable effect in this sandbox,
+// which is different from the operation failing. The request is logged once so
+// the gap is not silent.
+- (bool)setAttributes:(id)attributes // NSDictionary *
+         ofItemAtPath:(id)path // NSString *
+                error:(MutPtr<id>)error { // NSError **
+    let _ = attributes;
+    log_once!("TODO: NSFileManager setAttributes:ofItemAtPath:error: is accepted but no attribute is stored");
+    log_dbg!(
+        "[(NSFileManager *){:?} setAttributes:... ofItemAtPath:{} error:{:?}]",
+        this,
+        ns_string::to_rust_string(env, path),
+        error
+    );
+    if !error.is_null() {
+        env.mem.write(error, nil);
+    }
+    true
+}
+
 - (id)attributesOfItemAtPath:(id)path // NSString *
                        error:(MutPtr<id>)error { // NSError **
-    assert!(error.is_null()); // TODO
+    // A caller asking for an error is normal; there is no error detail worth
+    // inventing, so clear it rather than aborting on the assertion this used
+    // to make.
+    if !error.is_null() {
+        env.mem.write(error, nil);
+    }
 
     // TODO: other attributes
     log_once!("Warning: NSFileManager attributesOfItemAtPath:error: returns only NSFileType, NSFileModificationDate and NSFileSize attributes!");
