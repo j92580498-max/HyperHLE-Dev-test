@@ -185,6 +185,34 @@ pub const CLASSES: ClassExports = objc_classes! {
     msg![env; this objectAtIndex:(size - 1)]
 }
 
+// NSPathUtilities. Returns the receiver's elements whose path extension is one
+// of `extensions`. Apple documents the comparison as case-insensitive, and an
+// extension in the argument array may be written with or without a leading dot.
+- (id)pathsMatchingExtensions:(id)extensions { // NSArray* of NSString*
+    let mut wanted: Vec<String> = Vec::new();
+    let extension_count: NSUInteger = msg![env; extensions count];
+    for i in 0..extension_count {
+        let extension: id = msg![env; extensions objectAtIndex:i];
+        let extension = ns_string::to_rust_string(env, extension);
+        let extension = extension.trim_start_matches('.').to_lowercase();
+        wanted.push(extension);
+    }
+
+    let result: id = msg_class![env; NSMutableArray array];
+    let count: NSUInteger = msg![env; this count];
+    for i in 0..count {
+        let path: id = msg![env; this objectAtIndex:i];
+        let path_extension: id = msg![env; path pathExtension];
+        let path_extension = ns_string::to_rust_string(env, path_extension).to_lowercase();
+        if wanted.iter().any(|wanted| *wanted == path_extension) {
+            () = msg![env; result addObject:path];
+        }
+    }
+    // Documented to return an NSArray.
+    let immutable: id = msg![env; result copy];
+    autorelease(env, immutable)
+}
+
 - (id)componentsJoinedByString:(id)str { // NSString *
     let res: id = msg_class![env; NSMutableString new];
     let count: NSUInteger = msg![env; this count];

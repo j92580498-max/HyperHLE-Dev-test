@@ -1047,7 +1047,13 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (())setCompletionBlock:(id)block {
-    retain(env, block);
+    // The caller's completion block is normally a *stack* block literal, valid
+    // only while +animateWithDuration:... is on the stack. This object outlives
+    // that call — the completion runs when the animation stops, from the run
+    // loop — so the block must be copied to the heap, not merely retained.
+    // Retaining a stack block leaves its invoke pointer pointing into a dead
+    // frame, which shows up as a branch to a null PC much later.
+    let block: id = if block == nil { nil } else { msg![env; block copy] };
     let host_object = env.objc.borrow_mut::<UIViewBlockCompletionHostObject>(this);
     let old = std::mem::replace(&mut host_object.completion, block);
     release(env, old);
