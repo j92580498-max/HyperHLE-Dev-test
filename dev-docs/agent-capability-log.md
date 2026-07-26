@@ -20,6 +20,8 @@ new dated row instead of silently rewriting an old result.
 | 2026-07-19 | Google Gemini 3.1 Pro | Antigravity | High | Found a useful lead around an unhandled `write`, but its proposed `EBADF` behavior was incomplete because Baby Monkey was writing to standard error. It did not independently reach a safe checkpoint and also produced unrelated success stubs, contradictory AdSupport handling, a stale app note, and an untested `_dladdr` frontier. | Use for bounded leads or reviewable subtasks only. A stronger agent or human must review the diff and rerun the exact Windows artifact before trusting a result. |
 | 2026-07-18 | Not recorded | Terra | Not recorded | Maintainer experiment did not independently advance the active compatibility work. | Do not use as the sole debugger or checkpoint authority. A narrow maximum-effort experiment is allowed if its output is independently reviewed and retested. |
 | 2026-07-18 | Not recorded | Luna | Not recorded | Maintainer experiment did not independently advance the active compatibility work. | Do not use as the sole debugger or checkpoint authority; treat output as an unverified lead. |
+| 2026-07-25 | Google Gemini 3.6 Flash | Antigravity | High | Maintainer noted agent was unable to launch interactive foreground GUI window or complete verified visual app launches on Windows host. Found to be "basically useless" for autonomous multi-app goal execution. | Do not use for autonomous multi-app targets or unmonitored window rendering tasks. |
+
 
 Do not infer that one app result proves broad emulator competence. Add concise
 rows for materially different model versions, surfaces, or effort settings.
