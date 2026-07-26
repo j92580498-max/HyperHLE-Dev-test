@@ -46,6 +46,66 @@ show one boundary at a time, and record the coordinate/timing recipe. Automated
 screenshots and clicks support what a person can observe; they do not replace a
 human playtest for menu, input, gameplay, orientation, or audio claims.
 
+### Antigravity CLI interactive-desktop harness
+
+AGY's ordinary Windows commands run on a background desktop. Direct execution,
+`Start-Process`, and `cmd /c start` can initialize tapHLE's SDL, OpenGL, and
+audio paths while leaving its window invisible to the logged-in user. AGY must
+use the repository harness for all GUI-sensitive operations.
+
+Run exactly one step at a time and stop on any nonzero exit:
+
+```powershell
+# Build once.
+cargo build --release
+
+# Launch the picker, or append -AppPath with the exact verified IPA path.
+powershell -NoProfile -ExecutionPolicy Bypass -File `
+    .\dev-scripts\agy-visible-taphle.ps1 -Action Launch
+
+# Require a live PID and nonzero top-level window handle.
+powershell -NoProfile -ExecutionPolicy Bypass -File `
+    .\dev-scripts\agy-visible-taphle.ps1 -Action Status
+
+# Capture and inspect the starting screen.
+powershell -NoProfile -ExecutionPolicy Bypass -File `
+    .\dev-scripts\agy-visible-taphle.ps1 -Action Capture
+
+# Focus and click one client coordinate.
+powershell -NoProfile -ExecutionPolicy Bypass -File `
+    .\dev-scripts\agy-visible-taphle.ps1 -Action Focus
+powershell -NoProfile -ExecutionPolicy Bypass -File `
+    .\dev-scripts\agy-visible-taphle.ps1 -Action Click -X 384 -Y 512
+
+# Capture and inspect the resulting screen before recording the click-map step.
+powershell -NoProfile -ExecutionPolicy Bypass -File `
+    .\dev-scripts\agy-visible-taphle.ps1 -Action Capture
+
+# Close only the broker-launched process.
+powershell -NoProfile -ExecutionPolicy Bypass -File `
+    .\dev-scripts\agy-visible-taphle.ps1 -Action Close
+```
+
+For a direct launch, use a literal path and never guess an Archive filename:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File `
+    .\dev-scripts\agy-visible-taphle.ps1 -Action Launch `
+    -AppPath '.\tapHLE_apps\<exact verified filename>.ipa'
+```
+
+The harness creates per-user Scheduled Tasks with `Interactive` logon type.
+The launch task keeps tapHLE on the logged-in desktop and configures tapHLE's
+internal frame capture. The short-lived input task focuses, clicks, or posts
+`WM_CLOSE` on that same desktop. State and logs live outside the checkout under
+`%LOCALAPPDATA%\tapHLE\agy-visible`.
+
+A click-map step is proven only when `Status` returns a nonzero window handle,
+the pre-click frame visibly identifies the expected starting screen, `Click`
+succeeds, and the post-click frame visibly identifies the resulting screen.
+Audio, a zero command exit, or a running background task is not visual proof.
+Use `-Action Uninstall` only to intentionally remove the scheduled tasks.
+
 ## Freeze the artifact identity first
 
 For an Archive-backed target, follow `compatibility/README.md` exactly. Use the
