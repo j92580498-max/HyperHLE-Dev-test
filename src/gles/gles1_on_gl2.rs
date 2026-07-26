@@ -112,6 +112,28 @@ struct ArrayStateBackup {
 
 /// List of arrays shared by OpenGL ES 1.1 and OpenGL 2.1.
 ///
+/// Report a client-state array tapHLE does not model, once per distinct enum.
+///
+/// A per-frame call site would otherwise flood the log, but the enum itself is
+/// exactly what a future implementer needs, so it must not be swallowed either.
+/// The likeliest candidate is `GL_POINT_SIZE_ARRAY_OES` (0x8B9C), used by
+/// point-sprite particle systems.
+fn warn_unknown_client_array(function: &str, array: GLenum) {
+    use std::collections::HashSet;
+    use std::sync::{Mutex, OnceLock};
+    static SEEN: OnceLock<Mutex<HashSet<GLenum>>> = OnceLock::new();
+    let seen = SEEN.get_or_init(|| Mutex::new(HashSet::new()));
+    if seen.lock().unwrap().insert(array) {
+        log!(
+            "Warning: {}({:#x}) names a client array tapHLE does not model. \
+             Letting it through so the guest sees GL_INVALID_ENUM. \
+             [reported once per array]",
+            function,
+            array
+        );
+    }
+}
+
 /// TODO: GL_POINT_SIZE_ARRAY_OES?
 pub const ARRAYS: &[ArrayInfo] = &[
     ArrayInfo {
@@ -742,9 +764,14 @@ impl GLES for GLES1OnGL2<'_> {
                 "Tolerating glEnableClientState({:#x}) of a buffer target",
                 array
             );
-        } else {
-            assert!(ARRAYS.iter().any(|&ArrayInfo { name, .. }| name == array));
+        } else if !ARRAYS.iter().any(|&ArrayInfo { name, .. }| name == array) {
+            warn_unknown_client_array("glEnableClientState", array);
         }
+        // Pass it through either way. An array tapHLE does not model is one
+        // desktop GL does not model either, so it records GL_INVALID_ENUM and
+        // does nothing — which is exactly what GLES 1.1 specifies and what the
+        // guest's own glGetError() should therefore see. Panicking turned an
+        // app's recoverable mistake into an emulator crash.
         gl21::EnableClientState(array);
     }
     unsafe fn DisableClientState(&mut self, array: GLenum) {
@@ -758,9 +785,10 @@ impl GLES for GLES1OnGL2<'_> {
                 "Tolerating glDisableClientState({:#x}) of a buffer target",
                 array
             );
-        } else {
-            assert!(ARRAYS.iter().any(|&ArrayInfo { name, .. }| name == array));
+        } else if !ARRAYS.iter().any(|&ArrayInfo { name, .. }| name == array) {
+            warn_unknown_client_array("glDisableClientState", array);
         }
+        // See the note in EnableClientState.
         gl21::DisableClientState(array);
     }
     unsafe fn GetBooleanv(&mut self, pname: GLenum, params: *mut GLboolean) {
