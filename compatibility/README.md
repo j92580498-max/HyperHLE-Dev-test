@@ -88,6 +88,15 @@ If canonical provenance or the submission token is missing, record that exact
 blocker and keep threshold publication open; do not silently leave the report
 or the `trunk` promotion undone.
 
+**Run `tapHLE --info` before composing a report, every time.** The bundle
+identifier is the field the endpoint matches on, so guessing it silently
+creates a duplicate app row that a moderator then has to reject, and the
+report cannot be edited afterwards — only superseded. Real identifiers are
+routinely not what the app's name suggests: two apps on the 2026-07-26 target
+list turned out to be plain `Minecrafted` and `com.eeenmachine.` (with a
+trailing dot). Copy the identifier and version out of `--info` output; never
+infer them from the app name, the Archive filename, or the developer.
+
 Submit when the rating changes, in either direction — a regression is a result.
 Do not submit a rerun that reproduces a rating already recorded for the same
 tapHLE revision; the endpoint does not deduplicate, so that is pure moderation
