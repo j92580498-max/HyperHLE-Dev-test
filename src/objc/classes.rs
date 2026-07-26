@@ -574,6 +574,26 @@ impl ObjC {
         self.link_class_inner(name, /* is_metaclass: */ false, mem, false)
     }
 
+    /// Like [Self::get_known_class], but answers [None] instead of panicking
+    /// when tapHLE has no implementation of the class.
+    ///
+    /// This is for the feature-detection idiom: an app that asks
+    /// `NSClassFromString(@"GKLeaderboardViewController")` is explicitly
+    /// asking whether the class exists on this OS version, and "no" is a
+    /// legitimate answer it is written to handle. Do not use this where the
+    /// caller actually requires the class — there the panic is the useful
+    /// signal that something is missing.
+    pub fn get_known_class_if_implemented(&mut self, name: &str, mem: &mut Mem) -> Option<Class> {
+        if self
+            .get_class(name, /* is_metaclass: */ false, mem)
+            .is_none()
+            && Self::find_template(name).is_none()
+        {
+            return None;
+        }
+        Some(self.get_known_class(name, mem))
+    }
+
     fn link_class_inner(
         &mut self,
         name: &str,
