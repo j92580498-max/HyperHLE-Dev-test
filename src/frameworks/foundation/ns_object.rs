@@ -123,6 +123,12 @@ pub const CLASSES: ClassExports = objc_classes! {
     // Do nothing
 }
 
+// Real NSObject implements +load, and a guest class's own +load routinely ends
+// with [super load]. Without this that super-send aborted the app.
++ (())load {
+    // Do nothing
+}
+
 - (id)init {
     this
 }
