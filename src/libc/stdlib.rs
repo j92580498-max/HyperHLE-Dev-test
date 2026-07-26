@@ -227,6 +227,20 @@ fn srandom(env: &mut Environment, seed: u32) {
 
     env.libc_state.stdlib.random = seed;
 }
+// The random() counterpart of sranddev(). BSD seeds this from a random device;
+// the host clock is the same "fresh randomness each run" that games want from
+// it, and matches how sranddev() is already handled.
+fn srandomdev(env: &mut Environment) {
+    // TODO: handle errno properly
+    set_errno(env, 0);
+
+    let time = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let seed = (time ^ (time >> 32)) as u32;
+    env.libc_state.stdlib.random = seed;
+}
 fn random(env: &mut Environment) -> i32 {
     // TODO: handle errno properly
     set_errno(env, 0);
@@ -595,6 +609,7 @@ pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(rand()),
     export_c_func!(rand_r(_)),
     export_c_func!(srandom(_)),
+    export_c_func!(srandomdev()),
     export_c_func!(random()),
     export_c_func!(arc4random()),
     export_c_func!(div(_, _)),
