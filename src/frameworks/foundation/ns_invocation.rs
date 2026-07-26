@@ -62,6 +62,26 @@ pub const CLASSES: ClassExports = objc_classes! {
     autorelease(env, res)
 }
 
+// The read side of the target/selector pair. An app that hands an invocation
+// around commonly asks what it will call before deciding whether to invoke it.
+- (id)target {
+    env.objc.borrow::<NSInvocationHostObject>(this).target
+}
+
+- (SEL)selector {
+    // A selector was always set before this is asked for in practice; a nil
+    // selector has no representation in the SEL type, so an unset one is an
+    // app-visible programming error rather than something to paper over.
+    env.objc
+        .borrow::<NSInvocationHostObject>(this)
+        .selector
+        .expect("-[NSInvocation selector] before -setSelector:")
+}
+
+- (id)methodSignature {
+    env.objc.borrow::<NSInvocationHostObject>(this).sig
+}
+
 - (())setTarget:(id)target {
     let old_target = env.objc.borrow::<NSInvocationHostObject>(this).target;
     let arguments_retained = env.objc.borrow::<NSInvocationHostObject>(this).arguments_retained;
@@ -73,7 +93,9 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (())setSelector:(SEL)selector {
-    assert!(env.objc.borrow_mut::<NSInvocationHostObject>(this).selector.is_none()); // TODO
+    // Reassignment is legal: an invocation can be reconfigured and invoked
+    // again. The arguments are indexed by the method signature rather than by
+    // the selector, so nothing else has to change here.
     env.objc.borrow_mut::<NSInvocationHostObject>(this).selector = Some(selector);
 }
 

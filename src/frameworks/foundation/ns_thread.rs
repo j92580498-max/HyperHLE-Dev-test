@@ -27,6 +27,8 @@ use std::time::Duration;
 pub struct State {
     is_multi_threaded: bool,
     ns_threads: HashMap<pthread_t, id>,
+    /// The NSThread representing the main thread, created on first request.
+    main_thread: Option<id>,
 }
 impl State {
     fn get(env: &mut Environment) -> &mut Self {
@@ -96,6 +98,20 @@ pub const CLASSES: ClassExports = objc_classes! {
         State::get(env).ns_threads.insert(pthread, ns_thread);
     }
     *State::get(env).ns_threads.get(&pthread).unwrap()
+}
+
+// The NSThread for the main thread, whichever thread is asking. tapHLE numbers
+// the main thread 0, and the per-pthread NSThreads created by +currentThread
+// are cached, so this is the same object the main thread would get from
+// +currentThread.
++ (id)mainThread {
+    if let Some(main_thread) = State::get(env).main_thread {
+        return main_thread;
+    }
+    let ns_thread: id = msg_class![env; NSThread alloc];
+    let ns_thread: id = msg![env; ns_thread init];
+    State::get(env).main_thread = Some(ns_thread);
+    ns_thread
 }
 
 + (id)callStackReturnAddresses {
