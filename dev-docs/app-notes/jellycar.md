@@ -3,9 +3,9 @@
 > **UNSUBMITTED RESULTS — tapHLEdb was returning HTTP 504 (2026-07-26).**
 > Two results below were measured on committed builds but could not be filed:
 >
-> - **JellyCar 2 on iPad**, `com.disney.jellyCar2foriPad` 1.1 — **2 stars** on
->   tapHLE `d335f7bd`. Frontier: mode-select and Classic instruction cards
->   render; the cards are static, so gameplay is not reached.
+> - **JellyCar 2 on iPad**, `com.disney.jellyCar2foriPad` 1.1 — **3 stars** on
+>   tapHLE `d335f7bd`. Classic mode, level "Lance" runs: terrain, the jelly car,
+>   drive controls and a timer counting 18.720 -> 69.601 across ~50 s.
 > - **JellyCar 3**, `com.disney.JellyCar3` 1.2 — **1 star** on tapHLE
 >   `f8a085d8`. Frontier: past resource enumeration, guest MemoryError.
 >
@@ -92,16 +92,39 @@ With those it reaches the **mode-select screen** (Classic, Factory, Long Jump,
 2P Tether, 2P Race, My Levels) and, from Classic, a series of **instruction
 cards** showing a car, terrain, a goal flag and drive controls.
 
-**Those cards are not gameplay.** Two captures taken five seconds apart are
-byte-for-byte identical, and the timer on them (51.482, then 49.076 on the next
-card) is static artwork, not a running clock. Tapping the continue arrow
-advances from one card to the next. So this is a stable screen — 2 stars — and
-the gameplay loop has not been reached.
+**Those cards are not gameplay, and they are not the way in.** Two captures
+five seconds apart are byte-for-byte identical, and the timer on them (51.482,
+then 49.076 on the next card) is static artwork. The mode screen says it
+plainly — "Touch an icon below for **instructions**" — so that whole screen is
+the help section, and paging through it only reaches more cards.
 
-Next discriminator: page through the remaining instruction cards to whatever
-follows them, and check for a *changing* timer as the signal that the
-simulation is actually running. Do not treat a card that merely depicts the
-game as evidence of gameplay; that mistake was nearly made here.
+### The route to actual gameplay (3 stars)
+
+Backing out of the help section with the bottom-left arrow reveals the **real
+main menu**: a spiral notebook with mode icons down the left margin. Play
+starts from there.
+
+Click map, 1024x768 client, ~22 s launch wait:
+
+1. First screen -> `(62, 705)` back arrow -> notebook main menu.
+2. Menu -> `(62, 622)` CLASSIC mode -> difficulty select.
+3. Difficulty -> `(528, 628)` EASY -> level thumbnails.
+4. Thumbnails -> `(447, 480)` first level -> a confirm dialog naming the level.
+5. Dialog -> `(583, 440)` OK -> **gameplay**.
+
+In gameplay, level "Lance" renders with blue terrain, the orange jelly car,
+drive arrows, a pump and a pause button, and the timer runs: 18.720 at first
+capture, 69.601 about fifty seconds later, with the level live throughout. That
+is the loop starting and persisting.
+
+**Coordinate warning.** The difficulty screen's capture is 768x1024 *portrait*
+while the client stays 1024x768 landscape, so client X maps from capture Y
+there. The surrounding screens capture 1024x768 and map 1:1. Check the capture
+dimensions before converting a position.
+
+Not established: whether a synthetic drive input actually steers the car. The
+car shifted slightly between captures, but physics settling explains that just
+as well, so no claim is made about driving.
 
 JellyCar 3 1.2 is 1 star; see its own entry above.
 
