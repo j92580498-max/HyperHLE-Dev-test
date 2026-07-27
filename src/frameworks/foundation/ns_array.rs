@@ -54,9 +54,23 @@ pub const CLASSES: ClassExports = objc_classes! {
 @implementation NSArray: NSObject
 
 + (id)allocWithZone:(NSZonePtr)zone {
-    // NSArray might be subclassed by something which needs allocWithZone:
-    // to have the normal behaviour. Unimplemented: call superclass alloc then.
-    assert!(this == env.objc.get_known_class("NSArray", &mut env.mem));
+    // A guest subclass of NSArray gets a working _tapHLE_NSArray rather than an
+    // instance of itself. That loses the subclass identity, so a check for the
+    // app's own class fails while -isKindOfClass:[NSArray class] still passes,
+    // and any method the subclass added is not found.
+    //
+    // It is the wrong answer, and it is a much better one than aborting.
+    // tapHLE's array primitives live on the concrete class, not on NSArray, so
+    // an instance of the subclass would have no storage and would fail on
+    // -count; there is no version of honouring the subclass that works without
+    // making NSArray itself concrete.
+    //
+    // In practice these subclasses are helpers — SPY mouse HD has an
+    // AS_NSArrayJSONSerializable — where the class exists to hang methods off
+    // and the instances are ordinary arrays.
+    if this != env.objc.get_known_class("NSArray", &mut env.mem) {
+        log_once!("TODO: a guest subclass of NSArray was allocated; it gets a plain array and loses its own class");
+    }
     msg_class![env; _tapHLE_NSArray allocWithZone:zone]
 }
 
@@ -165,6 +179,44 @@ pub const CLASSES: ClassExports = objc_classes! {
     }
     NSNotFound as NSUInteger
 }
+// Send one message to every element.
+//
+// The elements are snapshotted first. UIKit and app code routinely use this to
+// tell every subview to remove itself, or to invalidate every timer in a list,
+// and those messages mutate the receiver mid-iteration; walking the live array
+// would skip elements or index past its end. Apple's documents the array as
+// not to be mutated during the call, but tolerating it costs one clone and
+// turns a crash into the obvious behaviour.
+//
+// A nil element is skipped rather than messaged. An array cannot hold nil, so
+// this only arises for the non-retaining variants, where an element may have
+// died.
+- (())makeObjectsPerformSelector:(SEL)selector {
+    let count: NSUInteger = msg![env; this count];
+    let mut objects = Vec::with_capacity(count as usize);
+    for i in 0..count {
+        objects.push(msg![env; this objectAtIndex:i]);
+    }
+    for object in objects {
+        if object != nil {
+            () = msg_send(env, (object, selector));
+        }
+    }
+}
+
+- (())makeObjectsPerformSelector:(SEL)selector withObject:(id)argument {
+    let count: NSUInteger = msg![env; this count];
+    let mut objects = Vec::with_capacity(count as usize);
+    for i in 0..count {
+        objects.push(msg![env; this objectAtIndex:i]);
+    }
+    for object in objects {
+        if object != nil {
+            () = msg_send(env, (object, selector, argument));
+        }
+    }
+}
+
 - (bool)containsObject:(id)object {
     let idx: NSUInteger = msg![env; this indexOfObject:object];
     idx != NSNotFound as NSUInteger
@@ -291,9 +343,11 @@ pub const CLASSES: ClassExports = objc_classes! {
 @implementation NSMutableArray: NSArray
 
 + (id)allocWithZone:(NSZonePtr)zone {
-    // NSArray might be subclassed by something which needs allocWithZone:
-    // to have the normal behaviour. Unimplemented: call superclass alloc then.
-    assert!(this == env.objc.get_known_class("NSMutableArray", &mut env.mem));
+    // See the note on +[NSArray allocWithZone:]: the same trade, for the same
+    // reason.
+    if this != env.objc.get_known_class("NSMutableArray", &mut env.mem) {
+        log_once!("TODO: a guest subclass of NSMutableArray was allocated; it gets a plain array and loses its own class");
+    }
     msg_class![env; _tapHLE_NSMutableArray allocWithZone:zone]
 }
 
