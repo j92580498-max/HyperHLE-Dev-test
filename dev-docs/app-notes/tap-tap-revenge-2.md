@@ -11,44 +11,80 @@
   `com.tapulous.taptaprevengeII`, version `2.6.4`, minimum OS `2.0`, iPhone.
   The Archive filename carries no version; `--info` is the only source for it.
 - Options: none. Window is 320x480 portrait.
-- tapHLEdb: App 13, version 13, report 21 (2026-07-26, tapHLE `102300c2`,
-  ★★☆☆☆).
+- tapHLEdb: App 13, version 13. Report 21 (2026-07-26, tapHLE `102300c2`,
+  ★★☆☆☆); report 43 (2026-07-27, tapHLE `b1de9e9e`, ★★★☆☆) supersedes it.
 
-## Highest milestone: 2-star (Starts / Menu), tapHLE `102300c2`
+## Highest milestone: 3-star (In game), tapHLE `b1de9e9e`
 
 Reproduced from a clean committed release build (window title
-`Tap Tap (tapHLE 102300c2)`, no `-dirty`) against the hash-verified bytes.
+`Tap Tap (tapHLE b1de9e9e)`, no `-dirty`) against the hash-verified bytes.
 
-Every menu works and is navigable: the animated title screen with Play / Free
-Tracks / Options, the Play menu (One Player, Two Player, Career, Play Online),
-difficulty select (Kids/Easy/Medium/Hard/Extreme), and the track list, which
-renders album art, song titles, artists and durations for the two bundled
-tracks. The welcome alert's text appears in the log.
+Selecting a track loads the theme, parses the note chart and starts the audio
+queue, and **the gameplay screen renders and plays**: notes fall down all three
+lanes, the multiplier, streak and score readouts update, and the beat clock
+drives the chart. Taps register — clicking a lane lights and enlarges its
+target ring and changes the score. Eight captures taken four seconds apart
+during play were eight distinct images.
 
-**It is not in game.** Selecting a track fails, so no note chart is ever played.
+Rated three, not more, because of the hang below. Three is
+"Some gameplay works, but major problems remain", which is exactly this.
+
+### Known limitation: it hangs after a minute or two of play
+
+Play stops. The frame stops changing — five captures taken over ~50 s were
+byte-identical, checked by SHA-256, not by eye — and touches stop registering,
+while the process stays alive and the run loop keeps turning (the log continues
+to grow). It is reproducible: it happened on both runs, at different scores
+(-1,230 and -4,470) and with notes still mid-fall, so it is **not** the
+song-failed transition, which was the first guess.
+
+Nothing is logged at the moment it happens. That is the next thing to attack.
 
 ### Click map
 
-No launch options; window 320x480 portrait; wait ~28 s for the title screen
-(this app does a lot of network and database setup first).
+No launch options; window 320x480 portrait. Startup got slower once views
+started receiving a real layout pass, so allow **40 s** for the title screen.
 
-1. Title -> `(160, 313)` Play -> Play menu.
-2. Play menu -> `(82, 200)` One Player -> difficulty select.
-3. Difficulty -> `(238, 190)` Easy -> track list.
-4. Track list -> `(170, 128)` first track -> the game loads and runs, but
-   draws nothing. **This is the frontier.** This tap is timing-sensitive:
-   allow ~14 s after the difficulty tap or it lands before the list is live,
-   which looks identical to the tap being ignored.
+1. Title -> `(160, 313)` Play -> Play menu. Allow 10 s.
+2. Play menu -> `(82, 200)` One Player -> difficulty select. Allow 10 s.
+3. Difficulty -> `(238, 190)` Easy -> track list. Allow 16 s.
+4. Track list -> `(170, 128)` first track -> gameplay, after ~30 s of loading.
 
-## Track selection works; the game runs but does not draw
+Every one of these taps is timing-sensitive, and a tap that lands early is
+silently ignored — indistinguishable from a tap that missed. Capture between
+steps rather than trusting the sequence.
 
-Selecting a track used to abort. It now loads the theme, parses the note chart
-and starts the audio queue, and it stays alive indefinitely. **The gameplay
-screen renders nothing** — the window stays white — so this is still 2 stars,
-not 3.
+Lane targets for tapping during play are at `y = 430`, `x = 55 / 160 / 265`.
 
-Ten separate blockers were cleared to get from "selecting a track aborts" to
-"the game runs". Each was a general gap, and none is specific to this app:
+## What it took: the layout pass
+
+The last blocker was the interesting one, and it was general.
+
+The game view is a standard `EAGLView`: `+[TTRGameView layerClass]` returns
+`CAEAGLLayer`, and `-[TTRRenderer initWithContext:drawable:]` runs. But
+`-[EAGLContext renderbufferStorage:fromDrawable:]` was **never called** — zero
+hits when tracing that selector across a whole session — while
+`presentRenderbuffer:` was called 887 times, each logging "renderbuffer 0 not
+bound to a drawable". The renderer was initialised, believed it had a surface,
+and presented every frame into nothing.
+
+The cause is that the standard EAGLView creates its renderbuffer in
+`-layoutSubviews`, and tapHLE only sent `layoutSubviews` at launch and for a
+window's root view. A view added to a window hierarchy *later* never received
+one. UIKit lays out every view in a window on the next turn of the run loop, so
+that was simply missing; it is fixed on `trunk`, and the pass is deliberately
+skipped for a view not yet in a window, because laying out before the view has
+its final size would create the renderbuffer at the wrong size and nothing
+would re-create it.
+
+Worth noting how misleading the symptom was: an app that runs, loads its data,
+plays audio and draws a blank screen looks like a rendering bug in the
+emulator's compositor. The 887 harmless-looking log lines were the whole
+answer.
+
+### Twelve general gaps cleared to get here
+
+All on `trunk`; none is specific to this game. In the order they were hit:
 
 1. `-[NSDictionary initWithContentsOfFile:]` passed a nil path straight to
    `to_rust_string()`. Both concrete dictionary classes had the gap.
@@ -66,8 +102,10 @@ Ten separate blockers were cleared to get from "selecting a track aborts" to
    `outActualStartTime`, and `kAudioFilePropertyPacketToFrame`.
 10. `CFRunLoopTimerCreate` asserted `order == 0`; `MPVolumeSettingsAlert*`;
     `-[NSCalendar components:fromDate:toDate:options:]`.
+11. `viewDidLoad` was being sent too widely — see below.
+12. The layout pass above.
 
-### The Lua bridge was the interesting one
+### The Lua bridge
 
 The app's theme is Lua, and it failed with
 
@@ -78,7 +116,7 @@ Error setting up taps: no columns
 
 Line 1044 of the app's own `game_defaults.cfg` (loaded under the chunk name
 `theme.cfg`) reads `game.gameController.currentFrameRate < 16`. The bridge
-resolves a property by calling `class_getProperty`, which tapHLE stubbed out to
+resolves a property with `class_getProperty`, which tapHLE stubbed out to
 return null, so it fell through to handing Lua a *bound method* instead of the
 value — hence comparing a function with a number. With property metadata parsed
 from the binary the chain `currentFrameRate` -> `gameView` -> `view` ->
@@ -100,39 +138,9 @@ The rule is that `viewDidLoad` reports *loading*, so it belongs on exactly two
 paths: after `-loadView` runs, and after a nib supplies the view. A controller
 whose view the app assigned itself never loaded one and must not be told it
 did. Glass Tower HD, which is what motivated sending `viewDidLoad` in the first
-place, still reaches gameplay after the narrowing — that was verified, not
-assumed.
+place, still reaches gameplay after the narrowing — verified, not assumed.
 
-## Current frontier: the EAGL view never binds a drawable
-
-The game view is a standard `EAGLView`: `+[TTRGameView layerClass]` returns
-`CAEAGLLayer`, the layer gets `setDrawableProperties:`, and
-`-[TTRRenderer initWithContext:drawable:]` runs. But
-`-[EAGLContext renderbufferStorage:fromDrawable:]` is **never called** —
-confirmed by tracing that selector across a whole session and getting zero
-hits — while `presentRenderbuffer:` is called 887 times, each one logging
-
-```text
-Can't present a renderbuffer 0 not bound to a drawable!
-```
-
-So the renderer is initialised, believes it has a surface, and presents every
-frame into nothing. The app's own `createFramebuffer` selector is never sent
-either, which places the failure inside `-[TTRRenderer initWithContext:
-drawable:]`, on a path that gives up before creating the framebuffer without
-logging anything.
-
-Two contexts are created with `initWithAPI:` and there are 1777
-`setCurrentContext:` calls, so a plausible line of enquiry is whether the
-context that owns the drawable binding is the one current at present time —
-tapHLE keys `renderbuffer_drawable_bindings` per `EAGLContextHostObject`, and
-`initWithAPI:` with no sharegroup means two contexts share nothing.
-
-That is a hypothesis, not a finding. The measured facts are the three above:
-`renderbufferStorage:fromDrawable:` zero calls, `createFramebuffer` zero calls,
-`presentRenderbuffer:` 887 calls with binding 0.
-
-## Nine general gaps cleared to get here
+## Earlier gaps, cleared before the twelve above
 
 All on `trunk`; none is specific to this game. In the order they were hit:
 
