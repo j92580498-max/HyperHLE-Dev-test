@@ -168,30 +168,26 @@ fn init_common(env: &mut Environment, this: id) -> id {
     this
 }
 
-/// Give a newly mounted view, and everything under it, its layout pass.
+/// Flag a newly mounted view for layout.
 ///
-/// UIKit lays out every view in a window on the next turn of the run loop, so a
-/// view that has just joined a window hierarchy always gets one. tapHLE only
-/// ever did this at launch and for a window's root view, which meant a view
-/// added later never received `layoutSubviews` at all.
+/// UIKit lays out every view in a window on the next turn of the run loop, and
+/// the emphasis is on *next turn*: the layout does not happen inside
+/// `-addSubview:`. tapHLE only ever laid out at launch and for a window's root
+/// view, so a view added later never received `-layoutSubviews` at all — which
+/// matters because the standard `EAGLView` creates its renderbuffer there, and
+/// without it presents every frame into no drawable.
 ///
-/// That is not a cosmetic gap. The standard `EAGLView` creates its renderbuffer
-/// and binds it to its CAEAGLLayer in `-layoutSubviews`, so a GL view added
-/// after launch had no drawable, and its render loop presented every frame into
-/// nothing — visible as an app that runs perfectly and draws a blank screen.
+/// Doing it **synchronously** here, which is what this did first, breaks apps
+/// outright: JellyCar 2 faulted during startup because its layout ran while the
+/// view hierarchy was still being built, a moment the app never expects. Merely
+/// flagging it, and letting `handle_pending_layout` service it on the next run
+/// loop turn, is both what UIKit does and what both apps survive.
 ///
-/// A view that is not in a window is skipped, which matters as much as the
-/// sending does: laying out before the view has its final size would have that
-/// renderbuffer created at the wrong size, and nothing would re-create it.
-///
-/// This is synchronous rather than deferred to a run loop pass, matching what
-/// the launch path and UIWindow's root-view path already do.
-pub(super) fn send_layout_pass_if_in_window(env: &mut Environment, view: id) {
-    let window: id = msg![env; view window];
-    if window == nil {
-        return;
-    }
-    send_layout_pass(env, view);
+/// A view not yet in a window is flagged anyway; `handle_pending_layout` skips
+/// it until it is mounted, so it is laid out once it has a real size rather
+/// than at the wrong one.
+pub(super) fn mark_needs_layout_on_mount(env: &mut Environment, view: id) {
+    env.objc.borrow_mut::<UIViewHostObject>(view).needs_layout = true;
 }
 
 /// For use by `NSRunLoop`: perform the layout that `-setNeedsLayout` deferred.
@@ -217,18 +213,6 @@ pub fn handle_pending_layout(env: &mut Environment) {
         }
         env.objc.borrow_mut::<UIViewHostObject>(view).needs_layout = false;
         () = msg![env; view layoutSubviews];
-    }
-}
-
-/// The recursive half. A whole subtree can be mounted by one `addSubview:`, and
-/// UIKit lays out all of it, not just the root of what was added.
-fn send_layout_pass(env: &mut Environment, view: id) {
-    () = msg![env; view layoutSubviews];
-    // Re-read after the call: -layoutSubviews is exactly where a view adds or
-    // removes its own subviews, so a snapshot taken beforehand can be stale.
-    let subviews = env.objc.borrow::<UIViewHostObject>(view).subviews.clone();
-    for subview in subviews {
-        send_layout_pass(env, subview);
     }
 }
 
@@ -700,7 +684,7 @@ pub const CLASSES: ClassExports = objc_classes! {
         this_obj.subviews.push(view);
         let this_layer = this_obj.layer;
         () = msg![env; this_layer addSublayer:subview_layer];
-        send_layout_pass_if_in_window(env, view);
+        mark_needs_layout_on_mount(env, view);
     }
 }
 
@@ -723,7 +707,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 
     assert!(index >= 0);
     () = msg![env; this_layer insertSublayer:subview_layer atIndex:(index as u32)];
-    send_layout_pass_if_in_window(env, view);
+    mark_needs_layout_on_mount(env, view);
 }
 
 - (())insertSubview:(id)view belowSubview:(id)sibling {
@@ -746,7 +730,7 @@ pub const CLASSES: ClassExports = objc_classes! {
     subviews.insert(idx, view);
 
     () = msg![env; this_layer insertSublayer:subview_layer below:sibling_layer];
-    send_layout_pass_if_in_window(env, view);
+    mark_needs_layout_on_mount(env, view);
 }
 
 - (())bringSubviewToFront:(id)subview {
@@ -1122,7 +1106,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 // view before reading its frame).
 - (())layoutIfNeeded {
     env.objc.borrow_mut::<UIViewHostObject>(this).needs_layout = false;
-    send_layout_pass(env, this);
+    () = msg![env; this layoutSubviews];
 }
 
 - (NSUInteger)autoresizingMask {
