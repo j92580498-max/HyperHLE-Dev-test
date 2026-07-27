@@ -181,6 +181,25 @@ So the remaining work is that TODO, plus deciding what a half-opaque fullscreen
 layer should mean. Neither is app-specific: any landscape app that gets its
 window from a nib will land here, which is a large share of iPad titles.
 
+### One more hypothesis, also wrong: composition does apply the rotation
+
+It would be natural to conclude from the rejection above that the sideways
+rendering is composition ignoring the layer's transform. It is not.
+`CALayerHostObject::superlayer_to_layer_transform()` concatenates
+`self.affine_transform`, and `composition.rs` multiplies that into its
+cumulative transform for every layer. Rotation is handled.
+
+So the sideways image is the app drawing landscape content, which is what it
+does on a device held sideways — a window-orientation matter rather than a
+rendering bug, and consistent with the earlier observation that
+`--landscape-native` changes the window size while leaving the captured
+renderbuffer byte-identical.
+
+**Four hypotheses have now been tested on this app and three were wrong.** Each
+was settled by one cheap measurement — a trace, a log line, or reading the
+function being blamed. That ratio is the useful thing to carry forward: on this
+app, measure first, because reasoning about it has a poor record.
+
 ### Summary of the whole chain
 
 One bug and one gap, in order:
