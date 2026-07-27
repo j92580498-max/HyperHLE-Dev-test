@@ -219,12 +219,15 @@ pub const CLASSES: ClassExports = objc_classes! {
 - (id)view {
     let view = env.objc.borrow_mut::<UIViewControllerHostObject>(this).view;
     if view == nil {
+        // Loading the view is what viewDidLoad reports, so it is sent here and
+        // only here. A controller whose view the app assigned with -setView:
+        // never loaded one, and must not be told that it did: Tap Tap Revenge
+        // 2 builds its OpenGL view by hand, hands it over, and implements
+        // viewDidLoad as a teardown — sending it there destroyed the game view
+        // immediately after it was created.
         () = msg![env; this loadView];
+        send_view_did_load_if_needed(env, this);
     }
-    // A nib-instantiated controller already has its view here, but may not
-    // have been sent viewDidLoad yet if nothing has asked for the view since
-    // the nib was loaded.
-    send_view_did_load_if_needed(env, this);
     env.objc.borrow_mut::<UIViewControllerHostObject>(this).view
 }
 
