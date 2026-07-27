@@ -15,43 +15,45 @@
 - tapHLEdb: App 20, version 20, report 28 (2026-07-26, tapHLE `4e246384`,
   ★☆☆☆☆).
 
-## Current state: 1-star, no frame
+## Highest milestone: 2-star (Starts / Menu), tapHLE `21f655f4`
 
-Startup aborts before anything is drawn.
+It renders. The full main menu — Play Game, Select Profile, Options, Extras,
+About, on wooden planks over the painted title art — is drawn on a clean
+committed build (`J & F HD (tapHLE 21f655f4)`, no `-dirty`). Filed as report 50.
 
-## Cleared so far
+`NSDecimalNumber` is what unblocked it: the class did not exist and startup
+aborted on `+decimalNumberWithString:`. It is on `trunk`, backed by a `double`
+with the precision limitation stated in its own doc comment.
 
-Four general gaps, all on `trunk` in `7c1c6194`, each the exact next blocker:
+## Two separate problems block three stars
 
-1. `-[NSFileManager setAttributes:ofItemAtPath:error:]` — absent. Now accepted
-   and reported successful; tapHLE's filesystem has no attributes to store.
-2. `NSHTTPCookieStorage` — the whole class was absent. Now a per-process
-   in-memory jar with a working shared instance.
-3. `-[NSBundle classNamed:]` — absent. Returns the class if implemented, nil
-   otherwise, matching NSClassFromString's feature-detection behaviour.
-4. `CGRectContainsRect()` — absent.
+### 1. The scene is drawn rotated 90 degrees
 
-## Current frontier
+Everything renders, sideways. `--landscape-native` changes the window from
+768x1024 to 1024x768 but **does not** change the rendering — the captured
+renderbuffer is byte-identical with and without it (1,493,279 bytes both ways).
+So whatever that option does, it does not reach this app's path, and the
+sideways output is not simply "the option was not passed".
+
+### 2. Touches are discarded: the app never creates a UIWindow
 
 ```text
-Class "NSDecimalNumber" is unimplemented. Call to class method
-"decimalNumberWithString:"
+Couldn't find a window for touch at CGPoint { x: 110.0, y: 170.0 }, discarding
 ```
 
-`NSDecimalNumber` is a genuine piece of work, not a stub: it is an
-arbitrary-precision decimal with its own arithmetic, rounding behaviour and
-`NSDecimal` struct representation, and it is an `NSNumber` subclass, so it has
-to satisfy that interface too.
+`ui_touch` walks `ui_view::ui_window::windows` and finds none containing the
+point. Tracing `makeKeyAndVisible`, `setFrame:`, `initWithFrame:` and
+`pointInside:withEvent:` across a whole startup produced **no UIWindow messages
+at all**, so the list is not merely mis-positioned — nothing was ever added to
+it.
 
-## Next discriminator
+That is the more interesting of the two, and it should be settled before the
+rotation: an app that renders through EAGL without a UIWindow still receives
+touches on a device, so tapHLE is missing whatever creates or registers that
+window. Find what the app *does* create in place of one — trace class
+allocation during startup and look for its own window or view-controller class
+— before assuming this is a UIKit gap.
 
-Decide the scope before writing any of it. An app that only parses and formats
-decimal strings — which `decimalNumberWithString:` alone suggests — needs far
-less than one doing financial arithmetic. Trace which `NSDecimalNumber`
-selectors this binary references (`__objc_selrefs`) first; if the set is small
-and arithmetic-free, backing it with `f64` and documenting the precision limit
-is a defensible bounded implementation. If it uses the arithmetic and rounding
-methods, that is a proper decimal type and a separate `feat/` in its own right.
-
-Note this app is 398 MB, by far the largest on the target list, so each launch
-is slow. Batch changes before re-running.
+Menu geometry, if it becomes useful: in the 768x1024 capture, "Play Game" sits
+at about `(110, 170)`, with the other planks to its right along the top edge.
+Both that point and its landscape rotation `(853, 110)` were discarded.
