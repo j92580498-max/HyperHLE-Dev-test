@@ -694,6 +694,114 @@ impl ObjC {
         }
     }
 
+    /// Point a guest class that subclasses an abstract Foundation class at
+    /// tapHLE's concrete implementation of it instead.
+    ///
+    /// Foundation's collection and string classes are class clusters: `NSArray`
+    /// declares the interface and a private subclass provides the storage. In
+    /// tapHLE the storage and the primitives — `count`, `objectAtIndex:` and so
+    /// on — live on `_tapHLE_NSArray`, and `NSArray` itself has none of them.
+    ///
+    /// An app that subclasses `NSArray` to add a category-like helper therefore
+    /// inherits an interface with no implementation behind it, and its
+    /// instances have nowhere to put elements. Before this, such a class either
+    /// tripped an assertion in `+allocWithZone:` or was quietly handed a plain
+    /// concrete array, losing its own identity and its own methods — which is
+    /// how SPY mouse HD's `AS_NSArrayJSONSerializable` died on `-serialize`.
+    ///
+    /// Splicing the concrete class into the chain fixes both halves at once:
+    /// the subclass keeps its identity and its methods, and inherits real
+    /// storage. The metaclass is re-parented alongside the class, which is the
+    /// part that matters for `+alloc` — otherwise allocation still resolves to
+    /// the abstract class's and hands back the wrong object.
+    ///
+    /// This is sound only because tapHLE's concrete classes add no guest ivars:
+    /// their instances are an `isa` and nothing else, exactly like the abstract
+    /// class the compiler laid the subclass out against. If that ever stops
+    /// being true, the subclass's ivar offsets would need shifting and this
+    /// would silently corrupt them, so it is checked rather than assumed.
+    fn reparent_onto_concrete_classes(&mut self, registered: &[Class], mem: &mut Mem) {
+        /// Abstract class an app may subclass, and the concrete class that
+        /// actually implements it.
+        const SUBSTITUTIONS: &[(&str, &str)] = &[
+            ("NSArray", "_tapHLE_NSArray"),
+            ("NSMutableArray", "_tapHLE_NSMutableArray"),
+            ("NSString", "_tapHLE_NSString"),
+            ("NSMutableString", "_tapHLE_NSMutableString"),
+            ("NSDictionary", "_tapHLE_NSDictionary"),
+            ("NSMutableDictionary", "_tapHLE_NSMutableDictionary"),
+        ];
+
+        for &(abstract_name, concrete_name) in SUBSTITUTIONS {
+            // Only look at apps that actually reference the abstract class;
+            // asking for it here would otherwise create every one of these.
+            let Some(abstract_class) = self.get_class(abstract_name, false, mem) else {
+                continue;
+            };
+
+            let mut concrete_class = None;
+            for &class in registered {
+                let Some(&ClassHostObject { superclass, .. }) = self
+                    .get_host_object(class)
+                    .and_then(|host_object| host_object.as_any().downcast_ref())
+                else {
+                    continue;
+                };
+                if superclass != abstract_class {
+                    continue;
+                }
+
+                let concrete =
+                    *concrete_class.get_or_insert_with(|| self.get_known_class(concrete_name, mem));
+
+                let abstract_size = {
+                    let host_object: &ClassHostObject = self.borrow(abstract_class);
+                    host_object.instance_size
+                };
+                let concrete_size = {
+                    let host_object: &ClassHostObject = self.borrow(concrete);
+                    host_object.instance_size
+                };
+                if abstract_size != concrete_size {
+                    log!(
+                        "Warning: not re-parenting a subclass of {} onto {}: their instance sizes differ ({} vs {}), so the subclass's ivars would move",
+                        abstract_name,
+                        concrete_name,
+                        abstract_size,
+                        concrete_size
+                    );
+                    continue;
+                }
+
+                let name = {
+                    let host_object: &ClassHostObject = self.borrow(class);
+                    host_object.name.clone()
+                };
+                log_dbg!(
+                    "Re-parenting guest class {:?} from {} onto {}",
+                    name,
+                    abstract_name,
+                    concrete_name
+                );
+                self.borrow_mut::<ClassHostObject>(class).superclass = concrete;
+
+                // And the metaclass, so +alloc finds the concrete allocator.
+                let metaclass = Self::read_isa(class, mem);
+                let concrete_metaclass = Self::read_isa(concrete, mem);
+                if let Some(host_object) = self.get_host_object(metaclass) {
+                    if host_object
+                        .as_any()
+                        .downcast_ref::<ClassHostObject>()
+                        .is_some()
+                    {
+                        self.borrow_mut::<ClassHostObject>(metaclass).superclass =
+                            concrete_metaclass;
+                    }
+                }
+            }
+        }
+    }
+
     /// For use by [crate::dyld]: register all the classes from the application
     /// binary.
     pub fn register_bin_classes(&mut self, bin: &MachO, mem: &mut Mem) {
@@ -703,6 +811,7 @@ impl ObjC {
 
         assert!(list.size % 4 == 0);
         let base: ConstPtr<Class> = Ptr::from_bits(list.addr);
+        let mut registered: Vec<Class> = Vec::new();
         for i in 0..(list.size / 4) {
             let class = mem.read(base + i);
             let metaclass = Self::read_isa(class, mem);
@@ -733,7 +842,10 @@ impl ObjC {
             };
 
             self.classes.insert(name.to_string(), class);
+            registered.push(class);
         }
+
+        self.reparent_onto_concrete_classes(&registered, mem);
 
         let mut queue = VecDeque::<Class>::new();
         let mut found_ns_object = false;
