@@ -256,6 +256,14 @@ pub const CLASSES: ClassExports = objc_classes! {
     true
 }
 
+// NSInteger is 32-bit on the guest ABI, so this is the same scan and the same
+// out-parameter width as -scanInt:. On a 64-bit runtime the two differ and this
+// would need its own implementation; the forwarding is correct here and only
+// here.
+- (bool)scanInteger:(MutPtr<i32>)result {
+    msg![env; this scanInt:result]
+}
+
 @end
 
 };
