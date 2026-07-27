@@ -117,12 +117,30 @@ diagnostics that found all this are, since they are useful regardless.
 
 ### What the real fix has to reconcile
 
-The `EAGLView` is itself a top-level object of the same nib, so the intended
-arrangement is presumably window-contains-view. Establish why the two are not
-connected — whether the nib's view hierarchy is being unarchived without its
-parent-child links, or the window simply never has the view added — before
-retaining anything. Retaining the objects without fixing that just makes an
-empty window visible.
+Traced with the retain applied as an experiment (not committed), the app *does*
+build its hierarchy: `[UIWindow addSubview:]` is sent twice, `[EAGLView
+addSubview:]` once, and both the window and the `CAEAGLLayer` get `setHidden:`.
+So window-contains-view is established, and the window is not empty.
+
+Two things came out of that run, and they are the actual next questions:
+
+**1. The app sends `addSubview:` to nil.** The trace contains
+`[nil ((null)) addSubview:]` before the successful ones. Some view reference the
+app expects is nil, and finding which is likely to explain more than the
+window's lifetime does.
+
+**2. The grey is a compositing conflict, not an empty window.** tapHLE presents
+a fullscreen `CAEAGLLayer` directly (`find_fullscreen_eagl_layer`) *and*
+composites the Core Animation tree. With the window dead, only the GL path drew
+and the app looked correct. With the window alive, the window's layer draws over
+the GL content. Retaining the nib objects is right on its own terms — UIKit's
+ownership contract says so — but it cannot land until that conflict is resolved,
+or it turns a rendering app into a grey one.
+
+So the order of work is: settle the nil `addSubview:` receiver first, then the
+compositing overlap, and only then retain the top-level objects. Doing the
+retain alone is what produces the grey screen, and it is why that change is
+deliberately absent from `trunk` despite being correct in isolation.
 
 This is still expected to be general: any app whose window comes from its main
 nib rather than from code has the same lifetime problem.
