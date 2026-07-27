@@ -5,9 +5,11 @@
  */
 //! `NSFileManager` etc.
 
-use super::{ns_array, ns_string, NSUInteger};
+use super::{ns_array, ns_string, NSInteger, NSUInteger};
 use crate::dyld::{export_c_func, ConstantExports, FunctionExports, HostConstant};
-use crate::frameworks::foundation::ns_error::{NSCocoaErrorDomain, NSFileReadNoSuchFileError};
+use crate::frameworks::foundation::ns_error::{
+    NSCocoaErrorDomain, NSFileReadNoSuchFileError, NSFileWriteUnknownError,
+};
 use crate::frameworks::foundation::ns_string::get_static_str;
 use crate::fs::{FsError, GuestPath, GuestPathBuf};
 use crate::mem::{ConstPtr, MutPtr, Ptr};
@@ -21,6 +23,7 @@ const NSApplicationDirectory: NSSearchPathDirectory = 1;
 const NSLibraryDirectory: NSSearchPathDirectory = 5;
 const NSDocumentDirectory: NSSearchPathDirectory = 9;
 const NSCachesDirectory: NSSearchPathDirectory = 13;
+const NSApplicationSupportDirectory: NSSearchPathDirectory = 14;
 
 type NSSearchPathDomainMask = NSUInteger;
 const NSUserDomainMask: NSSearchPathDomainMask = 1;
@@ -108,6 +111,13 @@ fn NSSearchPathForDirectoriesInDomains(
         NSDocumentDirectory => env.fs.home_directory().join("Documents"),
         NSLibraryDirectory => env.fs.home_directory().join("Library"),
         NSCachesDirectory => env.fs.home_directory().join("Library/Caches"),
+        // Under Library, like the rest of an app's private storage. The
+        // directory is not created here; NSSearchPathForDirectoriesInDomains
+        // reports the path whether or not it exists, and every caller either
+        // creates it or writes through NSFileManager, which does.
+        NSApplicationSupportDirectory => {
+            env.fs.home_directory().join("Library/Application Support")
+        }
         _ => todo!("NSSearchPathDirectory {}", directory),
     };
     let dir = ns_string::from_rust_string(env, String::from(dir));
@@ -144,6 +154,22 @@ struct NSDirectoryEnumeratorHostObject {
     iterator: std::vec::IntoIter<GuestPathBuf>,
 }
 impl HostObject for NSDirectoryEnumeratorHostObject {}
+
+/// Fill in an `NSError**` out-parameter, if the caller supplied one.
+///
+/// Always the Cocoa domain: every caller here is a filesystem operation, and
+/// tapHLE's guest filesystem does not surface an errno that would justify
+/// anything finer.
+fn write_error(env: &mut Environment, out_error: MutPtr<id>, code: NSInteger) {
+    if out_error.is_null() {
+        return;
+    }
+    let domain = get_static_str(env, NSCocoaErrorDomain);
+    let error: id = msg_class![env; NSError alloc];
+    let error: id = msg![env; error initWithDomain:domain code:code userInfo:nil];
+    let error = autorelease(env, error);
+    env.mem.write(out_error, error);
+}
 
 pub const CLASSES: ClassExports = objc_classes! {
 
@@ -401,12 +427,16 @@ pub const CLASSES: ClassExports = objc_classes! {
     let data = match env.fs.read(GuestPath::new(src.as_ref())) {
         Ok(d) => d,
         Err(_) => {
-            assert!(error.is_null()); // TODO
+            // The failure is reported through the out-parameter rather than
+            // asserted away. An app that passes an NSError** is asking to be
+            // told what went wrong, and a copy that fails is ordinary — the
+            // source may simply not be there yet.
+            write_error(env, error, NSFileReadNoSuchFileError);
             return false;
         }
     };
     if env.fs.write(GuestPath::new(dst.as_ref()), &data).is_err() {
-        assert!(error.is_null()); // TODO
+        write_error(env, error, NSFileWriteUnknownError);
         return false;
     }
     true
