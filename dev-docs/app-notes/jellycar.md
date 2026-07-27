@@ -62,7 +62,33 @@ like the obvious way JellyCar 1 would build its scenes list from the bundle's
 behaviour is byte-for-byte unchanged. Whatever writes `scenes.xml` is
 something else, so do not re-try that idea.
 
-JellyCar 2 is still unlaunched.
+### JellyCar 2 reaches menus (2 stars)
+
+**JellyCar 2 on iPad, bundle `com.disney.jellyCar2foriPad`, version 1.1**
+(iPad, 1024x768). Verified with `tapHLE --info`; note the publisher is Disney,
+not Walaber, and the same is true of JellyCar 3 (`com.disney.JellyCar3`).
+
+Three general gaps had to be closed, all on `trunk` in `826f8144`:
+`UIPushButton` (a pre-UIButton private class reached through an old nib), a
+`UIButton initWithCoder:` assertion that a button must carry
+`UIButtonStatefulContent`, and `UISlider`'s missing value/min/max.
+
+With those it reaches the **mode-select screen** (Classic, Factory, Long Jump,
+2P Tether, 2P Race, My Levels) and, from Classic, a series of **instruction
+cards** showing a car, terrain, a goal flag and drive controls.
+
+**Those cards are not gameplay.** Two captures taken five seconds apart are
+byte-for-byte identical, and the timer on them (51.482, then 49.076 on the next
+card) is static artwork, not a running clock. Tapping the continue arrow
+advances from one card to the next. So this is a stable screen — 2 stars — and
+the gameplay loop has not been reached.
+
+Next discriminator: page through the remaining instruction cards to whatever
+follows them, and check for a *changing* timer as the signal that the
+simulation is actually running. Do not treat a card that merely depicts the
+game as evidence of gameplay; that mistake was nearly made here.
+
+JellyCar 3 1.2 is 1 star; see its own entry above.
 
 ## Original (superseded) blocker: no zlib at all
 
