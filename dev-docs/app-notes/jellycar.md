@@ -219,3 +219,39 @@ The next step for this app is to find what should have called
 `-initWithURL:appKey:secret:` and why it did not — trace allocation and
 selector activity for `DMOAnalytics` from startup. Do **not** start from the
 XML; that has now cost one wrong conclusion already.
+
+## 2026-07-27: JellyCar 2 was broken and restored, same day
+
+JellyCar 2's three-star rating stopped reproducing partway through this
+session. It aborted during startup with a guest `MemoryError`, having been a
+working three-star app since `d335f7bd`.
+
+**Cause: a tapHLE change, not the app.** The layout-on-mount pass added for Tap
+Tap Revenge 2 ran `-layoutSubviews` synchronously inside `-addSubview:`, which
+executes an app's layout code while it is still assembling its view hierarchy.
+Bisected in three builds: alive at `d335f7bd`, alive at `cc492376`, dead at
+`b1de9e9e` — the layout-pass merge.
+
+**Fix:** lay out on mount only once launching has finished. Deferring it
+entirely also worked for this app but cost Tap Tap Revenge 2 its background
+artwork, so neither "always synchronous" nor "always deferred" was right; the
+distinction that satisfies both is *when* the mount happens.
+
+### How it went unnoticed
+
+This app is **not in the routine sweep**, so nothing launched it for a dozen
+commits. Its rating was a claim about the past being treated as a claim about
+the present. See the playbook's "a liveness check is not a regression check".
+
+### What was and was not re-verified
+
+Startup and first-frame rendering are confirmed on the fix (`21a38b72`), with a
+993 KB capture matching the pre-regression one byte for byte in size.
+
+**The gameplay loop was not re-driven this session.** The three-star rating
+therefore still rests on the original run at `d335f7bd`, and the honest status
+is "starts and renders as it did before the regression", not "re-confirmed at
+three stars". No new report was filed, because the recorded rating is unchanged
+and a rerun that reproduces an existing rating is moderation noise — but the
+next person to touch this app should drive it to gameplay before relying on the
+number.
