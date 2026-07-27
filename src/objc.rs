@@ -48,7 +48,8 @@ pub use selectors::{selector, SEL};
 pub(crate) use blocks::block_invoke_function;
 use classes::{
     class_copyPropertyList, class_getInstanceSize, class_getProperty, class_getSuperclass,
-    objc_getClass, ClassHostObject, FakeClass, UnimplementedClass,
+    objc_getClass, property_getAttributes, property_getName, ClassHostObject, FakeClass,
+    UnimplementedClass,
 };
 pub(crate) use messages::objc_msgSend;
 use messages::{
@@ -61,7 +62,10 @@ use methods::{
     method_getTypeEncoding, method_list_t, method_setImplementation,
 };
 use objects::{objc_object, object_getClass, HostObjectEntry};
-use properties::{ivar_list_t, objc_copyStruct, objc_getProperty, objc_setProperty};
+use properties::{
+    ivar_list_t, objc_copyStruct, objc_getProperty, objc_property_t, objc_setProperty,
+    property_list_t,
+};
 use selectors::{sel_getUid, sel_registerName};
 use synchronization::{objc_sync_enter, objc_sync_exit};
 
@@ -127,7 +131,12 @@ pub const DYLIB: HostDylib = HostDylib {
     aliases: &["/usr/lib/libobjc.dylib"],
     class_exports: &[blocks::CLASSES],
     constant_exports: &[CONSTANTS, blocks::CONSTANTS],
-    function_exports: &[FUNCTIONS, arc::FUNCTIONS, blocks::FUNCTIONS],
+    function_exports: &[
+        FUNCTIONS,
+        arc::FUNCTIONS,
+        blocks::FUNCTIONS,
+        properties::FUNCTIONS,
+    ],
 };
 
 const CONSTANTS: ConstantExports = &[
@@ -143,6 +152,8 @@ const FUNCTIONS: FunctionExports = &[
     export_c_func!(class_getInstanceSize(_)),
     export_c_func!(class_getSuperclass(_)),
     export_c_func!(class_getProperty(_, _)),
+    export_c_func!(property_getName(_)),
+    export_c_func!(property_getAttributes(_)),
     export_c_func!(class_getInstanceMethod(_, _)),
     export_c_func!(class_getMethodImplementation(_, _)),
     export_c_func!(class_addMethod(_, _, _, _)),
