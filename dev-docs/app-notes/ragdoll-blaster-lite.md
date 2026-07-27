@@ -14,9 +14,8 @@
   iPhone. Note the bundle identifier says **RagdollBlasterLite** while the
   display name is just "Ragdoll Lite"; the Archive item is named for the
   latter.
-- tapHLEdb: no report yet. It does not reach a screen, so there is nothing
-  measured to file beyond "does not start", which is filed once the frontier
-  below is either cleared or confirmed as the ceiling.
+- tapHLEdb: App 31, version 32, report 51 (2026-07-27, tapHLE `28eb65fe`,
+  ★★☆☆☆). The app row was created by that submission.
 
 ## Current state: no frame
 
@@ -36,42 +35,48 @@
 test for that work, as planned — it hits the class during startup, which made
 the edit-run cycle minutes shorter than Tap Tap Revenge 3's four-tap path.
 
-## The bar family is done; the frontier is now setjmp
+## Highest milestone: 2-star (Starts / Menu), tapHLE `28eb65fe`
 
-`UIBarItem`, `UIBarButtonItem` and a real `UINavigationItem` are on `trunk`,
-along with `-[UIViewController navigationItem]`. Checking the binary first paid
-off: it references the whole navigation family, and tapHLE already had
-`UINavigationBar`, `UINavigationController` and a stub `UINavigationItem`, so
-only the item classes were actually missing.
+It draws. The **Ragdoll Blaster 2 promo screen** renders in full — the artwork,
+the "Now Available!" banner and the Get it Now / No Thanks buttons — and the
+No Thanks button is accepted. Filed as report 51.
 
-**Nothing draws a navigation bar or toolbar.** The items are stored and answer
-their accessors, and their target and action are kept so an app that reads them
-back or fires them itself behaves — but tapHLE will never fire one. An app whose
-only route onward is a bar button is stuck, and the missing piece is the *bar*,
-not these classes.
+Past it the screen shows only the graph-paper level background and **stops
+changing**: repeated captures are byte-identical by SHA-256 while the process
+stays alive and the run loop keeps turning. So the app gets past the promo, puts
+up the background for whatever comes next, and then does not draw it.
 
-## Current frontier: `_setjmp`
+### What it took
 
-```text
-Call to unimplemented function __setjmp
-```
+Nine general gaps, all on `trunk`, none specific to this app:
 
-`setjmp`/`longjmp` are how C code unwinds out of an error deep in a library —
-libpng and libjpeg both use them for exactly that, which is the likely caller
-here.
+1. `-[NSBundle initWithPath:]`, which also needed `+[NSBundle allocWithZone:]`.
+2. `UITableView`, `UITableViewCell`, `UITableViewController`.
+3. `NSIndexPath`, which was an empty stub.
+4. `UILocalizedIndexedCollation`.
+5. `UIBarItem` and `UIBarButtonItem`, plus a real `UINavigationItem` and
+   `-[UIViewController navigationItem]`.
+6. `_setjmp`/`_longjmp` — the no-signal-mask variants; `setjmp` itself already
+   existed, which is why this was a small job rather than a large one.
+7. `CGContextGetTextPosition`/`SetTextPosition`.
+8. XML property list output.
+9. `-popToRootViewControllerAnimated:` and `-popToViewController:animated:`.
 
-This is implementable in an emulator, and more cleanly than on real hardware:
-`setjmp` saves the callee-saved guest registers, `sp` and `lr` into the
-`jmp_buf` and returns 0; `longjmp` restores them, sets the return value, and
-resumes at the saved `lr`. The awkward part is the non-local jump itself —
-making a host function resume the guest somewhere other than where it was
-called from — so read how `GuestFunction` returns control before starting.
+### Current frontier: the level screen draws only its background
 
-It is also worth checking whether the caller is a decoder that only *needs*
-setjmp on the error path. If so, a `setjmp` that always returns 0 and a
-`longjmp` that aborts loudly would get this app running while being honest that
-the error path is unimplemented — but that is a decision to take with the
-caller identified, not before.
+Nothing is logged when it stalls — no missing selector, no unimplemented class,
+no fault. The app is alive and idle.
 
-Still no frame, so nothing about this app's rendering, input or audio has been
-assessed and no report is filed.
+Two candidates worth separating before writing any code:
+
+- **It is waiting for something.** The last thing in the log before the stall is
+  a faked `FlurryAPI logEvent:withParameters:`. This app would be the *fourth*
+  on the target list to stall or die inside an analytics SDK (see
+  `jellycar.md`), so check whether the level screen's setup runs on a
+  completion callback that never arrives.
+- **It drew nothing because it has nothing to draw.** The screen after the
+  promo is reached through the `UITableView` added for this app. A table whose
+  data source returns zero rows would look exactly like this. That is testable
+  in one run by logging the row count in `reload`.
+
+The second is cheap and rules out the newest code, so do it first.
