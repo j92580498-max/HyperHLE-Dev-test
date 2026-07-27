@@ -89,6 +89,15 @@ pub struct UIViewHostObject {
     clears_context_before_drawing: bool,
     user_interaction_enabled: bool,
     multiple_touch_enabled: bool,
+    /// `UIViewAutoresizing`. Stored and reported back, but not acted on: tapHLE
+    /// does not resize subviews when a superview's bounds change. Round-tripping
+    /// it still matters, because layout code reads the mask back to decide what
+    /// to do — and now that views actually receive a layout pass, that happens.
+    autoresizing_mask: NSUInteger,
+    /// Likewise stored and reported back rather than acted on.
+    autoresizes_subviews: bool,
+    /// Set by `-setNeedsLayout`, cleared when the layout actually happens.
+    needs_layout: bool,
 }
 impl HostObject for UIViewHostObject {}
 impl Default for UIViewHostObject {
@@ -104,6 +113,11 @@ impl Default for UIViewHostObject {
             clears_context_before_drawing: true,
             user_interaction_enabled: true,
             multiple_touch_enabled: false,
+            // UIViewAutoresizingNone.
+            autoresizing_mask: 0,
+            // UIKit's default is YES.
+            autoresizes_subviews: true,
+            needs_layout: false,
         }
     }
 }
@@ -178,6 +192,32 @@ pub(super) fn send_layout_pass_if_in_window(env: &mut Environment, view: id) {
         return;
     }
     send_layout_pass(env, view);
+}
+
+/// For use by `NSRunLoop`: perform the layout that `-setNeedsLayout` deferred.
+///
+/// UIKit coalesces every request made during a turn of the run loop into one
+/// layout pass at the end of it, which is the whole reason `-setNeedsLayout` is
+/// separate from `-layoutSubviews`. Doing it here rather than at the call site
+/// is what makes it safe for a view to ask for layout from inside its own
+/// layout, and it means N requests cost one pass rather than N.
+///
+/// A view not in a window is left flagged rather than laid out, so it gets its
+/// pass when it is eventually mounted instead of being laid out at the wrong
+/// size and never revisited.
+pub fn handle_pending_layout(env: &mut Environment) {
+    let views = env.framework_state.uikit.ui_view.views.clone();
+    for view in views {
+        if !env.objc.borrow::<UIViewHostObject>(view).needs_layout {
+            continue;
+        }
+        let window: id = msg![env; view window];
+        if window == nil {
+            continue;
+        }
+        env.objc.borrow_mut::<UIViewHostObject>(view).needs_layout = false;
+        () = msg![env; view layoutSubviews];
+    }
 }
 
 /// The recursive half. A whole subtree can be mounted by one `addSubview:`, and
@@ -790,6 +830,9 @@ pub const CLASSES: ClassExports = objc_classes! {
         clears_context_before_drawing: _,
         user_interaction_enabled: _,
         multiple_touch_enabled: _,
+        autoresizing_mask: _,
+        autoresizes_subviews: _,
+        needs_layout: _,
     } = std::mem::take(env.objc.borrow_mut(this));
 
     release(env, layer);
@@ -1053,11 +1096,44 @@ pub const CLASSES: ClassExports = objc_classes! {
     msg![env; this_layer convertRect:rect toLayer:other_layer]
 }
 
+// Stored and reported back, but not acted on: tapHLE does not resize subviews
+// when a superview's bounds change. That is a real gap and a view relying on it
+// will be laid out wrongly — but silently discarding the value was worse, since
+// a view that reads its own mask back got a different answer than it set, and
+// UIKit code branches on that.
 - (())setAutoresizingMask:(NSUInteger)mask {
-    todo_objc_setter!(this, mask);
+    log_dbg!("TODO: [(UIView*){:?} setAutoresizingMask:{}] is stored but not applied", this, mask);
+    env.objc.borrow_mut::<UIViewHostObject>(this).autoresizing_mask = mask;
+}
+// Deferred, as UIKit defers it: the layout happens on the next turn of the run
+// loop, not inside this call.
+//
+// That distinction is not pedantry here. Laying out synchronously would recurse
+// without bound the moment any view calls -setNeedsLayout from inside its own
+// -layoutSubviews, which is ordinary, correct UIKit code — a control that
+// resizes itself in response to its content does exactly that.
+- (())setNeedsLayout {
+    env.objc.borrow_mut::<UIViewHostObject>(this).needs_layout = true;
+}
+
+// The escape hatch from the deferral: lay out now, whether or not anything
+// asked for it. UIKit walks up to the top of the hierarchy first; tapHLE lays
+// out this view and its subtree, which is what callers use it for (measure a
+// view before reading its frame).
+- (())layoutIfNeeded {
+    env.objc.borrow_mut::<UIViewHostObject>(this).needs_layout = false;
+    send_layout_pass(env, this);
+}
+
+- (NSUInteger)autoresizingMask {
+    env.objc.borrow::<UIViewHostObject>(this).autoresizing_mask
 }
 - (())setAutoresizesSubviews:(bool)enabled {
-    todo_objc_setter!(this, enabled);
+    log_dbg!("TODO: [(UIView*){:?} setAutoresizesSubviews:{}] is stored but not applied", this, enabled);
+    env.objc.borrow_mut::<UIViewHostObject>(this).autoresizes_subviews = enabled;
+}
+- (bool)autoresizesSubviews {
+    env.objc.borrow::<UIViewHostObject>(this).autoresizes_subviews
 }
 
 - (CGSize)sizeThatFits:(CGSize)size {
