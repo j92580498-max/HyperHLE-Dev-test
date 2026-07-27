@@ -248,10 +248,13 @@ the present. See the playbook's "a liveness check is not a regression check".
 Startup and first-frame rendering are confirmed on the fix (`21a38b72`), with a
 993 KB capture matching the pre-regression one byte for byte in size.
 
-**The gameplay loop was not re-driven this session.** The three-star rating
-therefore still rests on the original run at `d335f7bd`, and the honest status
-is "starts and renders as it did before the regression", not "re-confirmed at
-three stars". No new report was filed, because the recorded rating is unchanged
-and a rerun that reproduces an existing rating is moderation noise — but the
-next person to touch this app should drive it to gameplay before relying on the
-number.
+**The gameplay loop has now been re-driven** on a clean committed build
+(`JellyCar 2 (tapHLE 87acd74a)`, no `-dirty`), following the click map above:
+back arrow, CLASSIC, EASY, first level, OK. The level renders with its blue
+terrain, the orange jelly car, the drive arrows, the pump and a running timer,
+and two captures fourteen seconds apart differ by SHA-256. The three-star rating
+is confirmed on current code, not merely inherited from `d335f7bd`.
+
+No new report was filed: the recorded rating is unchanged, and a rerun that
+reproduces an existing rating is moderation noise. What changed is the evidence
+behind it, which belongs here rather than in the database.
