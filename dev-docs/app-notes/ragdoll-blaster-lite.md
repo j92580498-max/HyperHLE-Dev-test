@@ -85,11 +85,32 @@ it **rules the table view out**. With the table view's reload logging enabled
 a full run to the stall produces **no reload lines at all**: no table view is
 ever populated, so the level screen is not one. The new code is not the cause.
 
-That leaves the first candidate, and it is now the one to pursue. The
-`FlurryAPI logEvent:withParameters:` immediately before the stall is a *faked*
-class — tapHLE answers it as if sent to nil. If the app chains its level-screen
-setup off an analytics completion, that chain silently ends there, and the
-symptom is exactly this: alive, idle, background drawn, nothing logged.
+### Correction: it is not stalled, it is drawing an empty screen
 
-The next step is to trace selectors from the No Thanks tap to the stall and find
-the last message the app sends before going quiet.
+The word "stall" above was wrong, and the analytics hypothesis with it. Tracing
+every selector across the tap and the following eighteen seconds produced
+**49,499 further messages**, and the tail is an ordinary render loop:
+`EAGLContext presentRenderbuffer:` every frame, timers firing, the window
+compositing.
+
+So the app is **not blocked and not waiting**. It is running normally and
+drawing the same frame each time, which is what a static screen looks like from
+the outside. Byte-identical captures were consistent with a hang and are equally
+consistent with this; the trace is what distinguishes them, and it should have
+been run before a cause was proposed.
+
+Both earlier candidates are therefore dead: the table view was already ruled
+out, and an app waiting on an analytics callback would not be presenting frames.
+
+### The actual question
+
+The promo screen drew correctly through the same EAGL path, and the graph-paper
+background draws now, so the drawable and the compositor are fine. What is
+missing is the level screen's *content* on top of it.
+
+The next step is to find out what that content is and why it produces nothing:
+whether the level data or its textures failed to load, or whether the geometry
+is being drawn somewhere off screen. Start from the GL calls between two
+consecutive `presentRenderbuffer:` calls — if the frame contains only a
+background blit, the content was never submitted, and the problem is upstream in
+loading rather than in rendering.
