@@ -97,6 +97,12 @@ list turned out to be plain `Minecrafted` and `com.eeenmachine.` (with a
 trailing dot). Copy the identifier and version out of `--info` output; never
 infer them from the app name, the Archive filename, or the developer.
 
+The `frontier` string has a length limit, and exceeding it is rejected with a
+flat `{"error":"invalid_submission"}` that names no field — so a submission that
+fails while the rating and identity are plainly fine is very likely this. Keep
+it to a few sentences: the full account belongs in the app note, which has no
+limit and is version-controlled next to the code that moves it.
+
 Submit when the rating changes, in either direction — a regression is a result.
 Do not submit a rerun that reproduces a rating already recorded for the same
 tapHLE revision; the endpoint does not deduplicate, so that is pure moderation
