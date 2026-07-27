@@ -91,6 +91,8 @@ pub(super) struct CGContextHostObject {
     pub(super) path: Path,
     pub(super) rgb_stroke_color: (CGFloat, CGFloat, CGFloat, CGFloat),
     pub(super) line_width: CGFloat,
+    /// The text pen position. See `CGContextGetTextPosition` for the caveat.
+    pub(super) text_position: CGPoint,
 }
 impl HostObject for CGContextHostObject {}
 
@@ -427,6 +429,13 @@ fn CGContextShowGlyphsAtPoint(
             )
         },
     );
+
+    // Record where the run started. See CGContextGetTextPosition: this is not
+    // advanced past the glyphs drawn, because the rasteriser does not report
+    // how wide they were.
+    env.objc
+        .borrow_mut::<CGContextHostObject>(context)
+        .text_position = CGPoint { x, y };
 }
 
 fn CGContextShowGlyphsAtPositions(
@@ -692,6 +701,29 @@ fn CGContextStrokePath(env: &mut Environment, context: CGContextRef) {
         .clear();
 }
 
+/// The text pen position.
+///
+/// **It does not advance past glyphs that were drawn.** `CGContextShowGlyphsAtPoint`
+/// sets it to where the text started, and tapHLE's glyph rasteriser does not
+/// report how far it got, so the width of what was drawn is not known here.
+///
+/// The consequence is specific and worth stating: a caller that draws a run,
+/// reads the position, and draws the next run from it will overdraw the first —
+/// which is exactly what this function exists for. Fixing it means having
+/// `Font::draw_glyphs` return its final pen position; it already tracks that
+/// internally.
+fn CGContextGetTextPosition(env: &mut Environment, context: CGContextRef) -> CGPoint {
+    env.objc
+        .borrow::<CGContextHostObject>(context)
+        .text_position
+}
+
+fn CGContextSetTextPosition(env: &mut Environment, context: CGContextRef, x: CGFloat, y: CGFloat) {
+    env.objc
+        .borrow_mut::<CGContextHostObject>(context)
+        .text_position = CGPoint { x, y };
+}
+
 fn CGContextSetLineWidth(env: &mut Environment, context: CGContextRef, width: CGFloat) {
     env.objc
         .borrow_mut::<CGContextHostObject>(context)
@@ -712,6 +744,8 @@ pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(CGContextFillPath(_)),
     export_c_func!(CGContextStrokePath(_)),
     export_c_func!(CGContextSetLineWidth(_, _)),
+    export_c_func!(CGContextGetTextPosition(_)),
+    export_c_func!(CGContextSetTextPosition(_, _, _)),
     export_c_func!(CGContextRetain(_)),
     export_c_func!(CGContextRelease(_)),
     export_c_func!(CGContextSetBlendMode(_, _)),

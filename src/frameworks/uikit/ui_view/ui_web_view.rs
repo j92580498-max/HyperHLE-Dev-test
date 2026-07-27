@@ -48,6 +48,19 @@ pub const CLASSES: ClassExports = objc_classes! {
     log!("TODO: [(UIWebView*) {:?} loadRequest:{:?} ({})]", this, request, url_string);
 }
 
+// There is no engine to render the HTML into, so the string is logged and
+// dropped. The view stays blank, which is what this class does with every other
+// kind of content.
+- (())loadHTMLString:(id)html // NSString*
+             baseURL:(id)_base_url { // NSURL*
+    let length: crate::frameworks::foundation::NSUInteger = if html == nil {
+        0
+    } else {
+        msg![env; html length]
+    };
+    log!("TODO: [(UIWebView*) {:?} loadHTMLString:(NSString* of {} characters) baseURL:_]", this, length);
+}
+
 - (id)stringByEvaluatingJavaScriptFromString:(id)_script { // NSString*
     // tapHLE has no JavaScript engine and no loaded document, so evaluation
     // yields the empty string — which is also what UIWebView returns for a
