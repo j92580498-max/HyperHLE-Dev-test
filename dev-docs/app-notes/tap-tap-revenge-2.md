@@ -58,19 +58,36 @@ Selecting a track now proceeds to a new blocker:
 Call to unimplemented function _UIGraphicsBeginImageContext
 ```
 
-### Next step: the UIGraphics image-context family
+### UIGraphics image contexts are now implemented
 
-tapHLE has **none** of it — no `UIGraphicsBeginImageContext`, no
-`...WithOptions`, no `UIGraphicsGetImageFromCurrentImageContext`, no
-`UIGraphicsEndImageContext`. This is a subsystem rather than a missing symbol:
-it means creating an offscreen bitmap context, making it the current UIGraphics
-context so ordinary drawing lands in it, and wrapping the result as a UIImage.
+`UIGraphicsBeginImageContext`, `...WithOptions`,
+`UIGraphicsGetImageFromCurrentImageContext` and `UIGraphicsEndImageContext`
+exist on `trunk`. They were assembly rather than new graphics work: a
+`CGBitmapContext` pushed onto the UIGraphics context stack that the rest of
+UIKit already draws through, snapshotted via `CGBitmapContextCreateImage` and
+wrapped with `+[UIImage imageWithCGImage:]`.
 
-It is a good self-contained `feat/`, and it is likely to help well beyond this
-app — compositing an image offscreen is a routine thing for a 2009 UI to do.
-The pieces tapHLE already has (`CGBitmapContextCreate`, the UIGraphics context
-stack, `UIImage`) are the ones needed, so this is assembly rather than new
-graphics work.
+## Current frontier: -[CALayer renderInContext:]
+
+```text
+Object (class "CALayer") does not respond to selector "renderInContext:"
+```
+
+The app is compositing a layer tree into the image context it just opened.
+
+This is a **software renderer for the layer tree**, and it is the awkward one:
+tapHLE draws layers with OpenGL in `core_animation::composition`, not into a
+`CGContext`, so there is no existing path to reuse. The two options are to
+write a CoreGraphics-side walk of the layer tree (background colour, `contents`
+image, then sublayers under each layer's transform — `CGContextDrawImage` and
+the fill primitives already exist), or to render through GL into a texture and
+read it back.
+
+The first is more faithful and self-contained; the second reuses the
+compositor but has to reconcile GL's pixel origin with CoreGraphics'. Scope it
+deliberately: a partial version that draws only `contents` and background
+colour would very likely satisfy this app, and should say so in its own doc
+comment rather than pretending to be a full implementation.
 
 ## Nine general gaps cleared to get here
 
