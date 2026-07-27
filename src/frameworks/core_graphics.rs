@@ -17,6 +17,7 @@ pub mod cg_data_provider;
 pub mod cg_font;
 pub mod cg_geometry;
 pub mod cg_image;
+pub mod cg_path;
 
 pub const DYLIB: crate::dyld::HostDylib = crate::dyld::HostDylib {
     path: "/System/Library/Frameworks/CoreGraphics.framework/CoreGraphics",
@@ -26,6 +27,7 @@ pub const DYLIB: crate::dyld::HostDylib = crate::dyld::HostDylib {
         cg_color::CLASSES,
         cg_color_space::CLASSES,
         cg_context::CLASSES,
+        cg_path::CLASSES,
         cg_font::CLASSES,
         cg_image::CLASSES,
     ],
@@ -40,6 +42,7 @@ pub const DYLIB: crate::dyld::HostDylib = crate::dyld::HostDylib {
         cg_color::FUNCTIONS,
         cg_color_space::FUNCTIONS,
         cg_context::FUNCTIONS,
+        cg_path::FUNCTIONS,
         cg_data_provider::FUNCTIONS,
         cg_font::FUNCTIONS,
         cg_geometry::FUNCTIONS,

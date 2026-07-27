@@ -16,6 +16,7 @@ use super::cg_color_space::{
 use super::cg_font::{CGFontHostObject, CGFontRef, CGFontRelease, CGFontRetain, CGGlyph};
 use super::cg_geometry::CGPointZero;
 use super::cg_image::CGImageRef;
+use super::cg_path::{borrow_path, CGPathRef, Path};
 use super::{cg_bitmap_context, cg_color, CGFloat, CGPoint, CGRect, CGSize};
 use crate::dyld::{export_c_func, FunctionExports};
 use crate::frameworks::core_foundation::{CFRelease, CFRetain, CFTypeRef};
@@ -84,6 +85,12 @@ pub(super) struct CGContextHostObject {
     /// Text transform.
     pub(super) text_transform: Option<CGAffineTransform>,
     pub(super) state_stack: Vec<ContextState>,
+    /// The path being built, in user space. It is transformed by the CTM at
+    /// draw time rather than as points are added, because the CTM in force when
+    /// the path is *drawn* is the one CoreGraphics uses.
+    pub(super) path: Path,
+    pub(super) rgb_stroke_color: (CGFloat, CGFloat, CGFloat, CGFloat),
+    pub(super) line_width: CGFloat,
 }
 impl HostObject for CGContextHostObject {}
 
@@ -127,6 +134,15 @@ fn CGContextSetFillColorWithColor(env: &mut Environment, context: CGContextRef, 
     CGContextSetRGBFillColor(env, context, r, g, b, a)
 }
 
+fn CGContextSetStrokeColorWithColor(
+    env: &mut Environment,
+    context: CGContextRef,
+    color: CGColorRef,
+) {
+    let (r, g, b, a) = cg_color::to_rgba(&env.objc, color);
+    CGContextSetRGBStrokeColor(env, context, r, g, b, a)
+}
+
 pub fn CGContextSetRGBFillColor(
     env: &mut Environment,
     context: CGContextRef,
@@ -154,34 +170,26 @@ fn CGContextSetGrayFillColor(
 }
 
 fn CGContextSetGrayStrokeColor(
-    _env: &mut Environment,
+    env: &mut Environment,
     context: CGContextRef,
     gray: CGFloat,
     alpha: CGFloat,
 ) {
-    log!(
-        "TODO: CGContextSetGrayStrokeColor({:?}, {}, {})",
-        context,
-        gray,
-        alpha,
-    );
+    env.objc
+        .borrow_mut::<CGContextHostObject>(context)
+        .rgb_stroke_color = (gray, gray, gray, alpha);
 }
 fn CGContextSetRGBStrokeColor(
-    _env: &mut Environment,
+    env: &mut Environment,
     context: CGContextRef,
     r: CGFloat,
     g: CGFloat,
     b: CGFloat,
     a: CGFloat,
 ) {
-    log!(
-        "TODO: CGContextSetRGBStrokeColor({:?}, {}, {}, {}, {})",
-        context,
-        r,
-        g,
-        b,
-        a
-    );
+    env.objc
+        .borrow_mut::<CGContextHostObject>(context)
+        .rgb_stroke_color = (r, g, b, a);
 }
 
 fn CGContextSetShadowWithColor(
@@ -221,7 +229,29 @@ fn CGContextClipToRect(env: &mut Environment, context: CGContextRef, rect: CGRec
         // All good, clipping is not needed!
         return;
     }
-    todo!();
+    // tapHLE has no clip state: no drawing primitive here consults one, so
+    // honouring this would mean adding a clip mask to CGBitmapContextDrawer and
+    // threading it through every one of them. Until that exists, ignoring the
+    // clip draws too much rather than too little — content that should have
+    // been cut off spills outside the intended rectangle.
+    //
+    // That is worse output but a live app. Aborting here, which is what this
+    // did, loses everything the app would otherwise have drawn correctly.
+    log_once!("TODO: CGContextClipToRect() is ignored; drawing will not be clipped");
+}
+
+/// Clip to the current path. Ignored, for the reasons in
+/// [CGContextClipToRect] — and additionally because a path clip needs a
+/// coverage mask, not just a rectangle.
+///
+/// The path is consumed either way, as CoreGraphics does, so a caller that
+/// clips and then draws does not accidentally fill the clip path as well.
+fn CGContextClip(env: &mut Environment, context: CGContextRef) {
+    log_once!("TODO: CGContextClip() is ignored; drawing will not be clipped");
+    env.objc
+        .borrow_mut::<CGContextHostObject>(context)
+        .path
+        .clear();
 }
 
 pub fn CGContextConcatCTM(
@@ -428,7 +458,260 @@ fn CGContextShowGlyphsAtPositions(
     }
 }
 
+/// Fill or stroke the current path into a bitmap context.
+///
+/// Filling uses the non-zero winding rule, CoreGraphics' default for
+/// `CGContextFillPath`. Each scanline is sampled at its centre and the winding
+/// number accumulated from the signed crossings of every edge. That is exact
+/// for a polygon, and since curves are flattened to polygons when they are
+/// added, exact for everything a path here can hold.
+///
+/// There is no anti-aliasing, matching the rest of tapHLE's CoreGraphics
+/// rasterisation, so a diagonal or curved edge comes out visibly stepped. That
+/// is the main quality limitation and it is worth knowing before blaming a
+/// game's own artwork.
+fn rasterise_path(env: &mut Environment, context: CGContextRef, stroke: bool) {
+    let host_obj = env.objc.borrow::<CGContextHostObject>(context);
+    let transform = host_obj.transform;
+    let line_width = host_obj.line_width;
+    let stroke_color = host_obj.rgb_stroke_color;
+    let path = host_obj.path.clone();
+    if path.is_empty() {
+        return;
+    }
+
+    // Into device space once, up front: every consumer below wants pixels.
+    let subpaths: Vec<Vec<CGPoint>> = path
+        .subpaths
+        .iter()
+        .filter(|s| s.points.len() >= 2)
+        .map(|s| {
+            s.points
+                .iter()
+                .map(|&p| transform.apply_to_point(p))
+                .collect()
+        })
+        .collect();
+    if subpaths.is_empty() {
+        return;
+    }
+
+    let mut drawer = CGBitmapContextDrawer::new(&env.objc, &mut env.mem, context);
+    // The drawer only knows the fill colour, so a stroke supplies its own.
+    let color = if stroke {
+        stroke_color
+    } else {
+        drawer.rgb_fill_color()
+    };
+
+    if stroke {
+        let half = ((line_width.max(1.0) - 1.0) / 2.0).round() as i32;
+        for points in &subpaths {
+            for pair in points.windows(2) {
+                draw_line(&mut drawer, pair[0], pair[1], color, half);
+            }
+        }
+        return;
+    }
+
+    let (mut min_y, mut max_y) = (f32::INFINITY, f32::NEG_INFINITY);
+    for points in &subpaths {
+        for p in points {
+            min_y = min_y.min(p.y);
+            max_y = max_y.max(p.y);
+        }
+    }
+    let y_start = min_y.floor().max(0.0) as i32;
+    let y_end = max_y.ceil().min(drawer.height() as f32) as i32;
+    let width = drawer.width() as i32;
+
+    let mut crossings: Vec<(f32, i32)> = Vec::new();
+    for y in y_start..y_end {
+        let sample_y = y as f32 + 0.5;
+        crossings.clear();
+        for points in &subpaths {
+            let n = points.len();
+            for i in 0..n {
+                let a = points[i];
+                // A fill treats every subpath as closed, as CoreGraphics does,
+                // so the last edge wraps whether or not `closed` was set.
+                let b = points[(i + 1) % n];
+                if (a.y <= sample_y) == (b.y <= sample_y) {
+                    continue;
+                }
+                let t = (sample_y - a.y) / (b.y - a.y);
+                crossings.push((a.x + t * (b.x - a.x), if b.y > a.y { 1 } else { -1 }));
+            }
+        }
+        if crossings.len() < 2 {
+            continue;
+        }
+        crossings.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
+
+        let mut winding = 0;
+        for pair in 0..crossings.len() - 1 {
+            winding += crossings[pair].1;
+            if winding == 0 {
+                continue;
+            }
+            let x_from = crossings[pair].0.ceil().max(0.0) as i32;
+            let x_to = crossings[pair + 1].0.floor().min(width as f32 - 1.0) as i32;
+            for x in x_from..=x_to {
+                if x >= 0 && x < width {
+                    drawer.put_pixel((x, y), color, /* blend: */ true);
+                }
+            }
+        }
+    }
+}
+
+/// A straight line, thickened by stamping a square of side `2 * half + 1` at
+/// each step. Crude next to a real stroker — joins and caps are whatever the
+/// squares happen to produce — but right for the thin lines apps of this era
+/// draw, and it does not pretend otherwise.
+fn draw_line(
+    drawer: &mut CGBitmapContextDrawer,
+    a: CGPoint,
+    b: CGPoint,
+    color: (CGFloat, CGFloat, CGFloat, CGFloat),
+    half: i32,
+) {
+    let steps = ((b.x - a.x).abs().max((b.y - a.y).abs()).ceil() as i32).max(1);
+    let (width, height) = (drawer.width() as i32, drawer.height() as i32);
+    for i in 0..=steps {
+        let t = i as f32 / steps as f32;
+        let x = (a.x + (b.x - a.x) * t).round() as i32;
+        let y = (a.y + (b.y - a.y) * t).round() as i32;
+        for dy in -half..=half {
+            for dx in -half..=half {
+                let (px, py) = (x + dx, y + dy);
+                if px >= 0 && px < width && py >= 0 && py < height {
+                    drawer.put_pixel((px, py), color, /* blend: */ true);
+                }
+            }
+        }
+    }
+}
+
+fn CGContextBeginPath(env: &mut Environment, context: CGContextRef) {
+    env.objc
+        .borrow_mut::<CGContextHostObject>(context)
+        .path
+        .clear();
+}
+
+fn CGContextMoveToPoint(env: &mut Environment, context: CGContextRef, x: CGFloat, y: CGFloat) {
+    env.objc
+        .borrow_mut::<CGContextHostObject>(context)
+        .path
+        .move_to(CGPoint { x, y });
+}
+
+fn CGContextAddLineToPoint(env: &mut Environment, context: CGContextRef, x: CGFloat, y: CGFloat) {
+    env.objc
+        .borrow_mut::<CGContextHostObject>(context)
+        .path
+        .line_to(CGPoint { x, y });
+}
+
+fn CGContextAddRect(env: &mut Environment, context: CGContextRef, rect: CGRect) {
+    env.objc
+        .borrow_mut::<CGContextHostObject>(context)
+        .path
+        .add_rect(rect);
+}
+
+fn CGContextAddArc(
+    env: &mut Environment,
+    context: CGContextRef,
+    x: CGFloat,
+    y: CGFloat,
+    radius: CGFloat,
+    start_angle: CGFloat,
+    end_angle: CGFloat,
+    clockwise: i32,
+) {
+    env.objc
+        .borrow_mut::<CGContextHostObject>(context)
+        .path
+        .add_arc(
+            CGPoint { x, y },
+            radius,
+            start_angle,
+            end_angle,
+            clockwise != 0,
+        );
+}
+
+fn CGContextAddArcToPoint(
+    env: &mut Environment,
+    context: CGContextRef,
+    x1: CGFloat,
+    y1: CGFloat,
+    x2: CGFloat,
+    y2: CGFloat,
+    radius: CGFloat,
+) {
+    env.objc
+        .borrow_mut::<CGContextHostObject>(context)
+        .path
+        .add_arc_to_point(CGPoint { x: x1, y: y1 }, CGPoint { x: x2, y: y2 }, radius);
+}
+
+fn CGContextClosePath(env: &mut Environment, context: CGContextRef) {
+    env.objc
+        .borrow_mut::<CGContextHostObject>(context)
+        .path
+        .close();
+}
+
+fn CGContextAddPath(env: &mut Environment, context: CGContextRef, path: CGPathRef) {
+    if path.is_null() {
+        return;
+    }
+    let other = borrow_path(env, path);
+    env.objc
+        .borrow_mut::<CGContextHostObject>(context)
+        .path
+        .append(&other, CGAffineTransformIdentity);
+}
+
+fn CGContextFillPath(env: &mut Environment, context: CGContextRef) {
+    rasterise_path(env, context, /* stroke: */ false);
+    env.objc
+        .borrow_mut::<CGContextHostObject>(context)
+        .path
+        .clear();
+}
+
+fn CGContextStrokePath(env: &mut Environment, context: CGContextRef) {
+    rasterise_path(env, context, /* stroke: */ true);
+    env.objc
+        .borrow_mut::<CGContextHostObject>(context)
+        .path
+        .clear();
+}
+
+fn CGContextSetLineWidth(env: &mut Environment, context: CGContextRef, width: CGFloat) {
+    env.objc
+        .borrow_mut::<CGContextHostObject>(context)
+        .line_width = width;
+}
+
 pub const FUNCTIONS: FunctionExports = &[
+    export_c_func!(CGContextSetStrokeColorWithColor(_, _)),
+    export_c_func!(CGContextClip(_)),
+    export_c_func!(CGContextBeginPath(_)),
+    export_c_func!(CGContextMoveToPoint(_, _, _)),
+    export_c_func!(CGContextAddLineToPoint(_, _, _)),
+    export_c_func!(CGContextAddRect(_, _)),
+    export_c_func!(CGContextAddArc(_, _, _, _, _, _, _)),
+    export_c_func!(CGContextAddArcToPoint(_, _, _, _, _, _)),
+    export_c_func!(CGContextClosePath(_)),
+    export_c_func!(CGContextAddPath(_, _)),
+    export_c_func!(CGContextFillPath(_)),
+    export_c_func!(CGContextStrokePath(_)),
+    export_c_func!(CGContextSetLineWidth(_, _)),
     export_c_func!(CGContextRetain(_)),
     export_c_func!(CGContextRelease(_)),
     export_c_func!(CGContextSetBlendMode(_, _)),
