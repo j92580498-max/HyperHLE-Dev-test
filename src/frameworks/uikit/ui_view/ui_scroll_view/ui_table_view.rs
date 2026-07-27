@@ -187,6 +187,14 @@ fn reload(env: &mut Environment, table: id) {
         }
     }
 
+    log_dbg!(
+        "Table view {:?} reloaded: {} sections, {} rows, content height {}",
+        table,
+        sections,
+        total_rows,
+        y
+    );
+
     if total_rows > ROW_COUNT_WARNING_THRESHOLD {
         log!(
             "Warning: a table view built {} rows up front. tapHLE's UITableView does not recycle cells, so this costs memory and time proportional to the whole table rather than the screen.",
