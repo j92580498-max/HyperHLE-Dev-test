@@ -8,74 +8,63 @@
   - MD5: `60d59a05fd0f1134ffe0268d8cea4988`
   - SHA-1: `0722dec3bacba8ff3f2c6351681e54ca43969b7f`
   - SHA-256: `5c37763200da8dba06346164e8f104b7fb82b1de883d4f58d305109dbc978cec`
-- tapHLEdb: no report. **Not rated** — it does not reach a stable screen.
+- tapHLEdb: App 15, version 31, report 48 (2026-07-27, tapHLE `b953ef9c`,
+  ★★☆☆☆).
 
-## Current state: does not launch
+## Highest milestone: 2-star (Starts / Menu), tapHLE `b953ef9c`
 
-Startup aborts before any frame. This is the same Tapulous codebase as Tap Tap
-Revenge 2, so everything cleared for that app (see `tap-tap-revenge-2.md`) is a
-prerequisite and is already on `trunk`; TTR3 then needs more. That shared work
-grew a lot this session — declared-property metadata, NSInvocation return
-values, the audio queue clock — and TTR3 picked all of it up for free.
+It launches. The main menu renders in full: the title, the tutorial banner, the
+avatar panel, the "You are offline" notice, the Online / 1 Player / 2 Player
+mode wheel, and the Play button. Verified on a clean committed build (window
+title `Tap Tap (tapHLE b953ef9c)`, no `-dirty`).
 
-## Cleared so far
+This is the same Tapulous codebase as Tap Tap Revenge 2, so everything cleared
+for that app is a prerequisite and is already on `trunk`. TTR3 needed nine more,
+all general and all on `trunk`:
 
-1. `-[NSInvocation target]` / `-selector` / `-methodSignature` — only the
-   setters existed. (`4c82a0a5`)
-2. `-[NSInvocation setSelector:]` asserted the selector was unset, so an
-   invocation could not be reconfigured. (`4c82a0a5`)
-3. `+[NSThread mainThread]`. (`4c82a0a5`)
+1. `-[NSTimer initWithFireDate:interval:target:selector:userInfo:repeats:]`,
+   the designated initialiser. Adding it meant raising the host method arity
+   ceiling: `impl_HostIMP!` stopped at five method arguments and this selector
+   has six. `CallFromGuest` already went to eleven, so that was an oversight
+   rather than a limit.
+2. An already-deallocated object found in a draining autorelease pool now warns
+   and skips instead of aborting.
+3. `-[UIView autoresizingMask]` and `-autoresizesSubviews` — setters that
+   discarded their argument, with no getters at all.
+4. `-[UIWebView initWithCoder:]`, which was `todo!()` and took the whole nib
+   down with it.
+5. `-setNeedsLayout` and `-layoutIfNeeded`, deferred to the run loop.
+6. `-[NSScanner scanInteger:]`.
+7. `-[NSArray makeObjectsPerformSelector:]` and the `withObject:` form.
+8. CGPath, plus path fill and stroke on CGContext — neither existed at all.
+9. Re-parenting a guest subclass of a Foundation cluster class onto tapHLE's
+   concrete implementation.
 
-## Cleared since
-
-4. `-[NSTimer initWithFireDate:interval:target:selector:userInfo:repeats:]`,
-   the designated initialiser. Adding it also meant raising the host method
-   arity limit: `impl_HostIMP!` stopped at five method arguments and this
-   selector has six. `CallFromGuest` already went to eleven, so that was a
-   one-line ceiling rather than a real limit.
-
-## Current frontier
+## Current frontier: UITableViewController, and UITableView under it
 
 ```text
-Receiver 0x3001b7a0 has a nil isa while sending selector "release"
+Class "UITableViewController" is unimplemented. Call to class method "initialize".
 ```
 
-An object is released after it has already been deallocated, at a pool drain.
+Tapping Play stops here. This is **not** a small gap: tapHLE has no
+`UITableView` either, so the track list needs the whole class implemented —
+data source and delegate protocols, cells, reuse, selection, and scrolling —
+rather than a missing method filled in.
 
-### What was tried, and why it did not settle it
+That is a substantial and highly reusable piece of UIKit, so it is worth doing
+on its own terms rather than as a step in this app. Whoever picks it up should
+treat this app as the acceptance test: it uses a plain grouped list.
 
-Tracing the dead address backwards gives its message history — but **the
-address is reused**. Between the crash and the object's creation, the same
-address is allocated and freed several times, as a `_tapHLE_NSMutableString`
-and then as a `_tapHLE_NSString`, so what looks like one object's history is
-several objects' histories concatenated. Any conclusion drawn from reading it
-straight through is wrong. This is the trap to know about before spending a run
-on it.
+### The over-release, and a trap worth knowing
 
-The first attempt read that concatenated history as one object created by
-`+[NSString stringWithString:]` and over-released by the bundled comScore SDK.
-That reading produced a **real and independent** fidelity fix — Foundation
-returns the argument itself from `stringWithString:` for an immutable receiver,
-so an app that over-releases a constant string is harmless there and was fatal
-here — and it is now on `trunk`. **It did not fix this crash.** The abort moved
-to a different address and the same shape.
+Before the pool change, startup died with an object released after it had been
+deallocated. The obvious investigation is a trap: **the dead address is reused**
+several times between the object's creation and the crash, so reading its traced
+history straight through concatenates several objects into one plausible, wrong
+story.
 
-### What would settle it
-
-The trace needs to distinguish objects, not addresses. Either:
-
-- record allocations with a serial number rather than only an address, so a
-  reused address reads as two distinct objects; or
-- break at the point the pool adds the object, not at the crash — the
-  `NSAutoreleasePool addObject:` line that precedes the fatal drain names the
-  pool, and the object added at that moment is unambiguous.
-
-The second needs no new tooling. It is the next step.
-
-Also worth ruling out first, since it is cheap: this is a comScore/CSStorage
-code path (`[CSStorage has:]` appears immediately before the object is built),
-and analytics SDKs are exactly the code that reaches for undocumented runtime
-behaviour. Confirming whether the same crash happens with that SDK's network
-calls already failing — which they do here, tapHLE has no network stack for
-Tapulous' services — would say whether this is on the app's error path rather
-than its normal one.
+A fix did come out of the first, wrong reading — Foundation returns the argument
+itself from `+[NSString stringWithString:]` for an immutable receiver, which is
+real and is on `trunk` — but it did not fix the crash. The crash is now simply
+tolerated at the point of drain, which is the right place for it: the pool is
+never the culprit, only the finder.
