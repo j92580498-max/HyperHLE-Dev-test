@@ -93,6 +93,9 @@ pub fn CGBitmapContextCreate(
         blend_mode: kCGBlendModeNormal,
         text_transform: None,
         state_stack: Vec::new(),
+        path: Default::default(),
+        rgb_stroke_color: (0.0, 0.0, 0.0, 1.0),
+        line_width: 1.0,
     };
     let isa = env.objc.get_known_class("_tapHLE_CGContext", &mut env.mem);
     env.objc
