@@ -82,15 +82,47 @@ Established, in order:
    window in `ui_view.ui_window.windows`, so a window created by either route
    would be found by hit-testing.
 
-So the nib is loaded, and a window unarchived from it would be registered, and
-yet no window exists. **The remaining possibility is that unarchiving
-`MainWindow.nib` does not produce a `UIWindow` object at all.**
+### Answered: the window is created, then deallocated
 
-That is now the question, and it is a much smaller one than "what does this app
-use instead of a window". Dump what `-[UINib instantiateWithOwner:options:]`
-returns for this nib and see which objects come out; if the window is absent,
-the fault is in the unarchiver's handling of this nib's format or of the
-top-level objects list, not in UIKit's window support.
+That prediction was wrong too, and measuring it took one run. The nib logging
+added to `ui_nib` reports:
 
-This also predicts the fix is general: any app that gets its window from a main
-nib rather than creating one in code would be equally unable to receive touches.
+```text
+Nib instantiated 4 top-level object(s) (of 6 decoded):
+  ["OdysseyAppDelegate", "UIWindow", "OdysseyAppController", "EAGLView"]
+```
+
+The window **is** produced. And the touch failure now reports the candidates:
+
+```text
+Couldn't find a window for touch at ..., discarding. Windows: []
+```
+
+Created and registered, then gone. Nothing retains the main nib's top-level
+objects, so they are autoreleased and die at the first pool drain — taking the
+window's registration with them via `-[UIWindow dealloc]`. UIKit's contract is
+the opposite: a nib's top-level objects come back at +1 and the loader owns
+them.
+
+### Why the obvious fix is not committed
+
+Retaining them in `UIApplicationMain` **does** fix touches — the discard message
+disappears entirely. It also turns the screen grey: the nib's `UIWindow`, now
+alive, composites over the `EAGLView` the app actually draws through, and the
+window is empty.
+
+So the app trades "renders correctly, ignores every tap" for "accepts taps,
+draws nothing". That is not an improvement and it is not committed. The two
+diagnostics that found all this are, since they are useful regardless.
+
+### What the real fix has to reconcile
+
+The `EAGLView` is itself a top-level object of the same nib, so the intended
+arrangement is presumably window-contains-view. Establish why the two are not
+connected — whether the nib's view hierarchy is being unarchived without its
+parent-child links, or the window simply never has the view added — before
+retaining anything. Retaining the objects without fixing that just makes an
+empty window visible.
+
+This is still expected to be general: any app whose window comes from its main
+nib rather than from code has the same lifetime problem.

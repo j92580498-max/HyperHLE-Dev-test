@@ -133,6 +133,24 @@ pub const CLASSES: ClassExports = objc_classes! {
         () = msg![env; filtered addObject:obj];
     }
 
+    // What a nib actually produced is the first thing anyone asks when a screen
+    // is missing, and it is otherwise invisible.
+    if crate::log::debug_enabled_for(module_path!()) {
+        let filtered_count: NSUInteger = msg![env; filtered count];
+        let mut names = Vec::with_capacity(filtered_count as usize);
+        for i in 0..filtered_count {
+            let obj: id = msg![env; filtered objectAtIndex:i];
+            let class: Class = msg![env; obj class];
+            names.push(env.objc.get_class_name(class).to_string());
+        }
+        log_dbg!(
+            "Nib instantiated {} top-level object(s) (of {} decoded): {:?}",
+            filtered_count,
+            count,
+            names
+        );
+    }
+
     release(env, unarchiver);
     env.objc.borrow_mut::<UINibHostObject>(this).file_owner = nil;
 
