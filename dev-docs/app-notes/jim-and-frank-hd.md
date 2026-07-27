@@ -57,3 +57,40 @@ allocation during startup and look for its own window or view-controller class
 Menu geometry, if it becomes useful: in the 768x1024 capture, "Play Game" sits
 at about `(110, 170)`, with the other planks to its right along the top edge.
 Both that point and its landscape rotation `(853, 110)` were discarded.
+
+## 2026-07-27: the touch problem narrowed to the main nib
+
+The earlier note said the app "never creates a UIWindow" and suggested finding
+what it creates instead. That framing was wrong in an instructive way: **the app
+does not create a window because it does not have to.**
+
+Established, in order:
+
+1. The binary references `UIWindow` and `makeKeyAndVisible`, so it is not
+   avoiding UIKit windows on principle.
+2. Tracing shows it calls `[UIApplication keyWindow]` and
+   `[UIApplication windows]` and **never** `makeKeyAndVisible`. It *queries* for
+   a window rather than making one — which is correct iOS code for an app whose
+   window comes from its main nib.
+3. Its `Info.plist` has `NSMainNibFile = MainWindow` and the bundle ships
+   `MainWindow.nib`. There is no `NSMainNibFile~ipad`, and
+   `Bundle::main_nib_filename` falls back to the plain key correctly, so the
+   right name is resolved.
+4. `UIApplicationMain` does load the main nib, and nib machinery demonstrably
+   runs — the log carries a `UIProxyObject` line from that load.
+5. `-[UIWindow initWithFrame:]` **and** `-initWithCoder:` both register the new
+   window in `ui_view.ui_window.windows`, so a window created by either route
+   would be found by hit-testing.
+
+So the nib is loaded, and a window unarchived from it would be registered, and
+yet no window exists. **The remaining possibility is that unarchiving
+`MainWindow.nib` does not produce a `UIWindow` object at all.**
+
+That is now the question, and it is a much smaller one than "what does this app
+use instead of a window". Dump what `-[UINib instantiateWithOwner:options:]`
+returns for this nib and see which objects come out; if the window is absent,
+the fault is in the unarchiver's handling of this nib's format or of the
+top-level objects list, not in UIKit's window support.
+
+This also predicts the fix is general: any app that gets its window from a main
+nib rather than creating one in code would be equally unable to receive touches.
