@@ -79,4 +79,17 @@ Two candidates worth separating before writing any code:
   data source returns zero rows would look exactly like this. That is testable
   in one run by logging the row count in `reload`.
 
-The second is cheap and rules out the newest code, so do it first.
+The second is cheap and rules out the newest code, so it was done first — and
+it **rules the table view out**. With the table view's reload logging enabled
+(`TAPHLE_LOG_MODULES=tapHLE::frameworks::uikit::ui_view::ui_scroll_view::ui_table_view`),
+a full run to the stall produces **no reload lines at all**: no table view is
+ever populated, so the level screen is not one. The new code is not the cause.
+
+That leaves the first candidate, and it is now the one to pursue. The
+`FlurryAPI logEvent:withParameters:` immediately before the stall is a *faked*
+class — tapHLE answers it as if sent to nil. If the app chains its level-screen
+setup off an analytics completion, that chain silently ends there, and the
+symptom is exactly this: alive, idle, background drawn, nothing logged.
+
+The next step is to trace selectors from the No Thanks tap to the stall and find
+the last message the app sends before going quiet.
