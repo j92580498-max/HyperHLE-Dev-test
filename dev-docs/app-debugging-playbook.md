@@ -691,3 +691,56 @@ size/orientation header is required.
 Do not put app code, decompiled listings, assets, screenshots, raw logs, keys,
 or personal paths in the note. Exact public provenance, hashes, symbol names,
 addresses, API shapes, and summarized behavior are sufficient for continuity.
+
+## A liveness check is not a regression check
+
+Two three-star apps were broken during a single session and neither was caught
+by the routine sweep. Both misses were the same mistake in different clothes.
+
+**SPY mouse HD** stayed up for roughly forty seconds and then aborted. A sweep
+that launches an app, waits twenty seconds and confirms the process is alive saw
+a healthy splash screen and reported success. The app never reached a level
+again.
+
+**JellyCar 2** was not in the sweep at all. It had been rated three stars weeks
+earlier, so it was assumed to still work — and it had been dead for a dozen
+commits before anyone launched it.
+
+So:
+
+1. **Check every app that carries a rating**, not a convenient subset. An app
+   absent from the sweep is an app whose rating is a claim about the past.
+2. **Drive each one to the milestone it is rated for.** Three stars means a
+   gameplay loop, so the check has to reach gameplay. Confirming the process is
+   alive confirms only that it has not crashed *yet*.
+3. **Wait long enough.** Give an app at least as long as its recorded startup
+   time plus a margin. Failures that arrive at forty seconds are invisible to a
+   twenty-second check.
+4. **Compare frames by hash, not by eye or by file size.** Two captures of a
+   static screen are byte-identical; two captures of a running game are not.
+   That single check distinguishes "playing" from "frozen on a plausible
+   screenshot", and it is the check that has caught the most.
+
+### Bisect rather than guess when a regression appears
+
+An app that used to work and now does not has a first bad commit, and finding it
+is cheap next to reasoning about which change "looks risky". JellyCar 2 was
+pinned in three builds — working at its rated commit, working at the parent of
+the suspect merge, dead at the merge — which named the cause with no argument
+about it.
+
+The rated commit is recorded in every app note precisely so this is possible.
+Use it.
+
+### The fix for a regression is rarely "revert" or "keep"
+
+The layout-on-mount change that broke JellyCar 2 was also what got Tap Tap
+Revenge 2 into gameplay, so both reverting and keeping it cost a three-star
+result. Two narrower attempts failed — dropping the recursion into subviews, and
+restricting it to `CAEAGLLayer`-backed views — and their failure is what showed
+the problem was *when* the layout ran rather than *which views* it touched.
+
+The answer was a condition neither app suggested on its own: lay out on mount
+only once launching has finished. When two apps disagree, look for the
+distinction that explains both, and treat a narrowing that fails as evidence
+about the shape of the bug rather than a dead end.
