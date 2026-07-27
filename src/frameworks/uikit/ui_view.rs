@@ -188,6 +188,24 @@ fn init_common(env: &mut Environment, this: id) -> id {
 /// than at the wrong one.
 pub(super) fn mark_needs_layout_on_mount(env: &mut Environment, view: id) {
     env.objc.borrow_mut::<UIViewHostObject>(view).needs_layout = true;
+
+    // During launch, leave it at the flag. The app is still assembling its view
+    // hierarchy and running its layout code now is what killed JellyCar 2.
+    if !env.framework_state.uikit.ui_application.finished_launching {
+        return;
+    }
+
+    // Afterwards, lay out immediately if the view is already in a window.
+    // Waiting for the next run loop turn is closer to UIKit, but it costs a
+    // frame — and for an EAGLView that frame is presented into no drawable,
+    // which is how Tap Tap Revenge 2 lost its background: the first frames of
+    // its game screen were drawn before the layout that creates the surface.
+    let window: id = msg![env; view window];
+    if window == nil {
+        return;
+    }
+    env.objc.borrow_mut::<UIViewHostObject>(view).needs_layout = false;
+    () = msg![env; view layoutSubviews];
 }
 
 /// For use by `NSRunLoop`: perform the layout that `-setNeedsLayout` deferred.
