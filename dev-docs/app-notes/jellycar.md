@@ -1,5 +1,20 @@
 # JellyCar (1, 2, 3) compatibility work note
 
+> **UNSUBMITTED RESULTS — tapHLEdb was returning HTTP 504 (2026-07-26).**
+> Two results below were measured on committed builds but could not be filed:
+>
+> - **JellyCar 2 on iPad**, `com.disney.jellyCar2foriPad` 1.1 — **2 stars** on
+>   tapHLE `d335f7bd`. Frontier: mode-select and Classic instruction cards
+>   render; the cards are static, so gameplay is not reached.
+> - **JellyCar 3**, `com.disney.JellyCar3` 1.2 — **1 star** on tapHLE
+>   `f8a085d8`. Frontier: past resource enumeration, guest MemoryError.
+>
+> One earlier JellyCar 3 attempt used a *guessed* identifier
+> (`com.walaber.jellycar3`) and also 504'd, so it may or may not exist as a
+> stray row; if it does, reject it. Submit the two results above when the
+> endpoint is healthy, and verify no duplicate was created first.
+
+
 Covers all three JellyCar entries on the target list, because they share one
 blocker.
 
