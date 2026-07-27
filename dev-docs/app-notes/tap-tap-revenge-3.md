@@ -13,9 +13,10 @@
 ## Current state: does not launch
 
 Startup aborts before any frame. This is the same Tapulous codebase as Tap Tap
-Revenge 2, so the nine general gaps cleared for that app (see
-`tap-tap-revenge-2.md`) are prerequisites and are already on `trunk`; TTR3 then
-needs more.
+Revenge 2, so everything cleared for that app (see `tap-tap-revenge-2.md`) is a
+prerequisite and is already on `trunk`; TTR3 then needs more. That shared work
+grew a lot this session — declared-property metadata, NSInvocation return
+values, the audio queue clock — and TTR3 picked all of it up for free.
 
 ## Cleared so far
 
@@ -25,23 +26,34 @@ needs more.
    invocation could not be reconfigured. (`4c82a0a5`)
 3. `+[NSThread mainThread]`. (`4c82a0a5`)
 
+## Cleared since
+
+4. `-[NSTimer initWithFireDate:interval:target:selector:userInfo:repeats:]`,
+   the designated initialiser. Adding it also meant raising the host method
+   arity limit: `impl_HostIMP!` stopped at five method arguments and this
+   selector has six. `CallFromGuest` already went to eleven, so that was a
+   one-line ceiling rather than a real limit.
+
 ## Current frontier
 
 ```text
-NSTimer does not respond to selector
-"initWithFireDate:interval:target:selector:userInfo:repeats:"
+Receiver 0x3001bd30 has a nil isa while sending selector "release"
 ```
 
-The designated initialiser for a timer with an explicit fire date. tapHLE's
-NSTimer has the `scheduledTimerWithTimeInterval:...` factories but not this one.
-It is a bounded next step: construct the timer with the given interval and
-repeat flag, and honour `fireDate` as the first fire time rather than
-"now + interval".
+An object is released after it has already been deallocated. The traced
+messages immediately before it are a run of `NSData` and `_tapHLE_NSString`
+deallocs at neighbouring addresses, which is what draining an autorelease pool
+looks like, and the dead object sits in the middle of that address range. So
+the shape is: something in the pool was released once too often, or was
+deallocated while the pool still held it.
 
-## Next discriminator
+That points at an ownership mismatch on a returned object — a method handing
+back +1 where the caller expects +0, or the reverse — rather than at a missing
+method. The next step is to find which object `0x3001bd30` is: rerun with
+`TAPHLE_TRACE_SELECTORS=all`, search the trace backwards for that address, and
+read the `alloc`/`retain`/`release` history it accumulated before the pool
+drained. The register dump is captured too (`PC 0x00134ee4`, `LR 0x000035dd`)
+if the guest side is needed.
 
-Implement that initialiser, then continue the crash-to-crash loop. Expect the
-same shape as TTR2: a long tail of Foundation and networking surface before a
-frame. Re-assess after the next two or three blockers — TTR2 needed nine and
-still only reached its menus, so if TTR3 is not visibly closer to a frame by
-then it is a poor value target compared with untried apps.
+Do not guess at the guilty method from the shape alone. That approach wasted
+two rebuild cycles on Tap Tap Revenge 2 and the trace answered it in one run.
