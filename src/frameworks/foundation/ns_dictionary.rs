@@ -502,6 +502,13 @@ pub const CLASSES: ClassExports = objc_classes! {
 // These probably comes from some category related to plists.
 - (id)initWithContentsOfFile:(id)path { // NSString*
     release(env, this);
+    // A nil path has nothing to read, so the documented nil return is the
+    // answer. Without this the path went straight into to_rust_string(), which
+    // borrows the object table and aborted the emulator on a nil object.
+    if path == nil {
+        log!("Warning: -[NSDictionary initWithContentsOfFile:nil], returning nil");
+        return nil;
+    }
     let path = ns_string::to_rust_string(env, path);
     deserialize_plist_from_file(
         env,
@@ -680,6 +687,13 @@ pub const CLASSES: ClassExports = objc_classes! {
 // These probably comes from some category related to plists.
 - (id)initWithContentsOfFile:(id)path { // NSString*
     release(env, this);
+    // A nil path has nothing to read, so the documented nil return is the
+    // answer. Without this the path went straight into to_rust_string(), which
+    // borrows the object table and aborted the emulator on a nil object.
+    if path == nil {
+        log!("Warning: -[NSDictionary initWithContentsOfFile:nil], returning nil");
+        return nil;
+    }
     let path = ns_string::to_rust_string(env, path);
     let tmp = deserialize_plist_from_file(
         env,
