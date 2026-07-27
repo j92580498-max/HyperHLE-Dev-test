@@ -234,6 +234,57 @@ pub const CLASSES: ClassExports = objc_classes! {
     }
 }
 
+// Pop repeatedly rather than unwinding the stack in one step, so every
+// controller on the way out gets its -viewWillDisappear: and its release. A
+// bulk removal would skip both, and an app that frees resources in
+// -viewWillDisappear: would leak them.
+//
+// Returns the controllers that were popped, outermost first, as UIKit does.
+- (id)popToRootViewControllerAnimated:(bool)animated {
+    let mut popped: Vec<id> = Vec::new();
+    loop {
+        let depth = env
+            .objc
+            .borrow::<UINavigationControllerHostObject>(this)
+            .navigation_stack
+            .len();
+        if depth <= 1 {
+            break;
+        }
+        let controller: id = msg![env; this popViewControllerAnimated:animated];
+        if controller == nil {
+            break;
+        }
+        popped.push(controller);
+    }
+    let array = ns_array::from_vec(env, popped);
+    autorelease(env, array)
+}
+
+- (id)popToViewController:(id)target // UIViewController*
+                 animated:(bool)animated {
+    let mut popped: Vec<id> = Vec::new();
+    loop {
+        let stack = env
+            .objc
+            .borrow::<UINavigationControllerHostObject>(this)
+            .navigation_stack
+            .clone();
+        // Stop if the target is already on top, or is not on the stack at all —
+        // popping to a controller that was never pushed would empty the stack.
+        if stack.len() <= 1 || *stack.last().unwrap() == target || !stack.contains(&target) {
+            break;
+        }
+        let controller: id = msg![env; this popViewControllerAnimated:animated];
+        if controller == nil {
+            break;
+        }
+        popped.push(controller);
+    }
+    let array = ns_array::from_vec(env, popped);
+    autorelease(env, array)
+}
+
 - (id)popViewControllerAnimated:(bool)_animated {
     let (popped_view_controller, next_view_controller) = {
         let host_object = env.objc.borrow_mut::<UINavigationControllerHostObject>(this);

@@ -96,6 +96,7 @@ pub fn CGBitmapContextCreate(
         path: Default::default(),
         rgb_stroke_color: (0.0, 0.0, 0.0, 1.0),
         line_width: 1.0,
+        text_position: super::cg_geometry::CGPointZero,
     };
     let isa = env.objc.get_known_class("_tapHLE_CGContext", &mut env.mem);
     env.objc
