@@ -350,8 +350,15 @@ pub const CLASSES: ClassExports = objc_classes! {
     env.objc.borrow::<UITableViewHostObject>(this).row_height
 }
 
+// Separators are not drawn at all, so both the style and the colour are
+// accepted and ignored. Saying that here beats being asked one selector at a
+// time by each app that styles its table.
 - (())setSeparatorStyle:(NSInteger)_style {
-    // Separators are not drawn.
+}
+- (())setSeparatorColor:(id)_color { // UIColor*
+}
+- (())setSectionIndexMinimumDisplayRowCount:(NSInteger)_count {
+    // The section index strip is not drawn either.
 }
 - (())setAllowsSelection:(bool)_allows {
 }
@@ -483,6 +490,13 @@ pub const CLASSES: ClassExports = objc_classes! {
     () = msg![env; table setDelegate:this];
     () = msg![env; this setView:table];
     release(env, table);
+}
+
+// The style is accepted and dropped, for the same reason UITableView drops it:
+// plain and grouped differ only in section-header and background drawing, and
+// neither is drawn. Storing it would imply it changes something.
+- (id)initWithStyle:(UITableViewStyle)_style {
+    msg![env; this init]
 }
 
 - (id)tableView {
