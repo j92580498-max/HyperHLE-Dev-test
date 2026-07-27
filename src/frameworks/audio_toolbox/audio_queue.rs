@@ -18,8 +18,8 @@ use crate::frameworks::carbon_core::OSStatus;
 use crate::frameworks::core_audio_types::{
     debug_fourcc, fourcc, kAudioFormatAppleIMA4, kAudioFormatFlagIsBigEndian,
     kAudioFormatFlagIsFloat, kAudioFormatFlagIsPacked, kAudioFormatFlagIsSignedInteger,
-    kAudioFormatLinearPCM, kAudioFormatMPEGLayer3, AudioStreamBasicDescription,
-    AudioStreamPacketDescription, AudioTimeStamp,
+    kAudioFormatLinearPCM, kAudioFormatMPEGLayer3, kAudioTimeStampSampleTimeValid,
+    AudioStreamBasicDescription, AudioStreamPacketDescription, AudioTimeStamp,
 };
 use crate::frameworks::core_foundation::cf_run_loop::{
     kCFRunLoopCommonModes, CFRunLoopGetMain, CFRunLoopMode, CFRunLoopRef,
@@ -74,6 +74,15 @@ struct AudioQueueHostObject {
     aq_is_running_proc: Option<AudioQueuePropertyListenerProc>,
     aq_is_running_user_data: Option<MutVoidPtr>,
     is_running_handler: bool,
+    /// Sample frames belonging to buffers that OpenAL has finished with and
+    /// that have been unqueued from the source. This is the fixed part of the
+    /// queue's playback clock; see [AudioQueueGetCurrentTime].
+    frames_dequeued: f64,
+    /// Sample frames of everything ever enqueued on this queue. On the same
+    /// timeline as `frames_dequeued`, and always ahead of it, so the difference
+    /// is what is still waiting to be played. This is what lets
+    /// [AudioQueueEnqueueBufferWithParameters] say when a buffer will start.
+    frames_enqueued: f64,
 }
 
 struct QueuedAudioBuffer {
@@ -142,6 +151,7 @@ const kAudioQueueErr_InvalidPropertySize: OSStatus = -66683;
 const kAudioQueueErr_InvalidParameter: OSStatus = -66682;
 const kAudioQueueErr_BufferInQueue: OSStatus = -66679;
 const kAudioQueueErr_CannotStart: OSStatus = -66681;
+const kAudioQueueErr_InvalidRunState: OSStatus = -66678;
 
 pub fn AudioQueueNewOutput(
     env: &mut Environment,
@@ -205,6 +215,8 @@ pub fn AudioQueueNewOutput(
         aq_is_running_proc: None,
         aq_is_running_user_data: None,
         is_running_handler: false,
+        frames_dequeued: 0.0,
+        frames_enqueued: 0.0,
     };
 
     let aq_ref = env.mem.alloc_and_write(OpaqueAudioQueue { _filler: 0 });
@@ -358,8 +370,49 @@ fn AudioQueueEnqueueBufferWithParameters(
     assert_eq!(in_num_param_values, 0);
     assert!(in_param_values.is_null());
     assert!(in_start_time.is_null());
-    assert!(out_actual_start_time.is_null());
-    AudioQueueEnqueueBuffer(env, in_aq, in_buffer, in_num_packet_descs, in_packet_descs)
+
+    // The buffer starts where the queue's enqueued audio currently ends, which
+    // is what a null `in_start_time` asks for: play it after everything already
+    // enqueued. Read before the enqueue below, so it does not include this
+    // buffer itself.
+    let start_sample_time = State::get(&mut env.framework_state)
+        .audio_queues
+        .get(&in_aq)
+        .map_or(0.0, |host_object| host_object.frames_enqueued);
+
+    let result =
+        AudioQueueEnqueueBuffer(env, in_aq, in_buffer, in_num_packet_descs, in_packet_descs);
+
+    if result == 0 && !out_actual_start_time.is_null() {
+        let mut time_stamp: AudioTimeStamp = unsafe { std::mem::zeroed() };
+        time_stamp.sample_time = start_sample_time;
+        time_stamp.flags = kAudioTimeStampSampleTimeValid;
+        env.mem.write(out_actual_start_time, time_stamp);
+    }
+
+    result
+}
+
+/// Sample frames in a buffer being enqueued, counted the way the queue's own
+/// format describes it.
+///
+/// MP3 is counted from the packet descriptions, because the buffer holds
+/// encoded bytes whose frame count its byte size does not reveal. Everything
+/// else is fixed-size PCM, where the byte size does.
+fn enqueued_frame_count(
+    mem: &Mem,
+    host_object: &AudioQueueHostObject,
+    buffer_ref: AudioQueueBufferRef,
+    packet_descriptions: &[HostPacketDescription],
+) -> f64 {
+    let audio_data_byte_size = mem.read(buffer_ref).audio_data_byte_size;
+    if host_object.format.format_id == kAudioFormatMPEGLayer3 {
+        return f64::from(host_object.format.frames_per_packet) * packet_descriptions.len() as f64;
+    }
+    if host_object.format.bytes_per_frame == 0 {
+        return 0.0;
+    }
+    f64::from(audio_data_byte_size / host_object.format.bytes_per_frame)
 }
 
 fn snapshot_packet_descriptions(
@@ -454,6 +507,10 @@ pub fn AudioQueueEnqueueBuffer(
         // accepting that behavior as before.
         Vec::new()
     };
+
+    let buffer_frames =
+        enqueued_frame_count(&env.mem, host_object, in_buffer, &packet_descriptions);
+    host_object.frames_enqueued += buffer_frames;
 
     host_object.buffer_queue.push_back(QueuedAudioBuffer {
         buffer_ref: in_buffer,
@@ -1026,6 +1083,88 @@ fn prime_audio_queue(
     Ok(prepared_frames)
 }
 
+/// How many sample frames an OpenAL buffer holds, asked of OpenAL rather than
+/// derived from the audio queue's format.
+///
+/// This matters for MP3 queues: an enqueued buffer there holds encoded bytes
+/// whose frame count the format description cannot express, but by the time
+/// OpenAL has the buffer it holds decoded PCM and knows its own size.
+fn al_buffer_frame_count(al_buffer: ALuint, context: &OpenAL<'_>) -> f64 {
+    let (mut size, mut bits, mut channels) = (0, 0, 0);
+    unsafe {
+        context.GetBufferi(al_buffer, al::AL_SIZE, &mut size);
+        context.GetBufferi(al_buffer, al::AL_BITS, &mut bits);
+        context.GetBufferi(al_buffer, al::AL_CHANNELS, &mut channels);
+        assert!(context.GetError() == 0);
+    }
+    let bytes_per_frame = (bits / 8) * channels;
+    if bytes_per_frame <= 0 {
+        return 0.0;
+    }
+    f64::from(size / bytes_per_frame)
+}
+
+/// The queue's playback position, as a count of sample frames since it started.
+///
+/// This is assembled from two parts: the frames of buffers OpenAL has finished
+/// and that have been unqueued, plus the source's offset into the buffer it is
+/// playing now. The seam is where the accuracy limit is — a buffer that OpenAL
+/// has finished but that has not been unqueued yet is counted by neither, so
+/// the clock can briefly sit still and then catch up. `handle_audio_queue`
+/// unqueues on every run loop turn, which keeps that window to well under one
+/// buffer, but it is not the sample-exact clock the real API provides.
+///
+/// `in_timeline` is for detecting discontinuities across a device change or
+/// hardware overload; tapHLE has neither, so no timeline can have been created
+/// and none is honoured here.
+fn AudioQueueGetCurrentTime(
+    env: &mut Environment,
+    in_aq: AudioQueueRef,
+    in_timeline: MutVoidPtr,
+    out_time_stamp: MutPtr<AudioTimeStamp>,
+    out_timeline_discontinuity: MutPtr<bool>,
+) -> OSStatus {
+    return_if_null!(in_aq);
+
+    if !in_timeline.is_null() {
+        log_dbg!("AudioQueueGetCurrentTime: ignoring timeline {in_timeline:?}");
+    }
+    if !out_timeline_discontinuity.is_null() {
+        // Nothing here can produce a discontinuity, so this is not a
+        // placeholder answer: it is the correct one.
+        env.mem.write(out_timeline_discontinuity, false);
+    }
+
+    let (state, context) =
+        State::get_with_context(&mut env.framework_state, &mut env.openal_manager);
+    let host_object = state.audio_queues.get_mut(&in_aq).unwrap();
+
+    let Some(al_source) = host_object.al_source else {
+        // Nothing has ever been primed, so there is no timeline to report a
+        // position on. This is the run state the API documents an error for.
+        return kAudioQueueErr_InvalidRunState;
+    };
+
+    let mut sample_offset = 0;
+    unsafe {
+        context.GetSourcei(al_source, al::AL_SAMPLE_OFFSET, &mut sample_offset);
+        assert!(context.GetError() == 0);
+    }
+    let sample_time = host_object.frames_dequeued + f64::from(sample_offset);
+
+    if out_time_stamp.is_null() {
+        return 0;
+    }
+    let mut time_stamp: AudioTimeStamp = unsafe { std::mem::zeroed() };
+    time_stamp.sample_time = sample_time;
+    // Only the sample time is filled in, and the flags say exactly that. A
+    // caller that reads mHostTime anyway gets a zero it was told not to trust.
+    time_stamp.flags = kAudioTimeStampSampleTimeValid;
+    env.mem.write(out_time_stamp, time_stamp);
+
+    0 // success
+}
+
 fn unqueue_buffers<F: FnMut(ALuint)>(al_source: ALuint, context: &OpenAL<'_>, mut callback: F) {
     loop {
         let mut al_buffers_processed = 0;
@@ -1083,6 +1222,7 @@ pub fn handle_audio_queue(env: &mut Environment, in_aq: AudioQueueRef) {
     let mut buffers_to_reuse = Vec::new();
 
     unqueue_buffers(al_source, &context, |al_buffer| {
+        host_object.frames_dequeued += al_buffer_frame_count(al_buffer, &context);
         host_object.al_unused_buffers.push(al_buffer);
         let queued_buffer = host_object.buffer_queue.pop_front().unwrap();
         buffers_to_reuse.push(queued_buffer.buffer_ref);
@@ -1327,6 +1467,11 @@ fn AudioQueueReset(env: &mut Environment, in_aq: AudioQueueRef) -> OSStatus {
     }
 
     host_object.buffer_queue.clear();
+    // The reset discards everything enqueued, so the playback clock starts
+    // over. -[AudioQueueGetCurrentTime] is documented as measuring from when
+    // the queue started, and after a reset that is now.
+    host_object.frames_dequeued = 0.0;
+    host_object.frames_enqueued = 0.0;
     if let Some(decoder) = host_object.mp3_decoder.as_mut() {
         decoder.reset();
     }
@@ -1455,6 +1600,7 @@ pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(AudioQueueSetProperty(_, _, _, _)),
     export_c_func!(AudioQueuePrime(_, _, _)),
     export_c_func!(AudioQueueStart(_, _)),
+    export_c_func!(AudioQueueGetCurrentTime(_, _, _, _)),
     export_c_func!(AudioQueuePause(_)),
     export_c_func!(AudioQueueStop(_, _)),
     export_c_func!(AudioQueueReset(_)),

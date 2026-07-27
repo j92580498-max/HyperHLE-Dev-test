@@ -46,6 +46,16 @@ struct AudioFilePacketTableInfo {
 }
 unsafe impl SafeRead for AudioFilePacketTableInfo {}
 
+/// `AudioFramePacketTranslation`. Both a request and a reply: the caller fills
+/// in the field it knows and reads back the one it wants.
+#[repr(C, packed)]
+struct AudioFramePacketTranslation {
+    frame: i64,
+    packet: i64,
+    frame_offset_in_packet: u32,
+}
+unsafe impl SafeRead for AudioFramePacketTranslation {}
+
 #[allow(dead_code)]
 const kAudioFileFileNotFoundError: OSStatus = -43;
 pub const kAudioFileBadPropertySizeError: OSStatus = fourcc(b"!siz") as _;
@@ -72,6 +82,8 @@ const kAudioFilePropertyMagicCookieData: AudioFilePropertyID = fourcc(b"mgic");
 const kAudioFilePropertyChannelLayout: AudioFilePropertyID = fourcc(b"cmap");
 const kAudioFilePropertyEstimatedDuration: AudioFilePropertyID = fourcc(b"edur");
 const kAudioFilePropertyPacketTableInfo: AudioFilePropertyID = fourcc(b"pnfo");
+const kAudioFilePropertyPacketToFrame: AudioFilePropertyID = fourcc(b"pkfr");
+const kAudioFilePropertyFrameToPacket: AudioFilePropertyID = fourcc(b"frpk");
 
 pub fn AudioFileOpenURL(
     env: &mut Environment,
@@ -231,6 +243,9 @@ pub(super) fn property_size(property_id: AudioFilePropertyID) -> GuestUSize {
         kAudioFilePropertyPacketSizeUpperBound => guest_size_of::<u32>(),
         kAudioFilePropertyEstimatedDuration => guest_size_of::<f64>(),
         kAudioFilePropertyPacketTableInfo => guest_size_of::<AudioFilePacketTableInfo>(),
+        kAudioFilePropertyPacketToFrame | kAudioFilePropertyFrameToPacket => {
+            guest_size_of::<AudioFramePacketTranslation>()
+        }
         _ => unimplemented!("Unimplemented property ID: {}", debug_fourcc(property_id)),
     }
 }
@@ -330,6 +345,34 @@ pub fn AudioFileGetProperty(
         kAudioFilePropertyPacketTableInfo => {
             log!("TODO: AudioFileGetProperty({:?}, kAudioFilePropertyPacketTableInfo, {:?}, {:?}) -> kAudioFileUnsupportedPropertyError", in_audio_file, io_data_size, out_property_data);
             return kAudioFileUnsupportedPropertyError;
+        }
+        // These two are inverses of each other over the same struct, so they
+        // are implemented together; splitting them would leave a caller that
+        // converts in both directions half-served for no gain.
+        //
+        // Every format tapHLE decodes has a constant number of frames per
+        // packet — that is true of MP3 and of linear PCM alike — so the
+        // translation is exact rather than an approximation over a packet
+        // table. A format with genuinely variable packet sizes would need the
+        // packet table this does not read, and would be wrong here.
+        kAudioFilePropertyPacketToFrame | kAudioFilePropertyFrameToPacket => {
+            let frames_per_packet =
+                host_object.audio_file.audio_description().frames_per_packet as i64;
+            assert!(frames_per_packet > 0);
+            let translation: MutPtr<AudioFramePacketTranslation> = out_property_data.cast();
+            let mut value = env.mem.read(translation);
+            if in_property_id == kAudioFilePropertyPacketToFrame {
+                value.frame = value.packet * frames_per_packet;
+                value.frame_offset_in_packet = 0;
+            } else {
+                value.packet = value.frame.div_euclid(frames_per_packet);
+                value.frame_offset_in_packet = value
+                    .frame
+                    .rem_euclid(frames_per_packet)
+                    .try_into()
+                    .unwrap();
+            }
+            env.mem.write(translation, value);
         }
         _ => unreachable!(),
     }
