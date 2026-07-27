@@ -15,11 +15,48 @@
 - tapHLEdb: App 20, version 20, report 28 (2026-07-26, tapHLE `4e246384`,
   ★☆☆☆☆).
 
-## Highest milestone: 2-star (Starts / Menu), tapHLE `21f655f4`
+## CORRECTED: 1 star. The menu was never on screen
 
-It renders. The full main menu — Play Game, Select Profile, Options, Extras,
-About, on wooden planks over the painted title art — is drawn on a clean
-committed build (`J & F HD (tapHLE 21f655f4)`, no `-dirty`). Filed as report 50.
+**Report 50 said two stars and was wrong.** Superseded by report 52 (1 star) on
+`425c7138`.
+
+The "full main menu" recorded here was read out of tapHLE's own frame capture.
+For this app that capture is the **renderbuffer the app submitted**, not the
+screen — `capture_renderbuffer` runs inside `-presentRenderbuffer:` before the
+fast/slow branch, before host rotation and before composition, and its own doc
+comment says so.
+
+An OS-level `PrintWindow` screenshot of the tapHLE window, which is outside
+tapHLE's GL code entirely, shows what is actually there: **the Chillingo splash
+logo, rotated 90 degrees, frozen**. It never updates; sampling gives 140 distinct
+colours, all of them the splash.
+
+So the app draws its menu correctly into its own buffer, and that buffer never
+reaches the screen. One star: it does not reach usable content.
+
+### Why nothing reaches the screen
+
+Only three call sites present anything to the window: the splash path in
+`window.rs`, `composition.rs`, and the EAGL fast path in `eagl.rs`. With the
+nib's window deallocated the window list is empty, so `recomposite_if_necessary`
+returns early *and* `find_fullscreen_eagl_layer` returns nil. **No `swap_window`
+runs after the splash at all.** The slow path still reads the renderbuffer back
+into `presented_pixels`, for a layer tree nobody composites.
+
+That also disposes of two things recorded earlier as defects. The 90 degree
+rotation in captures proved nothing, because the capture is taken before host
+rotation — a landscape app's renderbuffer is necessarily sideways in a capture
+whether or not the screen would be upright. And `--landscape-native` leaving
+captures byte-identical is expected, because that option only affects
+`present_frame`, which `capture_renderbuffer` bypasses.
+
+### With the retain applied, the grey is real
+
+Re-measured with an OS screenshot rather than a capture: uniform `#999999` over
+the whole window, 12 distinct sampled colours. It is **not** the `0x7f` fill
+tapHLE uses to make a dead capture obvious, so it is genuinely being drawn.
+Retaining the nib objects trades a frozen splash for a grey screen — both one
+star — so the retain is still not committed, but now for a measured reason.
 
 `NSDecimalNumber` is what unblocked it: the class did not exist and startup
 aborted on `+decimalNumberWithString:`. It is on `trunk`, backed by a `double`

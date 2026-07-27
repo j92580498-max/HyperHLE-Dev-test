@@ -744,3 +744,36 @@ The answer was a condition neither app suggested on its own: lay out on mount
 only once launching has finished. When two apps disagree, look for the
 distinction that explains both, and treat a narrowing that fails as evidence
 about the shape of the bug rather than a dead end.
+
+## A frame capture is not necessarily the screen
+
+tapHLE has two capture sites and they answer different questions.
+
+`capture_renderbuffer` logs **"Captured submitted EAGL renderbuffer"**. It runs
+inside `-[EAGLContext presentRenderbuffer:]` *before* the fast/slow branch, so it
+records what the app drew into its own buffer — before host rotation, before
+composition, before the virtual cursor. Its doc comment says exactly this.
+
+`capture_composited_frame` logs **"Captured presented Core Animation frame"**.
+That one is the screen.
+
+The trap: when an app has no visible window, `recomposite_if_necessary` returns
+early and `find_fullscreen_eagl_layer` returns nil, so nothing is presented at
+all — and the *renderbuffer* capture still produces a perfect-looking image. The
+Jim & Frank Mysteries HD was rated two stars on that basis for a whole session.
+Its window comes from its main nib and was being deallocated, so the screen held
+a frozen splash while every capture showed a full main menu.
+
+Two consequences worth remembering:
+
+1. **Check which line the log emitted.** `grep Captured` costs nothing and tells
+   you which of the two you are holding.
+2. **For anything surprising, take an OS-level screenshot.** `PrintWindow` with
+   `PW_RENDERFULLCONTENT` on the tapHLE window is outside tapHLE's GL code
+   entirely, so it cannot be fooled by any of this. Sampling the pixel histogram
+   is enough — a frozen splash, a grey fill and a live game are obvious apart by
+   distinct-colour count alone.
+
+A corollary: a rotated capture proves nothing about orientation, because the
+renderbuffer capture is taken before host rotation. Neither does an unchanged
+capture after passing `--landscape-native`, which only affects `present_frame`.
