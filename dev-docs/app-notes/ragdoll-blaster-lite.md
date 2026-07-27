@@ -29,22 +29,25 @@
    a path that does not exist, which Apple documents and which is how an app
    asks "is there a bundle here?".
 
-## Current frontier: UITableViewController
+## UITableViewController is implemented; the frontier has moved
+
+`UITableView`, `UITableViewCell` and `UITableViewController` now exist on
+`trunk`, with `NSIndexPath` filled in underneath them. This app was the first
+test for that work, as planned — it hits the class during startup, which made
+the edit-run cycle minutes shorter than Tap Tap Revenge 3's four-tap path.
+
+## Current frontier: UIBarButtonItem
 
 ```text
-Class "UITableViewController" is unimplemented. Call to class method "initialize".
+Class "UIBarButtonItem" is unimplemented. Call to class method "alloc".
 ```
 
-**This is the same wall Tap Tap Revenge 3 hits**, and tapHLE has no
-`UITableView` either — so this is not a missing method but a missing class
-cluster: the table view, its data source and delegate protocols, cells, reuse
-and selection.
+The app builds a navigation bar or toolbar item. `UIBarButtonItem` is a small
+class — a target, an action, and a title or image — so this is a much smaller
+job than the table view was. Check what else of the bar family the app needs
+before starting: if it also wants `UINavigationBar`, `UINavigationItem` or
+`UIToolbar`, they are worth doing together rather than one abort at a time,
+which is the mistake the scalar type encodings taught.
 
-Two apps on the current target list now stop here, which makes it the highest
-value piece of UIKit left undone. Whoever takes it should use **Ragdoll Blaster
-Lite as the first test and TTR3 as the second**: this app hits it during
-startup, which is a much faster edit-run cycle than TTR3's four-tap,
-ninety-second path to the same class.
-
-Nothing else about this app has been assessed — it has never drawn a frame, so
-its rendering, input and audio are all unknown rather than working.
+Still no frame, so nothing about this app's rendering, input or audio has been
+assessed and no report is filed.

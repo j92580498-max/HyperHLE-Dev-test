@@ -40,31 +40,34 @@ all general and all on `trunk`:
 9. Re-parenting a guest subclass of a Foundation cluster class onto tapHLE's
    concrete implementation.
 
-## Current frontier: UITableViewController, and UITableView under it
+## UITableView is implemented; the frontier has moved
+
+`UITableView`, `UITableViewCell` and `UITableViewController` now exist on
+`trunk`, along with `NSIndexPath` (which was an empty stub) and
+`UILocalizedIndexedCollation`. Tapping Play gets through all of them.
+
+The table view **builds every row up front instead of recycling cells**. That
+is a deliberate trade documented in its own module: the protocols, selection
+and scrolling work without visible-rectangle bookkeeping, at the cost of being
+wrong for a table with thousands of rows. This app's track list has tens.
+
+## Current frontier: a guest MemoryError after the track list loads
 
 ```text
-Class "UITableViewController" is unimplemented. Call to class method "initialize".
+Error during CPU execution: MemoryError
 ```
 
-Tapping Play stops here. This is **not** a small gap: tapHLE has no
-`UITableView` either, so the track list needs the whole class implemented —
-data source and delegate protocols, cells, reuse, selection, and scrolling —
-rather than a missing method filled in.
+No missing selector, no unimplemented class — the guest itself faults. That is
+a different class of problem from everything cleared so far and needs the
+register dump and a disassembly around the faulting PC, per the debugging
+playbook, rather than another round of "add the method it asked for".
 
-That is a substantial and highly reusable piece of UIKit, so it is worth doing
-on its own terms rather than as a step in this app. Whoever picks it up should
-treat this app as the acceptance test: it uses a plain grouped list.
+Worth checking first, because it is cheap and this app has form for it: three
+apps on this target list die inside bundled analytics SDKs (see
+`jellycar.md`). Look at what runs between the table appearing and the fault
+before assuming the table view is at fault.
 
-### The over-release, and a trap worth knowing
-
-Before the pool change, startup died with an object released after it had been
-deallocated. The obvious investigation is a trap: **the dead address is reused**
-several times between the object's creation and the crash, so reading its traced
-history straight through concatenates several objects into one plausible, wrong
-story.
-
-A fix did come out of the first, wrong reading — Foundation returns the argument
-itself from `+[NSString stringWithString:]` for an immutable receiver, which is
-real and is on `trunk` — but it did not fix the crash. The crash is now simply
-tolerated at the point of drain, which is the right place for it: the pool is
-never the culprit, only the finder.
+Do **not** assume the new table view is the cause without evidence. It is the
+newest code in the path and therefore the obvious suspect, which is exactly why
+it deserves a measurement rather than a hunch — the eight-app regression sweep
+and Ragdoll Blaster Lite both exercise it without faulting.
