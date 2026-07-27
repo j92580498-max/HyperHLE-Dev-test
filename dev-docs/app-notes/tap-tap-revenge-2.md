@@ -37,59 +37,40 @@ No launch options; window 320x480 portrait; wait ~28 s for the title screen
 3. Difficulty -> `(238, 190)` Easy -> track list. **This is the frontier.**
 4. Track list -> `(160, 120)` first track -> fails, see below.
 
-## Frontier: a nil NSString reaches to_rust_string during track load
+## Track load is fixed; frontier is now UIGraphicsBeginImageContext
 
-Selecting a track still fails. The panic message is now informative (it was a
-bare `unwrap()` before):
+The nil-NSString crash is **solved**. The caller was
+`-[NSDictionary initWithContentsOfFile:]`, which passed its path argument
+straight to `to_rust_string()` with no nil check. Both concrete dictionary
+classes had the same gap. A nil path now returns nil, as documented.
 
-```text
-objects.rs:177: No host object for (null) ... Wanted host type
-"...ns_string::StringHostObject"
-```
+Finding it took one run, not a rebuild: `TAPHLE_TRACE_SELECTORS=all` and
+reading the **last few traced messages before the panic**. That is the
+technique to reach for when a backtrace only gives a call *shape*; guessing
+which method matches the shape wasted two rebuilds here on
+`stringByAppendingPathComponent:` and `stringByAppendingPathExtension:`, which
+had the same signature, genuinely lacked nil guards, and were not the caller.
+Those guards were kept — they are correct — but they fixed nothing.
 
-So something calls `to_rust_string` on a **nil** NSString. With
-`RUST_BACKTRACE=1` the frame above it is a guest-called method with the
-signature `(env, this, sel, id) -> id` — a **one-argument method taking an id
-and returning an id**, converting its *argument*.
-
-### What has been ruled out
-
-`-[NSString stringByAppendingPathComponent:]` and
-`-stringByAppendingPathExtension:` matched that shape exactly and had no nil
-guard, so they looked like the answer. They were fixed (nil now returns the
-receiver, with a warning) and **the failure is unchanged**, so neither is the
-caller. `-stringByAppendingString:` was already asserting non-nil, and would
-have reported an assertion failure rather than this message, so it is out too.
-
-### Next discriminator
-
-Find the remaining one-argument `id -> id` methods that convert their argument,
-across NSString *and* other classes — `NSURL URLWithString:`,
-`NSBundle pathForResource:`, `NSFileManager` path methods and
-`NSMutableString appendString:` are all worth checking. A quicker route: build
-once with a `log!` of the selector name inside `to_rust_string` when the object
-is nil, run the click map, and read the answer directly instead of guessing at
-call shapes. That is the approach that should have been taken here rather than
-patching two plausible candidates.
-
-Tapping a track gets as far as creating a fresh GLES context for the gameplay
-screen, then panics:
+Selecting a track now proceeds to a new blocker:
 
 ```text
-src\objc\objects.rs:288:77: called `Option::unwrap()` on a `None` value
+Call to unimplemented function _UIGraphicsBeginImageContext
 ```
 
-That is an object-table lookup for an object that is not there, reached while
-decoding the track. The step before it was the keyed unarchiver returning the
-track's payload, which is a raw `Data` leaf (the bytes begin `M`... consistent
-with an embedded MIDI-like beat map). Handling that leaf is now implemented; the
-failure is one step further on.
+### Next step: the UIGraphics image-context family
 
-Next discriminator: run with `TAPHLE_TRACE_SELECTORS` on the track-loading
-selectors to find which object is being messaged when the table lookup fails,
-then decide whether this is an over-release (an object freed while the archive
-still names it) or an object the unarchiver never created. `objects.rs:288` is
-the place to instrument.
+tapHLE has **none** of it — no `UIGraphicsBeginImageContext`, no
+`...WithOptions`, no `UIGraphicsGetImageFromCurrentImageContext`, no
+`UIGraphicsEndImageContext`. This is a subsystem rather than a missing symbol:
+it means creating an offscreen bitmap context, making it the current UIGraphics
+context so ordinary drawing lands in it, and wrapping the result as a UIImage.
+
+It is a good self-contained `feat/`, and it is likely to help well beyond this
+app — compositing an image offscreen is a routine thing for a 2009 UI to do.
+The pieces tapHLE already has (`CGBitmapContextCreate`, the UIGraphics context
+stack, `UIImage`) are the ones needed, so this is assembly rather than new
+graphics work.
 
 ## Nine general gaps cleared to get here
 
