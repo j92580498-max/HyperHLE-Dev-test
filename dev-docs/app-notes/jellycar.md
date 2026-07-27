@@ -1,18 +1,17 @@
 # JellyCar (1, 2, 3) compatibility work note
 
-> **UNSUBMITTED RESULTS — tapHLEdb was returning HTTP 504 (2026-07-26).**
-> Two results below were measured on committed builds but could not be filed:
+> **JellyCar 2 is filed (report 39). JellyCar 3 is NOT — tapHLEdb 504s on it.**
 >
 > - **JellyCar 2 on iPad**, `com.disney.jellyCar2foriPad` 1.1 — **3 stars** on
->   tapHLE `d335f7bd`. Classic mode, level "Lance" runs: terrain, the jelly car,
->   drive controls and a timer counting 18.720 -> 69.601 across ~50 s.
+>   tapHLE `d335f7bd`. Submitted: app 30, version 30, report 39.
 > - **JellyCar 3**, `com.disney.JellyCar3` 1.2 — **1 star** on tapHLE
 >   `f8a085d8`. Frontier: past resource enumeration, guest MemoryError.
+>   **Every submission attempt returned HTTP 504**, across three tries and a
+>   period when the rest of the API was healthy. Submit this when it recovers.
 >
-> One earlier JellyCar 3 attempt used a *guessed* identifier
-> (`com.walaber.jellycar3`) and also 504'd, so it may or may not exist as a
-> stray row; if it does, reject it. Submit the two results above when the
-> endpoint is healthy, and verify no duplicate was created first.
+> One early JellyCar 3 attempt used a *guessed* identifier
+> (`com.walaber.jellycar3`) and also 504'd. If a stray row under that name
+> exists, reject it; the correct identifier is `com.disney.JellyCar3`.
 
 
 Covers all three JellyCar entries on the target list, because they share one
