@@ -336,8 +336,20 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 + (id)stringWithString:(id)string { // NSString*
-    let new: id = msg![env; this alloc];
-    let new: id = msg![env; new initWithString:string];
+    // Foundation does not build a new string here: for an immutable receiver
+    // it returns the argument itself, and `-copyWithZone:` above already
+    // encodes that rule (retain for an immutable string, a real copy for a
+    // mutable one). Going through it rather than alloc/init keeps the two
+    // consistent.
+    //
+    // The identity matters, not just the allocation. An app that releases the
+    // result without owning it — which several SDKs do to constant strings,
+    // because on Apple's runtime a constant string's release is a no-op — kills
+    // a freshly allocated copy instead and crashes when the pool drains. Tap
+    // Tap Revenge 3's bundled comScore SDK does exactly this.
+    //
+    // NSMutableString overrides this; see below.
+    let new: id = msg![env; string copy];
     autorelease(env, new)
 }
 
@@ -1340,6 +1352,13 @@ pub const CLASSES: ClassExports = objc_classes! {
     // Unimplemented: call superclass alloc then.
     assert!(this == env.objc.get_known_class("NSMutableString", &mut env.mem));
     msg_class![env; _tapHLE_NSMutableString allocWithZone:zone]
+}
+
+// NSString's version returns the argument itself when it can, which would hand
+// back an immutable string to a caller that asked NSMutableString for one.
++ (id)stringWithString:(id)string { // NSString*
+    let new: id = msg![env; string mutableCopy];
+    autorelease(env, new)
 }
 
 + (id)stringWithCapacity:(NSUInteger)capacity {
