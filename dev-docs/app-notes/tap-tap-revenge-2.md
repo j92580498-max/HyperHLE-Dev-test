@@ -37,7 +37,40 @@ No launch options; window 320x480 portrait; wait ~28 s for the title screen
 3. Difficulty -> `(238, 190)` Easy -> track list. **This is the frontier.**
 4. Track list -> `(160, 120)` first track -> fails, see below.
 
-## Frontier: unpacking the beat map
+## Frontier: a nil NSString reaches to_rust_string during track load
+
+Selecting a track still fails. The panic message is now informative (it was a
+bare `unwrap()` before):
+
+```text
+objects.rs:177: No host object for (null) ... Wanted host type
+"...ns_string::StringHostObject"
+```
+
+So something calls `to_rust_string` on a **nil** NSString. With
+`RUST_BACKTRACE=1` the frame above it is a guest-called method with the
+signature `(env, this, sel, id) -> id` — a **one-argument method taking an id
+and returning an id**, converting its *argument*.
+
+### What has been ruled out
+
+`-[NSString stringByAppendingPathComponent:]` and
+`-stringByAppendingPathExtension:` matched that shape exactly and had no nil
+guard, so they looked like the answer. They were fixed (nil now returns the
+receiver, with a warning) and **the failure is unchanged**, so neither is the
+caller. `-stringByAppendingString:` was already asserting non-nil, and would
+have reported an assertion failure rather than this message, so it is out too.
+
+### Next discriminator
+
+Find the remaining one-argument `id -> id` methods that convert their argument,
+across NSString *and* other classes — `NSURL URLWithString:`,
+`NSBundle pathForResource:`, `NSFileManager` path methods and
+`NSMutableString appendString:` are all worth checking. A quicker route: build
+once with a `log!` of the selector name inside `to_rust_string` when the object
+is nil, run the click map, and read the answer directly instead of guessing at
+call shapes. That is the approach that should have been taken here rather than
+patching two plausible candidates.
 
 Tapping a track gets as far as creating a fresh GLES context for the gameplay
 screen, then panics:

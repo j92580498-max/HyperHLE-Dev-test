@@ -1086,6 +1086,15 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (id)stringByAppendingPathComponent:(id)component { // NSString*
+    // Cocoa raises NSInvalidArgumentException for a nil component. tapHLE
+    // cannot raise into guest code, and aborting the emulator is a far worse
+    // answer than the app's own mistake deserves, so treat nil as "nothing to
+    // append" and return the receiver. Log it, because a nil here usually
+    // means an earlier lookup silently failed and that is the real bug.
+    if component == nil {
+        log!("Warning: -[NSString stringByAppendingPathComponent:nil], returning the receiver unchanged");
+        return this;
+    }
     // TODO: avoid copying
     let base_str = to_rust_string(env, this);
     let component_str = to_rust_string(env, component);
@@ -1096,6 +1105,11 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (id)stringByAppendingPathExtension:(id)extension { // NSString*
+    // See the note on -stringByAppendingPathComponent:.
+    if extension == nil {
+        log!("Warning: -[NSString stringByAppendingPathExtension:nil], returning the receiver unchanged");
+        return this;
+    }
     // FIXME: handle edge cases like trailing '/' (may differ from Rust!)
     let mut combined = to_rust_string(env, this).into_owned();
     // TODO: avoid copying
