@@ -100,3 +100,30 @@ stays up for roughly forty seconds before the abort, so a sweep that captures
 early sees a healthy-looking app — which is how this went unnoticed. A
 regression check for this app must drive it to a level, not merely confirm the
 process is alive.
+
+## 2026-07-27: three stars restored, tapHLE `b953ef9c`
+
+The regression above is **fixed**. A tap on the splash enters a level and the
+game runs: the mouse, the cheese, the drawn route and the HUD all render, and
+two captures eight seconds apart differ, so the loop is live rather than a
+frozen frame. Filed as report 47 (★★★☆☆), superseding report 46.
+
+The fix is the first of the two options listed above, and it is on `trunk`:
+class registration now re-parents a guest class whose superclass is an abstract
+Foundation cluster class onto tapHLE's concrete implementation of it. The
+metaclass is re-parented alongside the class, which is the half that matters for
+`+alloc` — without it, allocation still resolves to the abstract class's and
+returns an object of the wrong class.
+
+It is applied to the array, string and dictionary clusters together rather than
+to arrays alone, since leaving the others would have left the same trap armed.
+The substitution is skipped with a warning if the abstract and concrete classes
+ever differ in instance size, because that would move the subclass's ivars.
+
+### The lesson that stands regardless
+
+This was found by a sweep, but only because the sweep was *followed up*: the
+early capture showed a healthy-looking splash, and the app did not abort until
+roughly forty seconds in. A liveness check is not a compatibility check for an
+app whose failure is delayed. The regression check for this app drives it to a
+level.
