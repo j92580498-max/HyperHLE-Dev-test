@@ -75,3 +75,20 @@ different cause, but it is no longer blind.
 - `cargo fmt --all -- --check`
 - `cargo test --workspace --lib` (93 passed)
 - `cargo build --release`
+
+## 2026-07-27: 3 stars re-confirmed
+
+Re-driven after a session of broad UIKit and CoreGraphics changes, using the
+taps already in this note — `(512, 384)`, then `(800, 384)`, `(880, 384)`,
+`(950, 384)`. That reaches the interactive tutorial, which is playable: the
+target row, the ammo squares, the shooting region and both ammo gauges all
+render, and a projectile is in flight. Two captures eight seconds apart differ
+by SHA-256.
+
+**The capture is small — about 26 KB — and that is not a warning sign here.**
+This game's art is flat colour on white, so it compresses to a fraction of what
+a photographic title produces. Judging health by capture size would flag this
+app as blank; look at the image.
+
+Verified on a build of `0d8f5ec8`, whose only source difference from `trunk` is
+a `log_dbg!` added to `ca_eagl_layer.rs`.
