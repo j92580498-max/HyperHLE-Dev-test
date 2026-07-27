@@ -154,14 +154,45 @@ resolve the compositing overlap that retaining exposes. The retain is correct on
 its own terms and is deliberately absent from `trunk` only because, alone, it
 turns a rendering app into a grey one.
 
-The compositing question is the whole remaining job, and it is not yet measured.
-`find_fullscreen_eagl_layer` requires a **non-hidden top window**, and tapHLE
-forces every window hidden in both `UIWindow` initialisers while this app never
-calls `makeKeyAndVisible` — it relies on the nib's visibility flag. So the next
-measurement is simply: with the retain applied, is the window hidden, and what
-does `find_fullscreen_eagl_layer` return? Do not theorise past that point
-without running it; three hypotheses about this app have already been wrong, and
-each was settled by one cheap trace.
+### The compositing question, now measured
+
+`find_fullscreen_eagl_layer` logs why it declines, and with the retain applied it
+says the same thing every frame:
+
+```text
+Not a fullscreen EAGL layer: bounds 768x1024 (screen 768x1024),
+  anchor (0.5,0.5), position (384,512), hidden false,
+  opacity 0.5, identity transform false
+```
+
+Bounds, origin, anchor, position and visibility are all exactly right. **Two
+tests fail: `opacity 0.5`, and a non-identity affine transform.**
+
+The transform is the 90° rotation this app uses — it is a landscape game, which
+is also why it renders sideways under the direct path. And that rejection is
+already anticipated in the function itself:
+
+```rust
+// TODO: support affine transforms that result in a full-screen layer
+//       (typical example is 90° rotation).
+```
+
+So the remaining work is that TODO, plus deciding what a half-opaque fullscreen
+layer should mean. Neither is app-specific: any landscape app that gets its
+window from a nib will land here, which is a large share of iPad titles.
+
+### Summary of the whole chain
+
+One bug and one gap, in order:
+
+1. A nib's top-level objects are not retained, so the window dies. That causes
+   both the discarded touches and the nil `addSubview:`.
+2. Retaining it exposes the compositing path, which declines direct EAGL
+   presentation for a rotated, half-opaque layer and composites a window over
+   the GL content instead.
+
+Fixing (1) without (2) trades a rendering app for a grey one, which is why the
+retain is not on `trunk`.
 
 This is still expected to be general: any app whose window comes from its main
 nib rather than from code has the same lifetime problem.
