@@ -37,23 +37,45 @@ values, the audio queue clock — and TTR3 picked all of it up for free.
 ## Current frontier
 
 ```text
-Receiver 0x3001bd30 has a nil isa while sending selector "release"
+Receiver 0x3001b7a0 has a nil isa while sending selector "release"
 ```
 
-An object is released after it has already been deallocated. The traced
-messages immediately before it are a run of `NSData` and `_tapHLE_NSString`
-deallocs at neighbouring addresses, which is what draining an autorelease pool
-looks like, and the dead object sits in the middle of that address range. So
-the shape is: something in the pool was released once too often, or was
-deallocated while the pool still held it.
+An object is released after it has already been deallocated, at a pool drain.
 
-That points at an ownership mismatch on a returned object — a method handing
-back +1 where the caller expects +0, or the reverse — rather than at a missing
-method. The next step is to find which object `0x3001bd30` is: rerun with
-`TAPHLE_TRACE_SELECTORS=all`, search the trace backwards for that address, and
-read the `alloc`/`retain`/`release` history it accumulated before the pool
-drained. The register dump is captured too (`PC 0x00134ee4`, `LR 0x000035dd`)
-if the guest side is needed.
+### What was tried, and why it did not settle it
 
-Do not guess at the guilty method from the shape alone. That approach wasted
-two rebuild cycles on Tap Tap Revenge 2 and the trace answered it in one run.
+Tracing the dead address backwards gives its message history — but **the
+address is reused**. Between the crash and the object's creation, the same
+address is allocated and freed several times, as a `_tapHLE_NSMutableString`
+and then as a `_tapHLE_NSString`, so what looks like one object's history is
+several objects' histories concatenated. Any conclusion drawn from reading it
+straight through is wrong. This is the trap to know about before spending a run
+on it.
+
+The first attempt read that concatenated history as one object created by
+`+[NSString stringWithString:]` and over-released by the bundled comScore SDK.
+That reading produced a **real and independent** fidelity fix — Foundation
+returns the argument itself from `stringWithString:` for an immutable receiver,
+so an app that over-releases a constant string is harmless there and was fatal
+here — and it is now on `trunk`. **It did not fix this crash.** The abort moved
+to a different address and the same shape.
+
+### What would settle it
+
+The trace needs to distinguish objects, not addresses. Either:
+
+- record allocations with a serial number rather than only an address, so a
+  reused address reads as two distinct objects; or
+- break at the point the pool adds the object, not at the crash — the
+  `NSAutoreleasePool addObject:` line that precedes the fatal drain names the
+  pool, and the object added at that moment is unambiguous.
+
+The second needs no new tooling. It is the next step.
+
+Also worth ruling out first, since it is cheap: this is a comScore/CSStorage
+code path (`[CSStorage has:]` appears immediately before the object is built),
+and analytics SDKs are exactly the code that reaches for undocumented runtime
+behaviour. Confirming whether the same crash happens with that SDK's network
+calls already failing — which they do here, tapHLE has no network stack for
+Tapulous' services — would say whether this is on the app's error path rather
+than its normal one.
