@@ -13,6 +13,7 @@ use crate::frameworks::core_foundation::cf_bundle::{
 use crate::frameworks::foundation::ns_string::{
     from_rust_string, to_rust_string, NSUTF8StringEncoding,
 };
+use crate::fs::GuestPath;
 use crate::mem::{ConstVoidPtr, MutPtr, Ptr};
 use crate::objc::{
     autorelease, id, msg, msg_class, nil, objc_classes, release, retain, Class, ClassExports,
@@ -64,6 +65,21 @@ pub const CLASSES: ClassExports = objc_classes! {
 (env, this, _cmd);
 
 @implementation NSBundle: NSObject
+
++ (id)allocWithZone:(NSZonePtr)_zone {
+    // NSBundle's own allocation, for the alloc/init route below. Without this,
+    // +alloc falls through to NSObject and produces an object with no
+    // NSBundleHostObject behind it, which -initWithPath: would then panic on.
+    let host_object = NSBundleHostObject {
+        bundle: None,
+        bundle_path: nil,
+        bundle_identifier: nil,
+        bundle_url: None,
+        info_dictionary: None,
+    };
+    env.objc.alloc_object(this, Box::new(host_object), &mut env.mem)
+}
+
 
 // Every class a guest app can name lives either in its own executable or in a
 // framework tapHLE implements on the host; in both cases the bundle the app can
@@ -490,6 +506,34 @@ pub const CLASSES: ClassExports = objc_classes! {
     let preferred_localizations = CFBundleCopyPreferredLocalizationsFromArray(env, loc_array);
     autorelease(env, preferred_localizations)
 }
+
+// The alloc/init route to the same thing +bundleWithPath: produces.
+//
+// Returns nil when the path does not exist, which Apple documents and which
+// callers do check — it is how an app asks "is there a bundle here?". The
+// identifier and Info.plist are left unread, as +bundleWithPath: leaves them:
+// they are loaded lazily from the path when something asks.
+- (id)initWithPath:(id)path { // NSString*
+    if path == nil {
+        return nil;
+    }
+    let path_str = ns_string::to_rust_string(env, path).to_string();
+    if !env.fs.exists(GuestPath::new(&path_str)) {
+        log_dbg!("[NSBundle initWithPath:{:?}] no such path, returning nil", path_str);
+        return nil;
+    }
+
+    retain(env, path);
+    let host_object = env.objc.borrow_mut::<NSBundleHostObject>(this);
+    let old_path = std::mem::replace(&mut host_object.bundle_path, path);
+    let old_identifier = std::mem::replace(&mut host_object.bundle_identifier, nil);
+    host_object.bundle_url = None;
+    host_object.info_dictionary = None;
+    release(env, old_path);
+    release(env, old_identifier);
+    this
+}
+
 
 // TODO: constructors, more accessors
 
