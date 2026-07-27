@@ -20,6 +20,10 @@ const NSLocalizedDescriptionKey: &str = "NSLocalizedDescriptionKey";
 const NSLocalizedFailureReasonErrorKey: &str = "NSLocalizedFailureReasonErrorKey";
 
 pub const NSFileReadNoSuchFileError: NSInteger = 260;
+/// The generic "could not write it" code. Cocoa has finer-grained ones (no
+/// permission, volume full, …) but the guest filesystem does not distinguish
+/// them, so reporting a specific cause would be inventing one.
+pub const NSFileWriteUnknownError: NSInteger = 512;
 
 struct ErrorHostObject {
     domain: NSErrorDomain,

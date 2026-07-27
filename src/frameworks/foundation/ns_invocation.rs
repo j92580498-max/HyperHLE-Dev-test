@@ -182,6 +182,20 @@ pub const CLASSES: ClassExports = objc_classes! {
             let arg = env.mem.read(arg_loc);
             env.mem.alloc_and_write(arg).cast()
         }
+        // Every one-word scalar. They are stored identically; the encoding
+        // only matters when the value is read back out, and the caller that
+        // set it is the one that knows. Listed in full rather than grown one
+        // crash at a time.
+        "c" | "C" | "B" | "s" | "S" | "i" | "I" | "l" | "L" => {
+            let arg_loc: MutPtr<u32> = arg_loc.cast();
+            let arg = env.mem.read(arg_loc);
+            env.mem.alloc_and_write(arg).cast()
+        }
+        "q" | "Q" | "d" => {
+            let arg_loc: MutPtr<u64> = arg_loc.cast();
+            let arg = env.mem.read(arg_loc);
+            env.mem.alloc_and_write(arg).cast()
+        }
         "*" => {
             assert!(!arguments_retained); // TODO
             let arg_loc: MutPtr<MutPtr<u8>> = arg_loc.cast();
@@ -224,7 +238,10 @@ pub const CLASSES: ClassExports = objc_classes! {
             "@" => <id as GuestArg>::REG_COUNT,
             ":" => <SEL as GuestArg>::REG_COUNT,
             "f" => <f32 as GuestArg>::REG_COUNT,
-            "c" => <u8 as GuestArg>::REG_COUNT,
+            "c" | "C" | "B" | "s" | "S" | "i" | "I" | "l" | "L" => {
+                <u32 as GuestArg>::REG_COUNT
+            }
+            "q" | "Q" | "d" => <u64 as GuestArg>::REG_COUNT,
             "*" => <MutPtr<u8> as GuestArg>::REG_COUNT,
             // pointer cases
             _ if arg_type.starts_with('^') => <MutVoidPtr as GuestArg>::REG_COUNT,
@@ -279,11 +296,17 @@ pub const CLASSES: ClassExports = objc_classes! {
                 let regs = env.cpu.regs_mut();
                 write_next_arg::<f32>(&mut reg_offset, regs, &mut env.mem, arg_val);
             },
-            "c" => {
-                let arg: ConstPtr<u8> = arg_slot.cast().cast_const();
+            "c" | "C" | "B" | "s" | "S" | "i" | "I" | "l" | "L" => {
+                let arg: ConstPtr<u32> = arg_slot.cast().cast_const();
                 let arg_val = env.mem.read(arg);
                 let regs = env.cpu.regs_mut();
-                write_next_arg::<u8>(&mut reg_offset, regs, &mut env.mem, arg_val);
+                write_next_arg::<u32>(&mut reg_offset, regs, &mut env.mem, arg_val);
+            }
+            "q" | "Q" | "d" => {
+                let arg: ConstPtr<u64> = arg_slot.cast().cast_const();
+                let arg_val = env.mem.read(arg);
+                let regs = env.cpu.regs_mut();
+                write_next_arg::<u64>(&mut reg_offset, regs, &mut env.mem, arg_val);
             }
             "*" => {
                 let arg: ConstPtr<MutPtr<u8>> = arg_slot.cast().cast_const();
