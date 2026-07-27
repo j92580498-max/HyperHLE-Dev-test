@@ -1731,6 +1731,43 @@ pub const CLASSES: ClassExports = objc_classes! {
     msg![env; this init]
 }
 
+// Reading a string from a file. Present on _tapHLE_NSString and needed here
+// too: the two concrete classes are siblings under NSString, so neither
+// inherits the other's implementations. This has now caught four separate
+// methods; when adding anything NSString declares, add it to both.
+- (id)initWithContentsOfFile:(id)path { // NSString*
+    if path == nil {
+        return nil;
+    }
+    let path = to_rust_string(env, path);
+    let Ok(bytes) = env.fs.read(GuestPath::new(&path)) else {
+        return nil;
+    };
+    let encoding = msg_class![env; NSString defaultCStringEncoding];
+    let host_object = StringHostObject::decode(Cow::Owned(bytes), encoding);
+    *env.objc.borrow_mut(this) = host_object;
+    this
+}
+
+- (id)initWithContentsOfFile:(id)path // NSString*
+                    encoding:(NSStringEncoding)encoding
+                       error:(MutPtr<id>)error { // NSError**
+    if path == nil {
+        report_no_error(env, error);
+        release(env, this);
+        return nil;
+    }
+    let path = to_rust_string(env, path);
+    let Ok(bytes) = env.fs.read(GuestPath::new(&path)) else {
+        report_no_error(env, error);
+        release(env, this);
+        return nil;
+    };
+    let host_object = StringHostObject::decode(Cow::Owned(bytes), encoding);
+    *env.objc.borrow_mut(this) = host_object;
+    this
+}
+
 - (id)initWithBytes:(ConstPtr<u8>)bytes
              length:(NSUInteger)len
            encoding:(NSStringEncoding)encoding {

@@ -17,7 +17,8 @@ use crate::frameworks::core_graphics::cg_bitmap_context::{
 use crate::frameworks::core_graphics::cg_color::{CGColorHostObject, CGColorRef};
 use crate::frameworks::core_graphics::cg_color_space::CGColorSpaceCreateDeviceRGB;
 use crate::frameworks::core_graphics::cg_context::{
-    CGContextClearRect, CGContextRef, CGContextRelease, CGContextTranslateCTM,
+    CGContextClearRect, CGContextDrawImage, CGContextFillRect, CGContextRef, CGContextRelease,
+    CGContextSetRGBFillColor, CGContextTranslateCTM,
 };
 use crate::frameworks::core_graphics::cg_image::{
     kCGImageAlphaPremultipliedLast, kCGImageByteOrder32Big,
@@ -112,6 +113,59 @@ pub const CONSTANTS: ConstantExports = &[
         HostConstant::NSString(kCAFilterTrilinear),
     ),
 ];
+
+/// Recursive body of `-[CALayer renderInContext:]`; see the note there for the
+/// deliberate limits.
+fn render_in_context_inner(env: &mut Environment, layer: id, context: CGContextRef) {
+    let (hidden, bounds, background_color, contents, sublayers) = {
+        let host_object = env.objc.borrow::<CALayerHostObject>(layer);
+        (
+            host_object.hidden,
+            host_object.bounds,
+            host_object.background_color,
+            host_object.contents,
+            host_object.sublayers.clone(),
+        )
+    };
+    if hidden {
+        return;
+    }
+
+    // The layer's own coordinate space starts at its bounds origin.
+    let rect = CGRect {
+        origin: CGPoint { x: 0.0, y: 0.0 },
+        size: bounds.size,
+    };
+
+    if let Some(color) = background_color {
+        CGContextSetRGBFillColor(env, context, color.r, color.g, color.b, color.a);
+        CGContextFillRect(env, context, rect);
+    }
+    if contents != nil {
+        CGContextDrawImage(env, context, rect, contents);
+    }
+
+    for sublayer in sublayers {
+        // Translation only. A sublayer's origin in this layer's space is its
+        // position minus its anchor point scaled by its own size.
+        let (position, anchor_point, sub_bounds) = {
+            let host_object = env.objc.borrow::<CALayerHostObject>(sublayer);
+            (
+                host_object.position,
+                host_object.anchor_point,
+                host_object.bounds,
+            )
+        };
+        let dx = position.x - anchor_point.x * sub_bounds.size.width;
+        let dy = position.y - anchor_point.y * sub_bounds.size.height;
+
+        // There is no CGContextSaveGState here, so undo the translation
+        // afterwards instead. That is exact for a pure translation.
+        CGContextTranslateCTM(env, context, dx, dy);
+        render_in_context_inner(env, sublayer, context);
+        CGContextTranslateCTM(env, context, -dx, -dy);
+    }
+}
 
 pub const CLASSES: ClassExports = objc_classes! {
 
@@ -365,6 +419,29 @@ pub const CLASSES: ClassExports = objc_classes! {
 // Stored and reported back, so a guest that sets it and reads it back sees
 // what it wrote, but the compositor does not clip sublayers to the layer's
 // bounds yet. See the clipping TODO in the composition module.
+// Draw this layer and its sublayers into a CoreGraphics context.
+//
+// Deliberately partial, and the boundary is worth stating precisely because
+// the full behaviour is large: this draws each layer's **background colour**
+// and its **contents image**, then recurses into sublayers positioned by
+// translation. It does **not** apply affine transforms, opacity, corner radius,
+// masking, or a delegate's -drawLayer:inContext:, and it does not consult any
+// running animation's presentation values.
+//
+// That covers the common use — snapshotting a tree of image-backed layers into
+// a UIGraphics image context — and nothing else. A layer relying on any of the
+// omitted features renders wrong rather than not at all, so this logs once to
+// say so.
+//
+// The layer tree is drawn with tapHLE's OpenGL compositor everywhere else, so
+// there is no existing path to share; a faithful implementation would either
+// grow this into a real CoreGraphics renderer or render through GL and read
+// back.
+- (())renderInContext:(CGContextRef)context {
+    log_once!("TODO: -[CALayer renderInContext:] draws only background colour and contents; transforms, opacity, masking and drawLayer:inContext: are ignored");
+    render_in_context_inner(env, this, context);
+}
+
 - (bool)masksToBounds {
     env.objc.borrow::<CALayerHostObject>(this).masks_to_bounds
 }
