@@ -23,6 +23,10 @@ pub struct State {
     /// [UIApplication sharedApplication]
     shared_application: Option<id>,
     pub(super) status_bar_hidden: bool,
+    /// Set once the launch-time layout pass has run. Before that the view
+    /// hierarchy is still being built and running guest layout code is unsafe;
+    /// see `ui_view::mark_needs_layout_on_mount`.
+    pub(super) finished_launching: bool,
     pub(super) network_activity_indicator_visible: bool,
 }
 
@@ -448,6 +452,9 @@ pub(super) fn UIApplicationMain(
     for view in views {
         () = msg![env; view layoutSubviews];
     }
+    // From here on, a view added to a window can be laid out as soon as it is
+    // mounted: the hierarchy the app builds during launch is complete.
+    env.framework_state.uikit.ui_application.finished_launching = true;
 
     // Send applicationDidBecomeActive now that the application is ready to
     // become active.
