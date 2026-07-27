@@ -34,60 +34,103 @@ No launch options; window 320x480 portrait; wait ~28 s for the title screen
 
 1. Title -> `(160, 313)` Play -> Play menu.
 2. Play menu -> `(82, 200)` One Player -> difficulty select.
-3. Difficulty -> `(238, 190)` Easy -> track list. **This is the frontier.**
-4. Track list -> `(160, 120)` first track -> fails, see below.
+3. Difficulty -> `(238, 190)` Easy -> track list.
+4. Track list -> `(170, 128)` first track -> the game loads and runs, but
+   draws nothing. **This is the frontier.** This tap is timing-sensitive:
+   allow ~14 s after the difficulty tap or it lands before the list is live,
+   which looks identical to the tap being ignored.
 
-## Track load is fixed; frontier is now UIGraphicsBeginImageContext
+## Track selection works; the game runs but does not draw
 
-The nil-NSString crash is **solved**. The caller was
-`-[NSDictionary initWithContentsOfFile:]`, which passed its path argument
-straight to `to_rust_string()` with no nil check. Both concrete dictionary
-classes had the same gap. A nil path now returns nil, as documented.
+Selecting a track used to abort. It now loads the theme, parses the note chart
+and starts the audio queue, and it stays alive indefinitely. **The gameplay
+screen renders nothing** — the window stays white — so this is still 2 stars,
+not 3.
 
-Finding it took one run, not a rebuild: `TAPHLE_TRACE_SELECTORS=all` and
-reading the **last few traced messages before the panic**. That is the
-technique to reach for when a backtrace only gives a call *shape*; guessing
-which method matches the shape wasted two rebuilds here on
-`stringByAppendingPathComponent:` and `stringByAppendingPathExtension:`, which
-had the same signature, genuinely lacked nil guards, and were not the caller.
-Those guards were kept — they are correct — but they fixed nothing.
+Ten separate blockers were cleared to get from "selecting a track aborts" to
+"the game runs". Each was a general gap, and none is specific to this app:
 
-Selecting a track now proceeds to a new blocker:
+1. `-[NSDictionary initWithContentsOfFile:]` passed a nil path straight to
+   `to_rust_string()`. Both concrete dictionary classes had the gap.
+2. `UIGraphicsBeginImageContext` and friends — assembled from the existing
+   `CGBitmapContext` and the UIGraphics context stack, not new drawing code.
+3. `-[CALayer renderInContext:]`, deliberately partial: background colour and
+   `contents` only, no transforms or masking, and it says so.
+4. `-[NSMutableString initWithContentsOfFile:]` — the sibling-class trap again.
+5. `CC_MD5_Init`/`_Update`/`_Final`.
+6. `object_getInstanceVariable` and its setter.
+7. Declared-property metadata: `class_getProperty` was a stub returning null.
+8. Return values for `NSInvocation` — `-invoke` asserted the return type was
+   void.
+9. `AudioQueueGetCurrentTime`, `AudioQueueEnqueueBufferWithParameters`'s
+   `outActualStartTime`, and `kAudioFilePropertyPacketToFrame`.
+10. `CFRunLoopTimerCreate` asserted `order == 0`; `MPVolumeSettingsAlert*`;
+    `-[NSCalendar components:fromDate:toDate:options:]`.
+
+### The Lua bridge was the interesting one
+
+The app's theme is Lua, and it failed with
 
 ```text
-Call to unimplemented function _UIGraphicsBeginImageContext
+[string "theme.cfg"]:1044: attempt to compare function with number
+Error setting up taps: no columns
 ```
 
-### UIGraphics image contexts are now implemented
+Line 1044 of the app's own `game_defaults.cfg` (loaded under the chunk name
+`theme.cfg`) reads `game.gameController.currentFrameRate < 16`. The bridge
+resolves a property by calling `class_getProperty`, which tapHLE stubbed out to
+return null, so it fell through to handing Lua a *bound method* instead of the
+value — hence comparing a function with a number. With property metadata parsed
+from the binary the chain `currentFrameRate` -> `gameView` -> `view` ->
+`framesPerSecond` resolves and the theme loads clean.
 
-`UIGraphicsBeginImageContext`, `...WithOptions`,
-`UIGraphicsGetImageFromCurrentImageContext` and `UIGraphicsEndImageContext`
-exist on `trunk`. They were assembly rather than new graphics work: a
-`CGBitmapContext` pushed onto the UIGraphics context stack that the rest of
-UIKit already draws through, snapshotted via `CGBitmapContextCreateImage` and
-wrapped with `+[UIImage imageWithCGImage:]`.
+The binary's imports named the mechanism before any tracing did:
+`class_getProperty`, `property_getAttributes` and `object_getInstanceVariable`
+together are a scripting bridge, and all three were missing or stubbed.
 
-## Current frontier: -[CALayer renderInContext:]
+### A regression this session introduced, and the rule behind it
+
+`-[UIViewController view]` was sending `viewDidLoad` whenever the view was
+non-nil. That is wrong, and this app is what proved it: `TTRGameController`
+builds its OpenGL view by hand and calls `-setView:`, and its `viewDidLoad` is
+a **teardown** — it sent `unloadResources`, `removeFromSuperview` and
+`setView:nil`, destroying the game view microseconds after it was created.
+
+The rule is that `viewDidLoad` reports *loading*, so it belongs on exactly two
+paths: after `-loadView` runs, and after a nib supplies the view. A controller
+whose view the app assigned itself never loaded one and must not be told it
+did. Glass Tower HD, which is what motivated sending `viewDidLoad` in the first
+place, still reaches gameplay after the narrowing — that was verified, not
+assumed.
+
+## Current frontier: the EAGL view never binds a drawable
+
+The game view is a standard `EAGLView`: `+[TTRGameView layerClass]` returns
+`CAEAGLLayer`, the layer gets `setDrawableProperties:`, and
+`-[TTRRenderer initWithContext:drawable:]` runs. But
+`-[EAGLContext renderbufferStorage:fromDrawable:]` is **never called** —
+confirmed by tracing that selector across a whole session and getting zero
+hits — while `presentRenderbuffer:` is called 887 times, each one logging
 
 ```text
-Object (class "CALayer") does not respond to selector "renderInContext:"
+Can't present a renderbuffer 0 not bound to a drawable!
 ```
 
-The app is compositing a layer tree into the image context it just opened.
+So the renderer is initialised, believes it has a surface, and presents every
+frame into nothing. The app's own `createFramebuffer` selector is never sent
+either, which places the failure inside `-[TTRRenderer initWithContext:
+drawable:]`, on a path that gives up before creating the framebuffer without
+logging anything.
 
-This is a **software renderer for the layer tree**, and it is the awkward one:
-tapHLE draws layers with OpenGL in `core_animation::composition`, not into a
-`CGContext`, so there is no existing path to reuse. The two options are to
-write a CoreGraphics-side walk of the layer tree (background colour, `contents`
-image, then sublayers under each layer's transform — `CGContextDrawImage` and
-the fill primitives already exist), or to render through GL into a texture and
-read it back.
+Two contexts are created with `initWithAPI:` and there are 1777
+`setCurrentContext:` calls, so a plausible line of enquiry is whether the
+context that owns the drawable binding is the one current at present time —
+tapHLE keys `renderbuffer_drawable_bindings` per `EAGLContextHostObject`, and
+`initWithAPI:` with no sharegroup means two contexts share nothing.
 
-The first is more faithful and self-contained; the second reuses the
-compositor but has to reconcile GL's pixel origin with CoreGraphics'. Scope it
-deliberately: a partial version that draws only `contents` and background
-colour would very likely satisfy this app, and should say so in its own doc
-comment rather than pretending to be a full implementation.
+That is a hypothesis, not a finding. The measured facts are the three above:
+`renderbufferStorage:fromDrawable:` zero calls, `createFramebuffer` zero calls,
+`presentRenderbuffer:` 887 calls with binding 0.
 
 ## Nine general gaps cleared to get here
 
