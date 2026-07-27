@@ -908,6 +908,7 @@ mod tests {
             methods: HashMap::new(),
             guest_method_signatures: HashMap::new(),
             ivars: HashMap::new(),
+            properties: Vec::new(),
             instance_start: 4,
             instance_size: 4,
             is_initialized: InitializationStatus::NotInitialized,

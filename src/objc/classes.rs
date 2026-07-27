@@ -11,8 +11,8 @@
 //! - [[objc explain]: Classes and metaclasses](http://www.sealiesoftware.com/blog/archive/2009/04/14/objc_explain_Classes_and_metaclasses.html), especially [the PDF diagram](http://www.sealiesoftware.com/blog/class%20diagram.pdf)
 
 use super::{
-    id, ivar_list_t, method_list_t, nil, objc_object, AnyHostObject, HostIMP, HostObject, ObjC,
-    IMP, SEL,
+    id, ivar_list_t, method_list_t, nil, objc_object, objc_property_t, property_list_t,
+    AnyHostObject, HostIMP, HostObject, ObjC, IMP, SEL,
 };
 use crate::mach_o::MachO;
 use crate::mem::{guest_size_of, ConstPtr, ConstVoidPtr, GuestUSize, Mem, MutPtr, Ptr, SafeRead};
@@ -41,6 +41,10 @@ pub(super) struct ClassHostObject {
     /// Maps ivar name to a tuple of an offset (as pointer) and an alignment.
     /// (Alignment is used during ivar reconciliation.)
     pub(super) ivars: HashMap<String, (ConstPtr<GuestUSize>, u32)>,
+    /// Declared properties, in declaration order, each paired with a pointer to
+    /// its entry in the binary's property table. Only the class's own
+    /// properties; the superclass chain is walked at lookup time.
+    pub(super) properties: Vec<(String, objc_property_t)>,
     /// Offset into the allocated memory for the object where the ivars of
     /// instances of this class or metaclass (respectively: normal objects or
     /// classes) should live. This is always >= the value in the superclass.
@@ -156,7 +160,7 @@ struct class_rw_t {
     _base_protocols: ConstVoidPtr, // protocol list (TODO)
     ivars: ConstPtr<ivar_list_t>,
     _weak_ivar_layout: u32,
-    _base_properties: ConstVoidPtr, // property list (TODO)
+    base_properties: ConstPtr<property_list_t>,
 }
 unsafe impl SafeRead for class_rw_t {}
 
@@ -173,17 +177,6 @@ struct category_t {
     _property_list: ConstVoidPtr, // property list (TODO)
 }
 unsafe impl SafeRead for category_t {}
-
-#[repr(C, packed)]
-pub struct objc_property {
-    // TODO: define fields?
-    _pad: u8,
-}
-unsafe impl SafeRead for objc_property {}
-
-/// An opaque type that represents an Objective-C declared property.
-#[allow(non_camel_case_types)]
-type objc_property_t = MutPtr<objc_property>;
 
 /// A template for a class defined with [objc_classes].
 ///
@@ -438,6 +431,7 @@ impl ClassHostObject {
             instance_start: size,
             instance_size: size,
             ivars: HashMap::default(),
+            properties: Vec::new(),
             is_initialized: InitializationStatus::NotInitialized,
         }
     }
@@ -452,6 +446,7 @@ impl ClassHostObject {
             name,
             base_methods,
             ivars,
+            base_properties,
             ..
         } = mem.read(data);
 
@@ -466,6 +461,7 @@ impl ClassHostObject {
             instance_start,
             instance_size,
             ivars: HashMap::new(),
+            properties: Vec::new(),
             is_initialized: InitializationStatus::NotInitialized,
         };
 
@@ -475,6 +471,10 @@ impl ClassHostObject {
 
         if !ivars.is_null() {
             host_object.add_ivars_from_bin(ivars, mem);
+        }
+
+        if !base_properties.is_null() {
+            host_object.add_properties_from_bin(base_properties, mem);
         }
 
         host_object
@@ -961,6 +961,7 @@ impl ObjC {
                         instance_start: Default::default(),
                         instance_size: Default::default(),
                         ivars: Default::default(),
+                        properties: Default::default(),
                         is_initialized: InitializationStatus::NotInitialized,
                     },
                 );
@@ -1152,32 +1153,103 @@ pub(super) fn class_getInstanceSize(env: &mut Environment, cls: Class) -> GuestU
     }
 }
 
+/// Look up a declared property by name, searching the superclass chain as the
+/// real runtime does.
+///
+/// Only classes read from the app binary have property metadata: tapHLE's own
+/// host classes are declared with `objc_classes!` and have no property table,
+/// so a lookup on one still finds nothing. That is the honest answer — a host
+/// class's accessors are methods, not declared properties — but it does mean a
+/// caller cannot use this to discover, say, `-[UIView frame]`.
 pub(super) fn class_getProperty(
-    _env: &mut Environment,
+    env: &mut Environment,
     cls: Class,
-    _name: ConstPtr<u8>,
+    name: ConstPtr<u8>,
 ) -> objc_property_t {
-    if cls == nil {
+    if cls == nil || name.is_null() {
         return Ptr::null();
     }
-    // tapHLE does not model Objective-C property metadata yet. A null result
-    // faithfully tells callers that no declared property is available and is
-    // safer than exposing incomplete opaque metadata.
-    Ptr::null()
+    let name = env.mem.cstr_at_utf8(name).unwrap().to_string();
+
+    let mut class = cls;
+    loop {
+        let Some(&ClassHostObject {
+            superclass,
+            ref properties,
+            ..
+        }) = env
+            .objc
+            .get_host_object(class)
+            .and_then(|host_object| host_object.as_any().downcast_ref())
+        else {
+            return Ptr::null();
+        };
+        if let Some(&(_, property)) = properties.iter().find(|(n, _)| *n == name) {
+            return property;
+        }
+        if superclass == nil {
+            return Ptr::null();
+        }
+        class = superclass;
+    }
 }
 
 /// Return a malloc-compatible property array like Apple's runtime does.
 ///
-/// The emulator does not represent declared property metadata yet, so the
-/// only accurate list it can expose is empty. Still setting the count lets
-/// reflection users enumerate safely instead of failing at link time.
+/// Inherited properties are not included, matching the real runtime: a caller
+/// that wants them walks the superclass chain itself. The array is allocated
+/// out of the guest heap, so the caller frees it with `free()` as documented.
 pub(super) fn class_copyPropertyList(
     env: &mut Environment,
-    _cls: Class,
+    cls: Class,
     out_count: MutPtr<u32>,
 ) -> MutPtr<objc_property_t> {
+    let properties: Vec<objc_property_t> = match env
+        .objc
+        .get_host_object(cls)
+        .and_then(|host_object| host_object.as_any().downcast_ref::<ClassHostObject>())
+    {
+        Some(host_object) => host_object.properties.iter().map(|&(_, p)| p).collect(),
+        None => Vec::new(),
+    };
+
     if !out_count.is_null() {
-        env.mem.write(out_count, 0);
+        env.mem
+            .write(out_count, properties.len().try_into().unwrap());
     }
-    Ptr::null()
+    if properties.is_empty() {
+        // Apple's runtime returns NULL, not an empty allocation, for a class
+        // with no properties, and callers check for it before freeing.
+        return Ptr::null();
+    }
+
+    let size = guest_size_of::<objc_property_t>() * properties.len() as GuestUSize;
+    let array: MutPtr<objc_property_t> = env.mem.alloc(size).cast();
+    for (i, property) in properties.into_iter().enumerate() {
+        env.mem.write(array + i as GuestUSize, property);
+    }
+    array
+}
+
+/// The name a property was declared with.
+pub(super) fn property_getName(env: &mut Environment, property: objc_property_t) -> ConstPtr<u8> {
+    if property.is_null() {
+        return Ptr::null();
+    }
+    env.mem.read(property).name
+}
+
+/// The property's attribute string, e.g. `T@"NSString",&,N,V_title`.
+///
+/// This is read straight out of the binary, so it describes the property
+/// exactly as the app's compiler encoded it — including the getter and setter
+/// names a caller needs in order to actually use the property.
+pub(super) fn property_getAttributes(
+    env: &mut Environment,
+    property: objc_property_t,
+) -> ConstPtr<u8> {
+    if property.is_null() {
+        return Ptr::null();
+    }
+    env.mem.read(property).attributes
 }
