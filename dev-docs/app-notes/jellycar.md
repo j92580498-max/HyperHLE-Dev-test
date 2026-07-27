@@ -179,35 +179,43 @@ independently of this app):
 - `gzdirect`, which is how a caller asks which of the two happened, did not
   exist. It surfaced the moment the first fix landed.
 
+### Correction: the XML warning is not the cause
+
+An earlier version of this note said the libxml2 failure was the crash. **That
+was wrong**, and the way it was wrong is worth recording: the warning and the
+fault are both in the log, so it read as cause and effect. Counting lines shows
+the warning at line 85 of 208 — roughly 120 log lines and a good deal of work
+before the app dies. It survives the missing XML.
+
+The zlib fixes above still stand on their own terms; they were real bugs. They
+just were not this app's blocker.
+
 ### Where it actually stops
 
+The last app-level message before the fault is its own:
+
 ```text
-I/O warning : failed to load external entity
-  "/var/mobile/Applications/.../Documents/scenes.xml"
+JellyCar[0] ERROR: DMOAnalytics needs to be initialized with one of its
+designated initializers, e.g. initWithURL:appKey:secret:
 ```
 
-That message is **libxml2's**, printed by the app's own statically linked copy.
-The parse returns NULL, the app does not check, and the null dereference is the
-`MemoryError` — `PC 0x30190`, with `R0 0xe8f0fc73` and `R1 0x41c80baf`, which
-are float bit patterns being used as addresses.
+It then writes `Library/Preferences/com.walaber.jellycar.plist`, reads
+`Library/Caches/analyticsQueue.plist`, and takes a null-page access at 0x0
+(`PC 0x30190`, `R3 0x00000000`).
 
-So the question is not why the parse crashes. It is **why `Documents/scenes.xml`
-is not there**. On a device the app puts it there on first run.
+So the blocker is the bundled **DMOAnalytics** SDK: its shared instance was
+never given a URL, app key and secret, and the app then uses it anyway.
 
-### What has been ruled out
+### This is the third app on this list to die in an analytics SDK
 
-The bundle's copy is read successfully — `read(3, ..., 0xfa0)` returns `0xc55`
-bytes and then 0 at EOF, which is a clean read to end of file. So the source
-exists and is readable.
+Mr. Oops!! dies in OAuthConsumer with a nil `OAConsumer`; SPY mouse HD reached
+its splash and no further until a guest `NSArray` subclass in its analytics
+JSON path was fixed. That is a pattern worth treating as one problem rather
+than three: these SDKs are the code most likely to use runtime reflection,
+class clusters and network-dependent initialisation, which is exactly where
+tapHLE is thinnest.
 
-The log shows **no write of any kind** to `Documents`: every `open()` in the
-trace uses flag `0x0`, which is `O_RDONLY`. So the app is not attempting the
-copy and failing — as far as this evidence goes it is not attempting it at all.
-
-### Next step
-
-Find what the app uses to seed `Documents` and why that code is not running.
-Trace class and selector activity around the first `open()` of
-`Documents/scenes.xml`; the decision to copy is made somewhere just before it.
-Do not start by implementing a file API — nothing here shows one is missing, and
-the reads that do happen all work.
+The next step for this app is to find what should have called
+`-initWithURL:appKey:secret:` and why it did not — trace allocation and
+selector activity for `DMOAnalytics` from startup. Do **not** start from the
+XML; that has now cost one wrong conclusion already.
