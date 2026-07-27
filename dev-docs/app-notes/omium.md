@@ -27,27 +27,48 @@ for Glass Tower 3 (`GL_POINT_SIZE_ARRAY_OES` reported as `GL_INVALID_ENUM`
 instead of asserting, and `glPointSizePointerOES` accepted) is exactly what
 this app needs, and both log on startup here.
 
-## Frontier: menu taps do not select
+## Frontier: touch input is vertically inverted relative to the display
 
-A tap at `(384, 631)` in the 768x1024 client — the centre of the "Dodge"
-text — does not advance. The particle field keeps animating, so the app is
-alive and the tap is simply not selecting.
+Menu taps do not select, and a `TAPHLE_LOG_MODULES=tapHLE::frameworks::uikit::ui_touch`
+run explains why. **The touch is delivered, but at the wrong place.** Two
+measurements, on a 768x1024 client with a 768x1024 `EAGLView`:
 
-Two hypotheses, untested:
+| clicked client y | delivered to app |
+|---|---|
+| 631 | 393 |
+| 200 | 824 |
 
-1. **The coordinate is wrong.** The capture is 768x1024 and the client is
-   768x1024, so they map 1:1, but the hit target may not be centred on the
-   glyphs.
-2. **Touches are not reaching the app's picker**, the same class of problem
-   Glass Tower HD had before the `viewDidLoad` fix.
+Both satisfy `delivered_y = 1024 - client_y`. The y axis is **flipped**.
 
-## Next discriminator
+This is not a coordinate mistake in the click map: hit-testing finds the app's
+`EAGLView` and `touchesBegan:`/`touchesEnded:` are both delivered, so routing
+works. The point itself is mirrored, which is why tapping "Dodge" lands
+somewhere near the title instead.
 
-Distinguish those with one run: launch with
-`TAPHLE_LOG_MODULES=tapHLE::frameworks::uikit::ui_touch` and tap. If the log
-shows the touch found a view and was delivered, the coordinate or the app's own
-hit test is at fault and a sweep of tap positions down the menu will find it;
-if no view is found, it is a routing problem.
+The display is **not** mirrored — the menu renders right way up, with "OMIUM"
+above the entries and "More Games" at the bottom. So input and output disagree
+about the vertical axis. That is an emulator bug, not an app quirk, and it
+would affect any app tapHLE puts in the same orientation.
+
+x could not be measured: both usable taps were at x=384, the exact horizontal
+centre, where a flip is invisible. **Measure x before concluding this is a
+simple vertical flip rather than a 180-degree rotation** — an iPad app whose
+`Info.plist` allows `UIInterfaceOrientationPortraitUpsideDown` would plausibly
+get a 180 rotation applied to input only, and that would look identical at
+x=384.
+
+### Next discriminator
+
+One run, three clicks, all off-centre in x — say `(200, 300)`, `(600, 300)`,
+`(200, 700)` — reading the delivered point from the `ui_touch` log each time.
+If x also mirrors (`768 - x`), it is a 180-degree rotation; if x passes
+through, it is a pure y flip. Then find where tapHLE derives the input
+transform and compare it against the one used for presentation; they are
+evidently not the same for this orientation.
+
+Verifying the fix is cheap: with input and display agreeing, tapping "Dodge" at
+`(384, 631)` should enter the mode, taking this app to 3 stars. Nothing else is
+known to be wrong with it — it needed no fixes at all to render.
 
 Since point sprites are drawn at a uniform size here (tapHLE does not model
 `GL_POINT_SIZE_ARRAY_OES`), the particle title may also be visually wrong in a
