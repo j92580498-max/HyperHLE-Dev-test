@@ -6,7 +6,7 @@
 //! `UINavigationController`.
 
 use crate::frameworks::foundation::ns_string::get_static_str;
-use crate::frameworks::foundation::{ns_array, NSUInteger};
+use crate::frameworks::foundation::{ns_array, NSInteger, NSUInteger};
 use crate::frameworks::uikit::ui_application::UIInterfaceOrientation;
 use crate::objc::{
     autorelease, id, impl_HostObject_with_superclass, msg, msg_super, nil, objc_classes, release,
@@ -15,6 +15,50 @@ use crate::objc::{
 
 // TODO: navigation bar and toolbar
 // TODO: animations
+
+#[derive(Default)]
+struct UINavigationItemHostObject {
+    /// `NSString*`, retained.
+    title: id,
+    /// `UIBarButtonItem*`, retained.
+    left_bar_button_item: id,
+    /// `UIBarButtonItem*`, retained.
+    right_bar_button_item: id,
+    /// `UIBarButtonItem*`, retained.
+    back_bar_button_item: id,
+    /// `UIView*`, retained.
+    title_view: id,
+}
+impl crate::objc::HostObject for UINavigationItemHostObject {}
+
+struct UIBarButtonItemHostObject {
+    /// `NSString*`, retained.
+    title: id,
+    /// `UIImage*`, retained.
+    image: id,
+    /// `UIView*`, retained.
+    custom_view: id,
+    /// Weak, as a control's target is: the target usually owns the item.
+    target: id,
+    action: Option<SEL>,
+    enabled: bool,
+    system_item: NSInteger,
+}
+impl crate::objc::HostObject for UIBarButtonItemHostObject {}
+impl Default for UIBarButtonItemHostObject {
+    fn default() -> Self {
+        UIBarButtonItemHostObject {
+            title: nil,
+            image: nil,
+            custom_view: nil,
+            target: nil,
+            action: None,
+            // UIKit's default.
+            enabled: true,
+            system_item: 0,
+        }
+    }
+}
 
 #[derive(Default)]
 struct UINavigationControllerHostObject {
@@ -344,8 +388,229 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 @implementation UINavigationItem: NSObject
 
++ (id)allocWithZone:(NSZonePtr)_zone {
+    let host_object = Box::<UINavigationItemHostObject>::default();
+    env.objc.alloc_object(this, host_object, &mut env.mem)
+}
+
 - (id)initWithCoder:(id)_coder {
     this
+}
+
+- (id)initWithTitle:(id)title { // NSString*
+    let title: id = msg![env; title copy];
+    env.objc.borrow_mut::<UINavigationItemHostObject>(this).title = title;
+    this
+}
+
+- (id)title {
+    env.objc.borrow::<UINavigationItemHostObject>(this).title
+}
+- (())setTitle:(id)title { // NSString*
+    let title: id = msg![env; title copy];
+    let host_object = env.objc.borrow_mut::<UINavigationItemHostObject>(this);
+    let old = std::mem::replace(&mut host_object.title, title);
+    release(env, old);
+}
+
+// The bar items are stored and handed back, but nothing draws a navigation
+// bar, so they are never shown or tapped. An app whose only route onward is a
+// bar button is therefore stuck — and the missing piece is the bar, not these
+// classes. Worth knowing before blaming input handling.
+- (id)leftBarButtonItem {
+    env.objc.borrow::<UINavigationItemHostObject>(this).left_bar_button_item
+}
+- (())setLeftBarButtonItem:(id)item { // UIBarButtonItem*
+    retain(env, item);
+    let host_object = env.objc.borrow_mut::<UINavigationItemHostObject>(this);
+    let old = std::mem::replace(&mut host_object.left_bar_button_item, item);
+    release(env, old);
+}
+- (())setLeftBarButtonItem:(id)item animated:(bool)_animated {
+    () = msg![env; this setLeftBarButtonItem:item];
+}
+
+- (id)rightBarButtonItem {
+    env.objc.borrow::<UINavigationItemHostObject>(this).right_bar_button_item
+}
+- (())setRightBarButtonItem:(id)item { // UIBarButtonItem*
+    retain(env, item);
+    let host_object = env.objc.borrow_mut::<UINavigationItemHostObject>(this);
+    let old = std::mem::replace(&mut host_object.right_bar_button_item, item);
+    release(env, old);
+}
+- (())setRightBarButtonItem:(id)item animated:(bool)_animated {
+    () = msg![env; this setRightBarButtonItem:item];
+}
+
+- (id)backBarButtonItem {
+    env.objc.borrow::<UINavigationItemHostObject>(this).back_bar_button_item
+}
+- (())setBackBarButtonItem:(id)item { // UIBarButtonItem*
+    retain(env, item);
+    let host_object = env.objc.borrow_mut::<UINavigationItemHostObject>(this);
+    let old = std::mem::replace(&mut host_object.back_bar_button_item, item);
+    release(env, old);
+}
+
+- (id)titleView {
+    env.objc.borrow::<UINavigationItemHostObject>(this).title_view
+}
+- (())setTitleView:(id)view { // UIView*
+    retain(env, view);
+    let host_object = env.objc.borrow_mut::<UINavigationItemHostObject>(this);
+    let old = std::mem::replace(&mut host_object.title_view, view);
+    release(env, old);
+}
+
+- (())setHidesBackButton:(bool)_hides {
+}
+- (())setHidesBackButton:(bool)_hides animated:(bool)_animated {
+}
+
+- (())dealloc {
+    let &UINavigationItemHostObject {
+        title,
+        left_bar_button_item,
+        right_bar_button_item,
+        back_bar_button_item,
+        title_view,
+    } = env.objc.borrow(this);
+    release(env, title);
+    release(env, left_bar_button_item);
+    release(env, right_bar_button_item);
+    release(env, back_bar_button_item);
+    release(env, title_view);
+    env.objc.dealloc_object(this, &mut env.mem)
+}
+
+@end
+
+// The abstract base UIBarButtonItem inherits from. It is here so that an app
+// subclassing it, or reaching -setTitle:/-setEnabled: through it, resolves.
+@implementation UIBarItem: NSObject
+
++ (id)allocWithZone:(NSZonePtr)_zone {
+    let host_object = Box::<UIBarButtonItemHostObject>::default();
+    env.objc.alloc_object(this, host_object, &mut env.mem)
+}
+
+- (id)title {
+    env.objc.borrow::<UIBarButtonItemHostObject>(this).title
+}
+- (())setTitle:(id)title { // NSString*
+    let title: id = msg![env; title copy];
+    let host_object = env.objc.borrow_mut::<UIBarButtonItemHostObject>(this);
+    let old = std::mem::replace(&mut host_object.title, title);
+    release(env, old);
+}
+
+- (id)image {
+    env.objc.borrow::<UIBarButtonItemHostObject>(this).image
+}
+- (())setImage:(id)image { // UIImage*
+    retain(env, image);
+    let host_object = env.objc.borrow_mut::<UIBarButtonItemHostObject>(this);
+    let old = std::mem::replace(&mut host_object.image, image);
+    release(env, old);
+}
+
+- (bool)isEnabled {
+    env.objc.borrow::<UIBarButtonItemHostObject>(this).enabled
+}
+- (())setEnabled:(bool)enabled {
+    env.objc.borrow_mut::<UIBarButtonItemHostObject>(this).enabled = enabled;
+}
+
+- (())dealloc {
+    let &UIBarButtonItemHostObject { title, image, .. } = env.objc.borrow(this);
+    release(env, title);
+    release(env, image);
+    env.objc.dealloc_object(this, &mut env.mem)
+}
+
+@end
+
+// A button in a navigation bar or toolbar. Neither bar is drawn, so an item is
+// stored, answers its accessors, and is never displayed or tapped. Its target
+// and action are kept so an app that reads them back or fires them itself
+// behaves; tapHLE will never fire them on its own.
+@implementation UIBarButtonItem: UIBarItem
+
+- (id)initWithTitle:(id)title // NSString*
+              style:(NSInteger)_style
+             target:(id)target
+             action:(SEL)action {
+    let title: id = msg![env; title copy];
+    let host_object = env.objc.borrow_mut::<UIBarButtonItemHostObject>(this);
+    host_object.title = title;
+    host_object.target = target;
+    host_object.action = Some(action);
+    this
+}
+
+- (id)initWithImage:(id)image // UIImage*
+              style:(NSInteger)_style
+             target:(id)target
+             action:(SEL)action {
+    retain(env, image);
+    let host_object = env.objc.borrow_mut::<UIBarButtonItemHostObject>(this);
+    host_object.image = image;
+    host_object.target = target;
+    host_object.action = Some(action);
+    this
+}
+
+// The system item picks a standard title or glyph (Done, Cancel, Add, ...).
+// None is drawn, so it is only recorded.
+- (id)initWithBarButtonSystemItem:(NSInteger)system_item
+                           target:(id)target
+                           action:(SEL)action {
+    let host_object = env.objc.borrow_mut::<UIBarButtonItemHostObject>(this);
+    host_object.system_item = system_item;
+    host_object.target = target;
+    host_object.action = Some(action);
+    this
+}
+
+- (id)initWithCustomView:(id)view { // UIView*
+    retain(env, view);
+    env.objc.borrow_mut::<UIBarButtonItemHostObject>(this).custom_view = view;
+    this
+}
+
+- (id)customView {
+    env.objc.borrow::<UIBarButtonItemHostObject>(this).custom_view
+}
+- (())setCustomView:(id)view { // UIView*
+    retain(env, view);
+    let host_object = env.objc.borrow_mut::<UIBarButtonItemHostObject>(this);
+    let old = std::mem::replace(&mut host_object.custom_view, view);
+    release(env, old);
+}
+
+- (id)target {
+    env.objc.borrow::<UIBarButtonItemHostObject>(this).target
+}
+// Weak, as a control's target is: the target usually owns the item.
+- (())setTarget:(id)target {
+    env.objc.borrow_mut::<UIBarButtonItemHostObject>(this).target = target;
+}
+- (())setAction:(SEL)action {
+    env.objc.borrow_mut::<UIBarButtonItemHostObject>(this).action = Some(action);
+}
+
+- (())setStyle:(NSInteger)_style {
+}
+- (())setWidth:(f32)_width {
+}
+- (())setTintColor:(id)_color { // UIColor*
+}
+
+- (())dealloc {
+    let &UIBarButtonItemHostObject { custom_view, .. } = env.objc.borrow(this);
+    release(env, custom_view);
+    msg_super![env; this dealloc]
 }
 
 @end

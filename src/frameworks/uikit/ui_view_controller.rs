@@ -47,6 +47,10 @@ struct UIViewControllerHostObject {
     /// The full-screen view controller presented by this controller. Retained.
     /// `UIViewController*`
     modal_view_controller: id,
+    /// `UINavigationItem*`, retained. Created on first use, as UIKit's is: a
+    /// controller that is never pushed onto a navigation stack should not pay
+    /// for one.
+    navigation_item: id,
     /// Whether `viewDidLoad` has already been sent for the current view.
     /// UIKit sends it exactly once each time the view is loaded, whichever
     /// route loaded it; see [send_view_did_load_if_needed].
@@ -124,8 +128,10 @@ pub const CLASSES: ClassExports = objc_classes! {
         bundle,
         parent_view_controller: _,
         modal_view_controller,
+        navigation_item,
         view_did_load_sent: _,
     } = env.objc.borrow(this);
+    release(env, navigation_item);
 
     if modal_view_controller != nil {
         let modal_view = env
@@ -229,6 +235,17 @@ pub const CLASSES: ClassExports = objc_classes! {
         send_view_did_load_if_needed(env, this);
     }
     env.objc.borrow_mut::<UIViewControllerHostObject>(this).view
+}
+
+- (id)navigationItem {
+    let existing = env.objc.borrow::<UIViewControllerHostObject>(this).navigation_item;
+    if existing != nil {
+        return existing;
+    }
+    let item: id = msg_class![env; UINavigationItem alloc];
+    let item: id = msg![env; item init];
+    env.objc.borrow_mut::<UIViewControllerHostObject>(this).navigation_item = item;
+    item
 }
 
 - (id)parentViewController {
