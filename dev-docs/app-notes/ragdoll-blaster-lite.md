@@ -36,18 +36,42 @@
 test for that work, as planned — it hits the class during startup, which made
 the edit-run cycle minutes shorter than Tap Tap Revenge 3's four-tap path.
 
-## Current frontier: UIBarButtonItem
+## The bar family is done; the frontier is now setjmp
+
+`UIBarItem`, `UIBarButtonItem` and a real `UINavigationItem` are on `trunk`,
+along with `-[UIViewController navigationItem]`. Checking the binary first paid
+off: it references the whole navigation family, and tapHLE already had
+`UINavigationBar`, `UINavigationController` and a stub `UINavigationItem`, so
+only the item classes were actually missing.
+
+**Nothing draws a navigation bar or toolbar.** The items are stored and answer
+their accessors, and their target and action are kept so an app that reads them
+back or fires them itself behaves — but tapHLE will never fire one. An app whose
+only route onward is a bar button is stuck, and the missing piece is the *bar*,
+not these classes.
+
+## Current frontier: `_setjmp`
 
 ```text
-Class "UIBarButtonItem" is unimplemented. Call to class method "alloc".
+Call to unimplemented function __setjmp
 ```
 
-The app builds a navigation bar or toolbar item. `UIBarButtonItem` is a small
-class — a target, an action, and a title or image — so this is a much smaller
-job than the table view was. Check what else of the bar family the app needs
-before starting: if it also wants `UINavigationBar`, `UINavigationItem` or
-`UIToolbar`, they are worth doing together rather than one abort at a time,
-which is the mistake the scalar type encodings taught.
+`setjmp`/`longjmp` are how C code unwinds out of an error deep in a library —
+libpng and libjpeg both use them for exactly that, which is the likely caller
+here.
+
+This is implementable in an emulator, and more cleanly than on real hardware:
+`setjmp` saves the callee-saved guest registers, `sp` and `lr` into the
+`jmp_buf` and returns 0; `longjmp` restores them, sets the return value, and
+resumes at the saved `lr`. The awkward part is the non-local jump itself —
+making a host function resume the guest somewhere other than where it was
+called from — so read how `GuestFunction` returns control before starting.
+
+It is also worth checking whether the caller is a decoder that only *needs*
+setjmp on the error path. If so, a `setjmp` that always returns 0 and a
+`longjmp` that aborts loudly would get this app running while being honest that
+the error path is unimplemented — but that is a decision to take with the
+caller identified, not before.
 
 Still no frame, so nothing about this app's rendering, input or audio has been
 assessed and no report is filed.
