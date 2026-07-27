@@ -14,6 +14,27 @@ use digest::Digest;
 use md5::Md5;
 use sha1::Sha1;
 use sha2::{Sha224, Sha256, Sha384, Sha512};
+use std::collections::HashMap;
+
+/// Host-side state for the streaming digest APIs.
+///
+/// `CC_MD5_CTX` is a real struct the guest declares itself, usually on the
+/// stack, and the real CommonCrypto keeps the running state inside it. tapHLE
+/// cannot do that — the [Md5] hasher's layout is not the same — so the guest's
+/// context is used only as a key and the hasher lives here. That is sound
+/// because a context is always initialised before use and always consumed by
+/// `_Final`; what it does not survive is the guest copying a context by value
+/// to fork a digest, which nothing does in practice and which would be
+/// detected as a missing key rather than silently producing a wrong hash.
+#[derive(Default)]
+pub struct State {
+    md5: HashMap<MutVoidPtr, Md5>,
+}
+impl State {
+    fn get(env: &mut Environment) -> &mut Self {
+        &mut env.libc_state.crypto
+    }
+}
 
 type CCCryptorStatus = i32;
 
@@ -41,6 +62,33 @@ fn CC_MD5(env: &mut Environment, data: ConstVoidPtr, len: u32, md: MutPtr<u8>) -
     let digest = hasher.finalize();
     env.mem.bytes_at_mut(md, 16).copy_from_slice(&digest[..]);
     md
+}
+
+/// The streaming form of the above. All three return 1 for success, which is
+/// what CommonCrypto does; they have no failure case here.
+fn CC_MD5_Init(env: &mut Environment, ctx: MutVoidPtr) -> i32 {
+    State::get(env).md5.insert(ctx, Md5::new());
+    1
+}
+
+fn CC_MD5_Update(env: &mut Environment, ctx: MutVoidPtr, data: ConstVoidPtr, len: u32) -> i32 {
+    let bytes = env.mem.bytes_at(data.cast(), len).to_vec();
+    let Some(hasher) = State::get(env).md5.get_mut(&ctx) else {
+        log!("CC_MD5_Update() on a context that was never initialised, ignoring");
+        return 0;
+    };
+    hasher.update(&bytes);
+    1
+}
+
+fn CC_MD5_Final(env: &mut Environment, md: MutPtr<u8>, ctx: MutVoidPtr) -> i32 {
+    let Some(hasher) = State::get(env).md5.remove(&ctx) else {
+        log!("CC_MD5_Final() on a context that was never initialised, ignoring");
+        return 0;
+    };
+    let digest = hasher.finalize();
+    env.mem.bytes_at_mut(md, 16).copy_from_slice(&digest[..]);
+    1
 }
 
 fn CC_SHA1(env: &mut Environment, data: ConstVoidPtr, len: u32, md: MutPtr<u8>) -> MutPtr<u8> {
@@ -300,6 +348,9 @@ fn xor_block(block: &mut [u8; AES_BLOCK_SIZE], chain: &[u8; AES_BLOCK_SIZE]) {
 
 pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(CC_MD5(_, _, _)),
+    export_c_func!(CC_MD5_Init(_)),
+    export_c_func!(CC_MD5_Update(_, _, _)),
+    export_c_func!(CC_MD5_Final(_, _)),
     export_c_func!(CC_SHA1(_, _, _)),
     export_c_func!(CC_SHA224(_, _, _)),
     export_c_func!(CC_SHA256(_, _, _)),

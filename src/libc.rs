@@ -128,6 +128,7 @@ pub const DYLIB: crate::dyld::HostDylib = crate::dyld::HostDylib {
 /// Container for state of various child modules
 #[derive(Default)]
 pub struct State {
+    crypto: crypto::State,
     dirent: dirent::State,
     pub dispatch: dispatch::State,
     keymgr: keymgr::State,
