@@ -122,12 +122,24 @@ build its hierarchy: `[UIWindow addSubview:]` is sent twice, `[EAGLView
 addSubview:]` once, and both the window and the `CAEAGLLayer` get `setHidden:`.
 So window-contains-view is established, and the window is not empty.
 
-Two things came out of that run, and they are the actual next questions:
+Two things came out of that run. **The first turned out not to be a second bug
+at all**, which is worth spelling out because it changes the shape of the work:
 
-**1. The app sends `addSubview:` to nil.** The trace contains
-`[nil ((null)) addSubview:]` before the successful ones. Some view reference the
-app expects is nil, and finding which is likely to explain more than the
-window's lifetime does.
+**1. The nil `addSubview:` receiver *is* the dead window.** Tracing everything
+and reading the messages either side of it gives the whole story in eight lines:
+
+```text
+[UIWindow dealloc]                                  <- nib objects unretained
+[OdysseyAppDelegate applicationDidFinishLaunching:]
+[UIApplication keyWindow]                           <- returns nil, it just died
+[OdysseyAppController view]
+[nil ((null)) addSubview:]                          <- keyWindow's nil result
+```
+
+The app asks `UIApplication` for the key window and adds its view to whatever
+comes back. The window has already been deallocated, so it adds to nil. This is
+not an independent missing reference — it is the same lifetime bug one step
+later, and fixing the retain fixes both.
 
 **2. The grey is a compositing conflict, not an empty window.** tapHLE presents
 a fullscreen `CAEAGLLayer` directly (`find_fullscreen_eagl_layer`) *and*
@@ -137,10 +149,19 @@ the GL content. Retaining the nib objects is right on its own terms — UIKit's
 ownership contract says so — but it cannot land until that conflict is resolved,
 or it turns a rendering app into a grey one.
 
-So the order of work is: settle the nil `addSubview:` receiver first, then the
-compositing overlap, and only then retain the top-level objects. Doing the
-retain alone is what produces the grey screen, and it is why that change is
-deliberately absent from `trunk` despite being correct in isolation.
+So there is **one** blocker, not two: retain the nib's top-level objects, and
+resolve the compositing overlap that retaining exposes. The retain is correct on
+its own terms and is deliberately absent from `trunk` only because, alone, it
+turns a rendering app into a grey one.
+
+The compositing question is the whole remaining job, and it is not yet measured.
+`find_fullscreen_eagl_layer` requires a **non-hidden top window**, and tapHLE
+forces every window hidden in both `UIWindow` initialisers while this app never
+calls `makeKeyAndVisible` — it relies on the nib's visibility flag. So the next
+measurement is simply: with the retain applied, is the window hidden, and what
+does `find_fullscreen_eagl_layer` return? Do not theorise past that point
+without running it; three hypotheses about this app have already been wrong, and
+each was settled by one cheap trace.
 
 This is still expected to be general: any app whose window comes from its main
 nib rather than from code has the same lifetime problem.
