@@ -270,9 +270,19 @@ impl Environment {
         // should be handled before creating the window because handling of
         // window rotation after-the-fact is somewhat glitchy.
         // This also ensures the splash screen is correctly oriented.
-        if options.initial_orientation == window::DeviceOrientation::Portrait {
-            if let Some(&non_portrait_orientation) = bundle
-                .supported_interface_orientations()
+        // Only override the default when the app cannot actually do portrait.
+        // Checking "is there a non-portrait entry?" is not the same question:
+        // an app that supports portrait *and* something else — very commonly
+        // portrait plus upside-down — would be rotated away from the
+        // orientation it already handles. That rotates input as well as
+        // display, so every touch arrives mirrored and nothing can be tapped.
+        let supported = bundle.supported_interface_orientations();
+        let supports_portrait = supported
+            .iter()
+            .any(|&o| o == "UIInterfaceOrientationPortrait" || o == "UIDeviceOrientationPortrait");
+        if options.initial_orientation == window::DeviceOrientation::Portrait && !supports_portrait
+        {
+            if let Some(&non_portrait_orientation) = supported
                 .iter()
                 .find(|&&o| o != "UIInterfaceOrientationPortrait")
             {
