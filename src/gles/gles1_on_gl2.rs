@@ -1584,6 +1584,20 @@ impl GLES for GLES1OnGL2<'_> {
             param,
         )
     }
+    unsafe fn GetTexParameteriv(&mut self, target: GLenum, pname: GLenum, params: *mut GLint) {
+        // TEXTURE_CROP_RECT_OES is the one GLES1 texture parameter desktop GL
+        // has no equivalent for; it is silently dropped on the way in by
+        // TexParameteriv below, so there is nothing stored to report back.
+        // Reading it would return whatever GL leaves in the buffer, so it is
+        // answered with zeroes instead of a lie shaped like a rectangle.
+        if pname == gles11::TEXTURE_CROP_RECT_OES {
+            for i in 0..4 {
+                *params.add(i) = 0;
+            }
+            return;
+        }
+        gl21::GetTexParameteriv(target, pname, params);
+    }
     unsafe fn TexParameteriv(&mut self, target: GLenum, pname: GLenum, params: *const GLint) {
         assert!(target == gl21::TEXTURE_2D);
         TEX_PARAMS.assert_known_param(pname);

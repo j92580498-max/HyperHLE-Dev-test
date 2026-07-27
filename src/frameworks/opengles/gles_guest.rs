@@ -1005,6 +1005,24 @@ fn glTexParameterx(env: &mut Environment, target: GLenum, pname: GLenum, param: 
         gles.TexParameterx(target, pname, param)
     })
 }
+fn glGetTexParameteriv(
+    env: &mut Environment,
+    target: GLenum,
+    pname: GLenum,
+    params: MutPtr<GLint>,
+) {
+    with_ctx_and_mem(env, |gles, mem| unsafe {
+        // TEXTURE_CROP_RECT_OES is the only one of these that is four values
+        // wide; everything else is one.
+        let count = if pname == gles11::TEXTURE_CROP_RECT_OES {
+            4
+        } else {
+            1
+        };
+        let params = mem.ptr_at_mut(params, count);
+        gles.GetTexParameteriv(target, pname, params)
+    })
+}
 fn glTexParameteriv(env: &mut Environment, target: GLenum, pname: GLenum, params: ConstPtr<GLint>) {
     // See above.
     if pname == gles11::TEXTURE_CROP_RECT_OES {
@@ -2235,6 +2253,7 @@ pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(glTexParameterf(_, _, _)),
     export_c_func!(glTexParameterx(_, _, _)),
     export_c_func!(glTexParameteriv(_, _, _)),
+    export_c_func!(glGetTexParameteriv(_, _, _)),
     export_c_func!(glTexParameterfv(_, _, _)),
     export_c_func!(glTexParameterxv(_, _, _)),
     export_c_func!(glTexImage2D(_, _, _, _, _, _, _, _, _)),

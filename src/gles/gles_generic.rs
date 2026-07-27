@@ -469,6 +469,9 @@ pub trait GLES {
     unsafe fn TexParameteriv(&mut self, target: GLenum, pname: GLenum, params: *const GLint) {
         unimplemented!("TexParameteriv not implemented by this backend")
     }
+    unsafe fn GetTexParameteriv(&mut self, target: GLenum, pname: GLenum, params: *mut GLint) {
+        unimplemented!("GetTexParameteriv not implemented by this backend")
+    }
     unsafe fn TexParameterfv(&mut self, target: GLenum, pname: GLenum, params: *const GLfloat) {
         unimplemented!("TexParameterfv not implemented by this backend")
     }
