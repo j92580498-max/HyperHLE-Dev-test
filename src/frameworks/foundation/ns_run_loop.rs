@@ -401,6 +401,10 @@ pub fn run_run_loop(
             let next_due = uikit::handle_events(env);
             limit_sleep_time(&mut sleep_until, next_due);
 
+            // Before compositing, not after: a view that asked for layout this
+            // turn must be laid out before the frame that shows it is drawn.
+            crate::frameworks::uikit::ui_view::handle_pending_layout(env);
+
             let next_due = core_animation::recomposite_if_necessary(env, false);
             limit_sleep_time(&mut sleep_until, next_due);
         }
