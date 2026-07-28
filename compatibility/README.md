@@ -57,7 +57,43 @@ A coding agent submits through tapHLEdb's token-authenticated endpoint:
 POST https://taphle.ephun.net/compatibility/api/report
 ```
 
-It is documented in `API.md` in the tapHLEdb repository. The agent token lives
+It is documented in `API.md` in the tapHLEdb repository. **Do not discover the
+schema by probing the live endpoint** — a probe that succeeds is a published
+report, and one session's guesswork left six junk reports for the maintainer to
+reject. The accepted shape, confirmed against the deployment:
+
+```json
+{
+  "app_id": 26,
+  "version": {"name": "2.5.1", "bundle_version": "2.5.1", "minimum_os_version": "3.0"},
+  "report": {
+    "rating": 3,
+    "supersedes": 53,
+    "extra": {
+      "source_type": "agent",
+      "source_name": "Claude Code (Opus 5)",
+      "taphle_version": "09dbc970",
+      "cpu": "...",
+      "gpu": "...",
+      "frontier": "..."
+    }
+  }
+}
+```
+
+`app_id` and `version` may instead be an `app` object and a `version` object to
+create new ones; look the app up first with `GET /api/apps` so an existing entry
+is reused rather than duplicated. `source_type`, `source_name` and
+`taphle_version` are the required `extra` fields. `cpu`, `gpu`, `frontier` and
+`supersedes` are optional. **`os` and `booted` are not accepted keys** and cause
+a flat `report was rejected (check rating, extra fields and screenshot)`, which
+names no field — so does any other unknown key. `frontier` tolerates at least
+500 characters.
+
+Send it with `curl`; Python's `urllib` default user agent is refused by the
+front-end proxy with HTTP 403 code 1010.
+
+The agent token lives
 at `~/.taphledb-token` and nowhere else: read it inline as
 `$(cat ~/.taphledb-token)` at the moment of use, never echo it, and never copy
 it into this repository, a commit message, an app note, or any command whose
