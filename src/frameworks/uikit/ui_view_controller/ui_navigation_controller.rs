@@ -447,6 +447,22 @@ pub const CLASSES: ClassExports = objc_classes! {
 // placeholder initializer because NSObject does not implement initWithCoder:.
 
 @implementation UINavigationBar: UIView
+
+// Nothing draws a navigation bar, so no delegate callback is ever sent. The
+// property still has to exist: nibs set it while wiring the interface up, long
+// before anything would push an item onto the bar.
+- (())setDelegate:(id)_delegate {
+}
+- (id)delegate {
+    nil
+}
+- (())setTintColor:(id)_color {
+}
+- (())setBarStyle:(NSInteger)_style {
+}
+- (())setTranslucent:(bool)_translucent {
+}
+
 @end
 
 // UIToolbar was the third most common missing class in a 1501-app survey, in 28
