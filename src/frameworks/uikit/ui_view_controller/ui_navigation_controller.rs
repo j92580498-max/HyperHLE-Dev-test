@@ -31,6 +31,18 @@ struct UINavigationItemHostObject {
 }
 impl crate::objc::HostObject for UINavigationItemHostObject {}
 
+#[derive(Default)]
+struct UIToolbarHostObject {
+    superclass: crate::frameworks::uikit::ui_view::UIViewHostObject,
+    /// `NSArray*` of `UIBarButtonItem*`, retained.
+    items: id,
+    /// `UIBarStyle`.
+    bar_style: NSInteger,
+    /// `UIColor*`, retained.
+    tint_color: id,
+}
+impl_HostObject_with_superclass!(UIToolbarHostObject);
+
 struct UIBarButtonItemHostObject {
     /// `NSString*`, retained.
     title: id,
@@ -437,6 +449,67 @@ pub const CLASSES: ClassExports = objc_classes! {
 @implementation UINavigationBar: UIView
 @end
 
+// UIToolbar was the third most common missing class in a 1501-app survey, in 28
+// of them — and in most it is merely constructed and configured during setup,
+// long before anything would look at it.
+//
+// So it is a real UIView that holds its items rather than a drawn toolbar. The
+// items round-trip, which is what layout and configuration code reads back;
+// nothing paints them yet, exactly as UINavigationBar above does not paint a
+// navigation bar. A toolbar that is present but blank is a far smaller problem
+// than an app that cannot start.
+@implementation UIToolbar: UIView
+
++ (id)allocWithZone:(NSZonePtr)_zone {
+    let host_object = Box::<UIToolbarHostObject>::default();
+    env.objc.alloc_object(this, host_object, &mut env.mem)
+}
+
+- (id)items {
+    env.objc.borrow::<UIToolbarHostObject>(this).items
+}
+- (())setItems:(id)items { // NSArray* of UIBarButtonItem*
+    retain(env, items);
+    let host_object = env.objc.borrow_mut::<UIToolbarHostObject>(this);
+    let old = std::mem::replace(&mut host_object.items, items);
+    release(env, old);
+}
+- (())setItems:(id)items animated:(bool)_animated {
+    () = msg![env; this setItems:items];
+}
+
+- (NSInteger)barStyle {
+    env.objc.borrow::<UIToolbarHostObject>(this).bar_style
+}
+- (())setBarStyle:(NSInteger)style {
+    env.objc.borrow_mut::<UIToolbarHostObject>(this).bar_style = style;
+}
+
+- (id)tintColor {
+    env.objc.borrow::<UIToolbarHostObject>(this).tint_color
+}
+- (())setTintColor:(id)color { // UIColor*
+    retain(env, color);
+    let host_object = env.objc.borrow_mut::<UIToolbarHostObject>(this);
+    let old = std::mem::replace(&mut host_object.tint_color, color);
+    release(env, old);
+}
+
+- (())setTranslucent:(bool)_translucent {
+}
+- (bool)isTranslucent {
+    false
+}
+
+- (())dealloc {
+    let &UIToolbarHostObject { items, tint_color, .. } = env.objc.borrow(this);
+    release(env, items);
+    release(env, tint_color);
+    msg_super![env; this dealloc]
+}
+
+@end
+
 @implementation UINavigationItem: NSObject
 
 + (id)allocWithZone:(NSZonePtr)_zone {
@@ -587,6 +660,13 @@ pub const CLASSES: ClassExports = objc_classes! {
 // and action are kept so an app that reads them back or fires them itself
 // behaves; tapHLE will never fire them on its own.
 @implementation UIBarButtonItem: UIBarItem
+
+// Bar items come out of nibs already configured, and nothing here draws them,
+// so decoding is accepting the object. The title, target and action are read
+// back from the archive by whatever asks for them, via the accessors below.
+- (id)initWithCoder:(id)_coder {
+    this
+}
 
 - (id)initWithTitle:(id)title // NSString*
               style:(NSInteger)_style
