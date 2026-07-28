@@ -117,6 +117,17 @@ pub const CLASSES: ClassExports = objc_classes! {
     autorelease(env, new)
 }
 
+// A colour that tiles an image. tapHLE's colours are a single RGBA quadruple,
+// with no pattern to carry, so this returns a clear colour rather than a wrong
+// solid one: the pattern simply does not draw, leaving whatever is behind it
+// visible. Substituting an opaque colour would cover content the app expected
+// to see through the texture, which is a worse and much harder to diagnose
+// result than a missing background.
++ (id)colorWithPatternImage:(id)image { // UIImage*
+    log!("TODO: [UIColor colorWithPatternImage:{:?}] - pattern colours are not supported; returning a clear colour", image);
+    msg![env; this clearColor]
+}
+
 + (id)clearColor    { get_standard_color(env, _cmd, 0.0, 0.0, 0.0, 0.0) }
 + (id)blackColor    { get_standard_color(env, _cmd, 0.0, 0.0, 0.0, 1.0) }
 + (id)whiteColor    { get_standard_color(env, _cmd, 1.0, 1.0, 1.0, 1.0) }
