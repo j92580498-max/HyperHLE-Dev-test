@@ -683,6 +683,15 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (())addSubview:(id)view {
+    if crate::log::debug_enabled_for(module_path!()) {
+        let name = |o: id| -> String {
+            if o == nil { "nil".to_string() } else {
+                let c = ObjC::read_isa(o, &env.mem);
+                env.objc.get_class_name(c).to_string()
+            }
+        };
+        log_dbg!("MOUNT [{} {:?} addSubview:{} {:?}]", name(this), this, name(view), view);
+    }
     log_dbg!("[(UIView*){:?} addSubview:{:?}] => ()", this, view);
 
     if view == nil {

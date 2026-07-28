@@ -367,6 +367,28 @@ pub const CLASSES: ClassExports = objc_classes! {
         source
     } = env.objc.borrow(this);
 
+    // An outlet that silently fails to connect leaves the app holding a
+    // default-constructed object instead of the one the nib designed, which is
+    // very hard to see from the outside.
+    if crate::log::debug_enabled_for(module_path!()) {
+        let name = |env: &mut crate::Environment, o: id| -> String {
+            if o == nil {
+                "nil".to_string()
+            } else {
+                let c = crate::objc::ObjC::read_isa(o, &env.mem);
+                env.objc.get_class_name(c).to_string()
+            }
+        };
+        let src = name(env, source);
+        let dst = name(env, destination);
+        let label_str = crate::frameworks::foundation::ns_string::to_rust_string(env, label)
+            .to_string();
+        log_dbg!(
+            "OUTLET [{} {:?}].{} = {} {:?}",
+            src, source, label_str, dst, destination
+        );
+    }
+
     () = msg![env; source setValue:destination forKey:label];
 }
 

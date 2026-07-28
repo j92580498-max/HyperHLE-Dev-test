@@ -252,3 +252,75 @@ retain is not on `trunk`.
 
 This is still expected to be general: any app whose window comes from its main
 nib rather than from code has the same lifetime problem.
+
+
+## 2026-07-27, later: the GL view is never mounted
+
+Four measurements, each from one instrumented run, settle what the grey is and
+where the game's rendering goes. All of the instrumentation is on `trunk` and
+enabled with `TAPHLE_LOG_MODULES`.
+
+### 1. What composition actually draws
+
+With the window retained, exactly three layers are composited, every frame:
+
+```text
+composite <window> CALayer opacity=1   bg=rgba(1,1,1,1) contents=false eagl_pixels=false sublayers=2
+composite <a>      CALayer opacity=0.4 bg=rgba(0,0,0,1) contents=false eagl_pixels=false sublayers=0
+composite <b>      CALayer opacity=1   bg=rgba(0,0,0,0) contents=false eagl_pixels=false sublayers=0
+```
+
+**No `CAEAGLLayer` appears at all** — and the probe sits above the `hidden`
+early-return, so it is not being skipped for being hidden. It is simply not in
+the tree.
+
+That also explains the grey exactly, with no guesswork: white background at
+full opacity, then black at 0.4 over it, gives `1 x (1 - 0.4) = 0.6`, and
+`0.6 x 255 = 153 = #999999` — precisely the value the OS screenshot measured.
+The screen is the window plus two fade overlays and nothing else.
+
+### 2. Where the views go
+
+```text
+MOUNT [EAGLView addSubview:UIImageView]
+MOUNT [UIWindow addSubview:UIView]
+MOUNT [UIWindow addSubview:CCSkinnedView]
+```
+
+The window gets a plain `UIView` and a `CCSkinnedView` (an overlay). **The
+EAGLView is never added to the window**, so the compositor never sees it.
+
+### 3. The outlets are fine — this is not a nib bug
+
+```text
+OUTLET [UIApplication].delegate       = OdysseyAppDelegate
+OUTLET [OdysseyAppController].view    = EAGLView
+OUTLET [OdysseyAppDelegate].mViewController = OdysseyAppController
+KVC set 'view' on OdysseyAppController -> setView:
+```
+
+All three outlets connect, and KVC resolves `view` to the real `-setView:`
+accessor rather than silently falling back to an ivar. The nib controller's
+view *is* the EAGLView. Static inspection of `MainWindow.nib` agrees: it is a
+`NIBArchive` whose only outlet labels are `delegate`, `view` and
+`mViewController`, and it contains **no `UISubviews` key at all**, so the
+EAGLView is legitimately a top-level object rather than nested in the window.
+
+### 4. There are two view controllers
+
+`-[UIViewController initWithCoder:]` decodes key `UIView`, gets nil for this
+nib, and sets the view to nil; the outlet then supplies the EAGLView. But a
+*second* controller is created at runtime with its own view, and it is that
+second view which reaches the window.
+
+### Where this leaves it
+
+Still one star. The chain is: nib top-level objects unretained -> window dies ->
+nothing presented. Retaining fixes the window but reveals that the app's GL view
+was never going to be composited anyway, because nothing mounts it.
+
+The next question is the app's own: what is supposed to put the EAGLView on
+screen, and which tapHLE gap stops that code running? `CCSkinnedView` says
+Cocos2D, so the engine's own view-setup path is the place to look. Do **not**
+resume by retaining the nib objects and calling it fixed — that is measured to
+produce a grey screen, for the reason computed above.
