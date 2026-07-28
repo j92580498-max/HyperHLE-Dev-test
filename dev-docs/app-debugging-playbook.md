@@ -777,3 +777,47 @@ Two consequences worth remembering:
 A corollary: a rotated capture proves nothing about orientation, because the
 renderbuffer capture is taken before host rotation. Neither does an unchanged
 capture after passing `--landscape-native`, which only affects `present_frame`.
+
+## An opaque guest MemoryError is usually a name you already have
+
+`Error during CPU execution: MemoryError` is what tapHLE reports for *any* bad
+guest access, so it names nothing by itself. Two cheap steps turn it into a
+symbol, and the second is nearly free.
+
+### 1. Disassemble the faulting PC
+
+`dev-scripts/disasm-guest-fault.py <app.ipa> <pc>` takes the PC straight from
+tapHLE's register dump and prints the instructions around it, resolving the
+guest address through the Mach-O segments and handling fat binaries and Thumb.
+
+JellyCar 1 faulted at `0x30190`:
+
+```text
+0x0003018e  ldr   r3, [r3]        <- r3 = *(a global)
+0x00030190  vldr  d7, [r3]        <== FAULT
+```
+
+with `R3 = 0` in the dump. So a global pointer was null and the code loaded a
+double through it.
+
+### 2. Cross-reference the address against the non-lazy symbol warnings
+
+This is the step to try **first**, because it needs no tools at all. tapHLE
+already logs, for every symbol it could not bind:
+
+```text
+Warning: unhandled non-lazy symbol "_kCFAbsoluteTimeIntervalSince1970" at 0x433e8
+```
+
+That address is the same one the faulting instruction loads from. The warning had
+been in the log the whole time, filtered out as noise because these warnings are
+common and usually harmless.
+
+**They are only harmless while the guest does not dereference them.** An unbound
+`__nl_symbol_ptr` slot is a null pointer sitting in `__DATA` waiting for someone
+to read it, and the guest reads it without checking. So treat each warning as a
+latent null dereference, and when a `MemoryError` appears, grep the log for the
+address the fault touched before doing anything else.
+
+Exporting that one constant took JellyCar 1 from crashing during startup to its
+full main menu and into level loading.
