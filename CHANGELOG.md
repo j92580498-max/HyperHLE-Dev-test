@@ -34,6 +34,10 @@
   properties.
 - Verified three-star in-game milestones for Tap Tap Revenge 2, Omium,
   Parachute Panic HD and Scoops, and a two-star start for JellyCar.
+- Start more apps still: glGetIntegerv now answers for every parameter rather
+  than only integer ones, and Objective-C block retention, run-time class
+  creation, Core Graphics colour components, Foundation allocation zones and
+  extended-attribute calls all work.
 
 ### Known limitations
 
