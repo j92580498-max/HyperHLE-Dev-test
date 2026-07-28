@@ -66,6 +66,22 @@ fn realloc(env: &mut Environment, ptr: MutVoidPtr, size: GuestUSize) -> MutVoidP
     env.mem.realloc(ptr, size)
 }
 
+/// `reallocf` is a BSD extension: `realloc`, except that it frees the original
+/// block if the reallocation fails, so the caller cannot leak it by dropping the
+/// old pointer on the error path.
+///
+/// tapHLE's allocator does not report failure — `realloc` either succeeds or
+/// aborts — so the freeing branch is unreachable today. It is written out anyway
+/// rather than aliased straight to `realloc`, because the difference is the
+/// entire reason the function exists.
+fn reallocf(env: &mut Environment, ptr: MutVoidPtr, size: GuestUSize) -> MutVoidPtr {
+    let new_ptr = realloc(env, ptr, size);
+    if new_ptr.is_null() && !ptr.is_null() {
+        free(env, ptr);
+    }
+    new_ptr
+}
+
 fn free(env: &mut Environment, ptr: MutVoidPtr) {
     // We need to catch situations of freeing NSObjects early!
     if env.objc.get_host_object(ptr.cast()).is_some() {
@@ -598,6 +614,7 @@ pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(calloc(_, _)),
     export_c_func!(valloc(_)),
     export_c_func!(realloc(_, _)),
+    export_c_func!(reallocf(_, _)),
     export_c_func!(free(_)),
     export_c_func!(atexit(_)),
     export_c_func!(atoi(_)),
