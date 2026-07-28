@@ -258,3 +258,44 @@ is confirmed on current code, not merely inherited from `d335f7bd`.
 No new report was filed: the recorded rating is unchanged, and a rerun that
 reproduces an existing rating is moderation noise. What changed is the evidence
 behind it, which belongs here rather than in the database.
+
+
+## 2026-07-27: JellyCar 1 advanced to 2 stars — a missing CF constant
+
+The `MemoryError` is **fixed**, and the cause was one unexported CoreFoundation
+constant.
+
+Disassembling the faulting PC (`dev-scripts/disasm-guest-fault.py`, added for
+this) showed:
+
+```text
+0x0003018e  ldr   r3, [r3]        <- r3 = *(a global)
+0x00030190  vldr  d7, [r3]        <== FAULT, with R3 = 0
+```
+
+The global lives in `__DATA,__nl_symbol_ptr` at `0x433e8`, and walking the
+indirect symbol table names it: **`_kCFAbsoluteTimeIntervalSince1970`**. The
+code is the standard `CFAbsoluteTimeGetCurrent() + kCFAbsoluteTimeIntervalSince1970`
+conversion to a Unix timestamp. tapHLE did not export it, so the slot was null
+and the guest loaded a double through address zero.
+
+It is exported now, from the value tapHLE already had
+(`SECS_FROM_UNIX_TO_APPLE_EPOCHS`).
+
+**tapHLE had been logging this all along** — `Warning: unhandled non-lazy symbol
+"_kCFAbsoluteTimeIntervalSince1970" at 0x433e8` — and the address in that warning
+is exactly the one the faulting instruction loads from. See the playbook; the
+grep is far cheaper than the disassembly and should be step one.
+
+### Where JellyCar 1 stops now
+
+The main menu renders (logo, `?` button, a JellyCar 3 promo, and EASY / AVERAGE /
+HARD difficulty cards). Tapping EASY reaches the level-loading screen with its
+"Tilt the device to add rotation to the car!" tip and a progress bar — and stops
+there; repeated screenshots are byte-identical.
+
+Behind it, the log shows the two things recorded earlier: libxml2 failing to load
+`Documents/scenes.xml`, and `DMOAnalytics needs to be initialized`. Those are now
+the frontier rather than a guess, since everything ahead of them is cleared.
+
+Two star: it reaches menus but no gameplay.
