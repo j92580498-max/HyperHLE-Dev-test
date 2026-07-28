@@ -416,6 +416,21 @@ pub(super) fn class_getInstanceMethod(env: &mut Environment, cls: Class, sel: SE
     method_ptr
 }
 
+/// `class_getClassMethod` — the class-method counterpart of
+/// `class_getInstanceMethod`.
+///
+/// A class method is an instance method of the metaclass, and a class object's
+/// `isa` is its metaclass, so this is the same search one level up. Apps use it
+/// the same way as the instance variant: to ask whether a class responds to
+/// something before calling it.
+pub(super) fn class_getClassMethod(env: &mut Environment, cls: Class, sel: SEL) -> MutVoidPtr {
+    if cls == nil {
+        return Ptr::null();
+    }
+    let metaclass = super::ObjC::read_isa(cls, &env.mem);
+    class_getInstanceMethod(env, metaclass, sel)
+}
+
 /// `class_getMethodImplementation` — returns the `IMP` that a message send of
 /// `sel` to an instance of `cls` would invoke, as a guest-callable function
 /// pointer, or null if the class does not respond. (The real runtime returns a

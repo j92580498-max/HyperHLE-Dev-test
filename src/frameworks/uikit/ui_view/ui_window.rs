@@ -309,6 +309,11 @@ pub const CLASSES: ClassExports = objc_classes! {
 /// Window life-cycle notifications
 /// TODO: more notifications
 const UIWindowDidBecomeKeyNotification: &str = "UIWindowDidBecomeKeyNotification";
+// The rest of the family. `makeKeyWindow` posts only the DidBecomeKey one; the
+// others are declared so apps that observe them do not dereference a null name.
+const UIWindowDidResignKeyNotification: &str = "UIWindowDidResignKeyNotification";
+const UIWindowDidBecomeVisibleNotification: &str = "UIWindowDidBecomeVisibleNotification";
+const UIWindowDidBecomeHiddenNotification: &str = "UIWindowDidBecomeHiddenNotification";
 /// Keyboard notifications
 /// TODO: more keyboard notifications
 pub const UIKeyboardWillShowNotification: &str = "UIKeyboardWillShowNotification";
@@ -316,6 +321,14 @@ pub const UIKeyboardDidShowNotification: &str = "UIKeyboardDidShowNotification";
 pub const UIKeyboardWillHideNotification: &str = "UIKeyboardWillHideNotification";
 pub const UIKeyboardDidHideNotification: &str = "UIKeyboardDidHideNotification";
 pub const UIKeyboardBoundsUserInfoKey: &str = "UIKeyboardBoundsUserInfoKey";
+// The iOS 3.2+ replacements for the deprecated Bounds key. tapHLE posts the old
+// one; these are declared because apps read whichever they were built against,
+// and an unbound key is a null dereference rather than a missing dictionary
+// entry.
+pub const UIKeyboardFrameBeginUserInfoKey: &str = "UIKeyboardFrameBeginUserInfoKey";
+pub const UIKeyboardFrameEndUserInfoKey: &str = "UIKeyboardFrameEndUserInfoKey";
+pub const UIKeyboardAnimationDurationUserInfoKey: &str = "UIKeyboardAnimationDurationUserInfoKey";
+pub const UIKeyboardAnimationCurveUserInfoKey: &str = "UIKeyboardAnimationCurveUserInfoKey";
 
 /// `UIWindowLevel` values. These are `CGFloat`s rather than strings, so unlike
 /// the notification names they have to be materialised into guest memory. tapHLE
@@ -335,6 +348,18 @@ fn UIWindowLevelAlert(env: &mut Environment) -> ConstVoidPtr {
 }
 
 pub const CONSTANTS: ConstantExports = &[
+    (
+        "_UIWindowDidResignKeyNotification",
+        HostConstant::NSString(UIWindowDidResignKeyNotification),
+    ),
+    (
+        "_UIWindowDidBecomeVisibleNotification",
+        HostConstant::NSString(UIWindowDidBecomeVisibleNotification),
+    ),
+    (
+        "_UIWindowDidBecomeHiddenNotification",
+        HostConstant::NSString(UIWindowDidBecomeHiddenNotification),
+    ),
     (
         "_UIWindowLevelNormal",
         HostConstant::Custom(UIWindowLevelNormal),
@@ -370,5 +395,21 @@ pub const CONSTANTS: ConstantExports = &[
     (
         "_UIKeyboardBoundsUserInfoKey",
         HostConstant::NSString(UIKeyboardBoundsUserInfoKey),
+    ),
+    (
+        "_UIKeyboardFrameBeginUserInfoKey",
+        HostConstant::NSString(UIKeyboardFrameBeginUserInfoKey),
+    ),
+    (
+        "_UIKeyboardFrameEndUserInfoKey",
+        HostConstant::NSString(UIKeyboardFrameEndUserInfoKey),
+    ),
+    (
+        "_UIKeyboardAnimationDurationUserInfoKey",
+        HostConstant::NSString(UIKeyboardAnimationDurationUserInfoKey),
+    ),
+    (
+        "_UIKeyboardAnimationCurveUserInfoKey",
+        HostConstant::NSString(UIKeyboardAnimationCurveUserInfoKey),
     ),
 ];

@@ -9,6 +9,7 @@
 //! - Apple's [Preferences and Settings Programming Guide](https://developer.apple.com/library/archive/documentation/Cocoa/Conceptual/UserDefaults/AboutPreferenceDomains/AboutPreferenceDomains.html).
 
 use super::{ns_string, NSInteger};
+use crate::dyld::{ConstantExports, HostConstant};
 use crate::frameworks::foundation::ns_string::to_rust_string;
 use crate::objc::{
     autorelease, id, msg, msg_class, nil, objc_classes, release, Class, ClassExports, HostObject,
@@ -302,3 +303,13 @@ pub const CLASSES: ClassExports = objc_classes! {
 @end
 
 };
+
+/// Posted when the defaults change. tapHLE does not post it — nothing here
+/// tracks which keys changed — but apps observe it, and observing means
+/// dereferencing the name, so leaving it unbound is a null read.
+const NSUserDefaultsDidChangeNotification: &str = "NSUserDefaultsDidChangeNotification";
+
+pub const CONSTANTS: ConstantExports = &[(
+    "_NSUserDefaultsDidChangeNotification",
+    HostConstant::NSString(NSUserDefaultsDidChangeNotification),
+)];

@@ -10,7 +10,7 @@ use crate::dyld::{export_c_func, ConstantExports, FunctionExports, HostConstant}
 use crate::frameworks::core_graphics::{CGPoint, CGRect, CGSize};
 use crate::frameworks::foundation::ns_string::{from_rust_string, get_static_str};
 use crate::frameworks::foundation::{ns_array, ns_string, NSInteger, NSUInteger};
-use crate::mem::MutPtr;
+use crate::mem::{ConstVoidPtr, MutPtr};
 use crate::objc::{
     autorelease, id, msg, msg_class, nil, objc_classes, release, retain, todo_objc_setter,
     ClassExports, HostObject, NSZonePtr,
@@ -582,9 +582,21 @@ const UIApplicationLaunchOptionsAnnotationKey: &str = "UIApplicationLaunchOption
 const UIApplicationDidReceiveMemoryWarningNotification: &str =
     "UIApplicationDidReceiveMemoryWarningNotification";
 
+/// `UIBackgroundTaskIdentifier`, the value meaning "no task". tapHLE has no
+/// background execution, so `beginBackgroundTask...` has nothing to hand back,
+/// but apps compare their stored identifier against this constant.
+fn UIBackgroundTaskInvalid(env: &mut Environment) -> ConstVoidPtr {
+    let invalid: NSUInteger = 0;
+    env.mem.alloc_and_write(invalid).cast().cast_const()
+}
+
 /// `UIApplicationLaunchOptionsKey` and `NSNotificationName` values.
 /// (Both types are strings)
 pub const CONSTANTS: ConstantExports = &[
+    (
+        "_UIBackgroundTaskInvalid",
+        HostConstant::Custom(UIBackgroundTaskInvalid),
+    ),
     (
         "_UIApplicationDidFinishLaunchingNotification",
         HostConstant::NSString(UIApplicationDidFinishLaunchingNotification),

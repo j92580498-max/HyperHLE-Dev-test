@@ -102,6 +102,23 @@ pub const kCAFilterLinear: &str = "kCAFilterLinear";
 pub const kCAFilterNearest: &str = "kCAFilterNearest";
 pub const kCAFilterTrilinear: &str = "kCAFilterTrilinear";
 
+/// `contentsGravity` values. tapHLE does not honour the gravity when drawing a
+/// layer's contents — they are always stretched to the bounds — but an app sets
+/// it by reading one of these constants, and an unbound one is a null pointer it
+/// dereferences to do so.
+pub const kCAGravityCenter: &str = "center";
+pub const kCAGravityTop: &str = "top";
+pub const kCAGravityBottom: &str = "bottom";
+pub const kCAGravityLeft: &str = "left";
+pub const kCAGravityRight: &str = "right";
+pub const kCAGravityTopLeft: &str = "topLeft";
+pub const kCAGravityTopRight: &str = "topRight";
+pub const kCAGravityBottomLeft: &str = "bottomLeft";
+pub const kCAGravityBottomRight: &str = "bottomRight";
+pub const kCAGravityResize: &str = "resize";
+pub const kCAGravityResizeAspect: &str = "resizeAspect";
+pub const kCAGravityResizeAspectFill: &str = "resizeAspectFill";
+
 pub const CONSTANTS: ConstantExports = &[
     ("_kCAFilterLinear", HostConstant::NSString(kCAFilterLinear)),
     (
@@ -111,6 +128,45 @@ pub const CONSTANTS: ConstantExports = &[
     (
         "_kCAFilterTrilinear",
         HostConstant::NSString(kCAFilterTrilinear),
+    ),
+    (
+        "_kCAGravityCenter",
+        HostConstant::NSString(kCAGravityCenter),
+    ),
+    ("_kCAGravityTop", HostConstant::NSString(kCAGravityTop)),
+    (
+        "_kCAGravityBottom",
+        HostConstant::NSString(kCAGravityBottom),
+    ),
+    ("_kCAGravityLeft", HostConstant::NSString(kCAGravityLeft)),
+    ("_kCAGravityRight", HostConstant::NSString(kCAGravityRight)),
+    (
+        "_kCAGravityTopLeft",
+        HostConstant::NSString(kCAGravityTopLeft),
+    ),
+    (
+        "_kCAGravityTopRight",
+        HostConstant::NSString(kCAGravityTopRight),
+    ),
+    (
+        "_kCAGravityBottomLeft",
+        HostConstant::NSString(kCAGravityBottomLeft),
+    ),
+    (
+        "_kCAGravityBottomRight",
+        HostConstant::NSString(kCAGravityBottomRight),
+    ),
+    (
+        "_kCAGravityResize",
+        HostConstant::NSString(kCAGravityResize),
+    ),
+    (
+        "_kCAGravityResizeAspect",
+        HostConstant::NSString(kCAGravityResizeAspect),
+    ),
+    (
+        "_kCAGravityResizeAspectFill",
+        HostConstant::NSString(kCAGravityResizeAspectFill),
     ),
 ];
 

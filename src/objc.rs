@@ -48,8 +48,8 @@ pub use selectors::{selector, SEL};
 pub(crate) use blocks::block_invoke_function;
 use classes::{
     class_copyPropertyList, class_getInstanceSize, class_getProperty, class_getSuperclass,
-    objc_getClass, property_getAttributes, property_getName, ClassHostObject, FakeClass,
-    UnimplementedClass,
+    objc_getClass, objc_lookUpClass, property_getAttributes, property_getName, ClassHostObject,
+    FakeClass, UnimplementedClass,
 };
 pub(crate) use messages::objc_msgSend;
 use messages::{
@@ -57,8 +57,8 @@ use messages::{
     MsgSendSuperSignature,
 };
 use methods::{
-    class_addMethod, class_getInstanceMethod, class_getMethodImplementation, class_replaceMethod,
-    method_exchangeImplementations, method_getImplementation, method_getName,
+    class_addMethod, class_getClassMethod, class_getInstanceMethod, class_getMethodImplementation,
+    class_replaceMethod, method_exchangeImplementations, method_getImplementation, method_getName,
     method_getTypeEncoding, method_list_t, method_setImplementation,
 };
 use objects::{objc_object, object_getClass, HostObjectEntry};
@@ -155,6 +155,7 @@ const FUNCTIONS: FunctionExports = &[
     export_c_func!(property_getName(_)),
     export_c_func!(property_getAttributes(_)),
     export_c_func!(class_getInstanceMethod(_, _)),
+    export_c_func!(class_getClassMethod(_, _)),
     export_c_func!(class_getMethodImplementation(_, _)),
     export_c_func!(class_addMethod(_, _, _, _)),
     export_c_func!(class_replaceMethod(_, _, _, _)),
@@ -163,6 +164,7 @@ const FUNCTIONS: FunctionExports = &[
     export_c_func!(method_getName(_)),
     export_c_func!(method_getTypeEncoding(_)),
     export_c_func!(method_exchangeImplementations(_, _)),
+    export_c_func!(objc_lookUpClass(_)),
     export_c_func!(objc_msgSend(_, _)),
     export_c_func!(objc_msgSend_stret(_, _, _)),
     export_c_func!(objc_msgSendSuper2(_, _)),

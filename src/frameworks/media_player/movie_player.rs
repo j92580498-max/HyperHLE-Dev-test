@@ -48,6 +48,20 @@ pub const MPMoviePlayerContentPreloadDidFinishNotification: &str =
 pub const MPMoviePlayerScalingModeDidChangeNotification: &str =
     "MPMoviePlayerScalingModeDidChangeNotification";
 // TODO: More notifications?
+/// The iOS 3.2+ notifications. tapHLE's player does not model load state or
+/// expose a separate playback state, so these are not posted; apps register for
+/// them during setup, and registering dereferences the name.
+pub const MPMoviePlayerLoadStateDidChangeNotification: &str =
+    "MPMoviePlayerLoadStateDidChangeNotification";
+pub const MPMoviePlayerPlaybackStateDidChangeNotification: &str =
+    "MPMoviePlayerPlaybackStateDidChangeNotification";
+pub const MPMoviePlayerNowPlayingMovieDidChangeNotification: &str =
+    "MPMoviePlayerNowPlayingMovieDidChangeNotification";
+pub const MPMoviePlayerWillEnterFullscreenNotification: &str =
+    "MPMoviePlayerWillEnterFullscreenNotification";
+pub const MPMoviePlayerDidExitFullscreenNotification: &str =
+    "MPMoviePlayerDidExitFullscreenNotification";
+
 const MPMoviePlayerPlaybackDidFinishReasonUserInfoKey: &str =
     "MPMoviePlayerPlaybackDidFinishReasonUserInfoKey";
 
@@ -68,6 +82,26 @@ pub const CONSTANTS: ConstantExports = &[
     (
         "_MPMoviePlayerPlaybackDidFinishReasonUserInfoKey",
         HostConstant::NSString(MPMoviePlayerPlaybackDidFinishReasonUserInfoKey),
+    ),
+    (
+        "_MPMoviePlayerLoadStateDidChangeNotification",
+        HostConstant::NSString(MPMoviePlayerLoadStateDidChangeNotification),
+    ),
+    (
+        "_MPMoviePlayerPlaybackStateDidChangeNotification",
+        HostConstant::NSString(MPMoviePlayerPlaybackStateDidChangeNotification),
+    ),
+    (
+        "_MPMoviePlayerNowPlayingMovieDidChangeNotification",
+        HostConstant::NSString(MPMoviePlayerNowPlayingMovieDidChangeNotification),
+    ),
+    (
+        "_MPMoviePlayerWillEnterFullscreenNotification",
+        HostConstant::NSString(MPMoviePlayerWillEnterFullscreenNotification),
+    ),
+    (
+        "_MPMoviePlayerDidExitFullscreenNotification",
+        HostConstant::NSString(MPMoviePlayerDidExitFullscreenNotification),
     ),
 ];
 
