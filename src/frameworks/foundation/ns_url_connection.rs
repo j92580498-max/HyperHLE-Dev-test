@@ -92,6 +92,43 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 @end
 
+
+// NSURLProtocol is the hook apps install to intercept or fake network requests,
+// and registering one is the first thing an offline-capable app does. Nothing
+// here performs requests, so nothing consults the registry — but refusing to
+// let an app register stopped eleven of them in a 1501-app survey before they
+// reached their own code.
+@implementation NSURLProtocol: NSObject
+
++ (bool)registerClass:(id)protocol_class {
+    log_dbg!("TODO: [NSURLProtocol registerClass:{:?}] accepted but never consulted", protocol_class);
+    true
+}
+
++ (())unregisterClass:(id)protocol_class {
+    log_dbg!("TODO: [NSURLProtocol unregisterClass:{:?}]", protocol_class);
+}
+
+// Asked of a *subclass* to decide whether it wants a request. The base class
+// answering NO is correct: NSURLProtocol itself handles nothing.
++ (bool)canInitWithRequest:(id)_request {
+    false
+}
+
++ (id)canonicalRequestForRequest:(id)request {
+    request
+}
+
++ (id)propertyForKey:(id)_key inRequest:(id)_request {
+    nil
+}
++ (())setProperty:(id)_value forKey:(id)_key inRequest:(id)_request {
+}
++ (())removePropertyForKey:(id)_key inRequest:(id)_request {
+}
+
+@end
+
 };
 
 fn url_string_from_request(env: &mut Environment, request: id) -> Cow<'static, str> {
