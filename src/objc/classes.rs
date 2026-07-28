@@ -1257,6 +1257,109 @@ mod tests {
 /// implement" is exactly the signal that says what to implement next — and if
 /// the app was not probing, the nil will surface shortly afterwards as an
 /// unexpectedly inert message send, which this log explains.
+/// `objc_allocateClassPair` — create a class and its metaclass at run time.
+///
+/// Frameworks that generate delegates or proxies build their classes this way,
+/// so the app has no compiled class for the runtime to find and the pair must be
+/// made on demand. The result is deliberately *not* in the class registry yet:
+/// `objc_registerClassPair` publishes it, and between the two calls the caller
+/// adds methods and ivars.
+///
+/// The metaclass links exactly as a compiled one does — a class's isa is its
+/// metaclass, and a metaclass's superclass is the superclass's metaclass — so
+/// class methods resolve up the chain the same way instance methods do.
+pub(super) fn objc_allocateClassPair(
+    env: &mut Environment,
+    superclass: Class,
+    name: ConstPtr<u8>,
+    extra_bytes: GuestUSize,
+) -> Class {
+    let Ok(name) = env.mem.cstr_at_utf8(name) else {
+        return nil;
+    };
+    let name = name.to_string();
+
+    // Creating a class that already exists is an error, not a redefinition.
+    if env.objc.get_class(&name, false, &env.mem).is_some() {
+        log!(
+            "objc_allocateClassPair({:?}) -> nil: that class already exists",
+            name
+        );
+        return nil;
+    }
+    if extra_bytes != 0 {
+        log!(
+            "TODO: objc_allocateClassPair({:?}) asked for {} extra bytes, which are not allocated",
+            name,
+            extra_bytes
+        );
+    }
+
+    // A root class (nil superclass) would need its metaclass to point at
+    // itself, which nothing generating classes at run time actually does.
+    if superclass == nil {
+        log!(
+            "TODO: objc_allocateClassPair({:?}) with no superclass is not supported",
+            name
+        );
+        return nil;
+    }
+
+    let superclass_metaclass = ObjC::read_isa(superclass, &env.mem);
+    let instance_size = env.objc.borrow::<ClassHostObject>(superclass).instance_size;
+
+    let make = |is_metaclass: bool, superclass: Class, instance_size: GuestUSize| ClassHostObject {
+        name: name.clone(),
+        is_metaclass,
+        superclass,
+        methods: HashMap::new(),
+        guest_method_signatures: HashMap::new(),
+        ivars: HashMap::new(),
+        properties: Vec::new(),
+        instance_start: instance_size,
+        instance_size,
+        // Nothing was compiled for this class, so there is no +initialize to
+        // run and nothing to wait for.
+        is_initialized: InitializationStatus::Initialized,
+    };
+
+    let metaclass_object = Box::new(make(
+        true,
+        superclass_metaclass,
+        guest_size_of::<objc_object>(),
+    ));
+    let class_object = Box::new(make(false, superclass, instance_size));
+
+    let root_metaclass = ObjC::read_isa(superclass_metaclass, &env.mem);
+    let metaclass = env
+        .objc
+        .alloc_static_object(root_metaclass, metaclass_object, &mut env.mem);
+    env.objc
+        .alloc_static_object(metaclass, class_object, &mut env.mem)
+}
+
+/// `objc_registerClassPair` — publish a class built by `objc_allocateClassPair`
+/// so that `objc_getClass` and message sends can find it by name.
+pub(super) fn objc_registerClassPair(env: &mut Environment, class: Class) {
+    if class == nil {
+        return;
+    }
+    let name = env.objc.borrow::<ClassHostObject>(class).name.clone();
+    env.objc.classes.insert(name, class);
+}
+
+/// `objc_disposeClassPair` — discard a class that was allocated but is no longer
+/// wanted. Only the registry entry is removed: the class object itself is
+/// static-lifetime, and anything still holding an instance of it would be left
+/// with a dangling isa if it were freed.
+pub(super) fn objc_disposeClassPair(env: &mut Environment, class: Class) {
+    if class == nil {
+        return;
+    }
+    let name = env.objc.borrow::<ClassHostObject>(class).name.clone();
+    env.objc.classes.remove(&name);
+}
+
 pub(super) fn objc_getClass(env: &mut Environment, name: ConstPtr<u8>) -> id {
     let Ok(name_str) = env.mem.cstr_at_utf8(name) else {
         return nil;
