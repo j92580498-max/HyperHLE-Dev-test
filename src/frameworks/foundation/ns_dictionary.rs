@@ -958,10 +958,18 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 - (())setObject:(id)object
          forKey:(id)key {
-    // TODO: raise NSInvalidArgumentException
-    assert_ne!(object, nil);
-    // TODO: raise NSInvalidArgumentException
-    assert_ne!(key, nil);
+    // Foundation raises NSInvalidArgumentException for a nil object or key.
+    // tapHLE cannot raise, and aborting is a strictly worse answer than the
+    // exception would have been: an app with a @try around this survives on
+    // device, and one without it fails at a place it chose. Log and ignore the
+    // call, which leaves the dictionary in the state the exception would have.
+    if object == nil || key == nil {
+        log!(
+            "Warning: [(NSMutableDictionary *){:?} setObject:{:?} forKey:{:?}] with a nil argument, which Foundation would reject; ignoring it",
+            this, object, key
+        );
+        return;
+    }
     let mut host_obj: DictionaryHostObject = std::mem::take(env.objc.borrow_mut(this));
     host_obj.insert(env, key, object, /* copy_key: */ true);
     *env.objc.borrow_mut(this) = host_obj;
