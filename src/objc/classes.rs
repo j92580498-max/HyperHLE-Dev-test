@@ -1246,11 +1246,31 @@ mod tests {
     }
 }
 
+/// `objc_getClass` — the class with this name, or nil.
+///
+/// Apple's runtime answers nil for a name it does not know (after consulting the
+/// class handler, which nothing here installs), and apps rely on that: it is how
+/// they probe for a class from a newer OS. Aborting instead turned a successful
+/// negative answer into a dead app.
+///
+/// The name is still logged, because "app asked for a class tapHLE does not
+/// implement" is exactly the signal that says what to implement next — and if
+/// the app was not probing, the nil will surface shortly afterwards as an
+/// unexpectedly inert message send, which this log explains.
 pub(super) fn objc_getClass(env: &mut Environment, name: ConstPtr<u8>) -> id {
-    let name_str = env.mem.cstr_at_utf8(name).unwrap();
-    env.objc
-        .get_class(name_str, false, &env.mem)
-        .unwrap_or_else(|| panic!("objc_getClass() for unimplemented class {name_str}"))
+    let Ok(name_str) = env.mem.cstr_at_utf8(name) else {
+        return nil;
+    };
+    match env.objc.get_class(name_str, false, &env.mem) {
+        Some(class) => class,
+        None => {
+            log!(
+                "objc_getClass({:?}) -> nil: no such class in tapHLE",
+                name_str
+            );
+            nil
+        }
+    }
 }
 
 /// `objc_lookUpClass` — the same lookup as `objc_getClass`, except that a class

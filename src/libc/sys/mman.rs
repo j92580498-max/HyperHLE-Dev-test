@@ -8,7 +8,7 @@ use crate::abi::DotDotDot;
 use crate::dyld::FunctionExports;
 use crate::environment::Environment;
 use crate::export_c_func;
-use crate::libc::errno::{set_errno, EINVAL, ENOTSUP};
+use crate::libc::errno::{set_errno, EINVAL, ENOMEM, ENOTSUP};
 use crate::libc::posix_io;
 use crate::libc::posix_io::{off_t, FileDescriptor, SEEK_SET};
 use crate::mem::VMAllocError;
@@ -19,6 +19,11 @@ use std::collections::HashMap;
 const MAP_FILE: i32 = 0x0000;
 const MAP_FIXED: i32 = 0x0010;
 const MAP_ANON: i32 = 0x1000;
+
+/// What `mmap` returns on failure: `(void *)-1`, not null.
+fn map_failed() -> MutVoidPtr {
+    MutVoidPtr::from_bits(!0)
+}
 
 #[derive(Default)]
 pub struct State {
@@ -50,24 +55,42 @@ fn mmap(
         offset
     );
 
-    assert_eq!(offset, 0);
-    let ptr = if addr.is_null() {
-        env.mem.vm_alloc(None, len).unwrap()
-    } else {
-        match env.mem.vm_alloc(Some(addr.to_bits()), len) {
-            Err(VMAllocError::AddressUnavailable) if flags & MAP_FIXED == 0 => {
-                let ptr = env.mem.vm_alloc(None, len).unwrap();
-                log!("Warning: mmap could not allocate at hint {addr:?}, allocated at {ptr:?}",);
-                ptr
-            }
-            result => result.unwrap(),
+    // A mapping that cannot be satisfied is an ordinary runtime outcome, not a
+    // programming error: mmap is specified to return MAP_FAILED and set errno,
+    // and callers are written to check for it. Aborting instead killed apps that
+    // would have coped — asking for a specific address is a hint that tapHLE's
+    // address space often cannot honour, because its layout is not the device's.
+    let allocate = |env: &mut Environment| -> Option<MutVoidPtr> {
+        if addr.is_null() {
+            return env.mem.vm_alloc(None, len).ok();
         }
+        match env.mem.vm_alloc(Some(addr.to_bits()), len) {
+            Ok(ptr) => Some(ptr),
+            // MAP_FIXED means "exactly here or fail", so it gets no fallback.
+            Err(VMAllocError::AddressUnavailable) if flags & MAP_FIXED == 0 => {
+                let ptr = env.mem.vm_alloc(None, len).ok()?;
+                log!("Warning: mmap could not allocate at hint {addr:?}, allocated at {ptr:?}",);
+                Some(ptr)
+            }
+            Err(_) => None,
+        }
+    };
+    let Some(ptr) = allocate(env) else {
+        log!("Warning: mmap({addr:?}, {len}) failed, returning MAP_FAILED");
+        set_errno(env, ENOMEM);
+        return map_failed();
     };
 
     assert!(ptr.to_bits() & PAGE_SIZE_ALIGN_MASK == 0);
 
     if (flags & MAP_ANON) != 0 {
-        assert_eq!(fd, -1);
+        // The mapping is anonymous, so there is nothing to read in. Darwin
+        // ignores the descriptor entirely in this case rather than requiring
+        // it to be -1, and real code does pass a live one — aborting here
+        // killed apps making a perfectly ordinary allocation.
+        if fd != -1 {
+            log_dbg!("mmap: MAP_ANON with fd {}, ignoring the descriptor", fd);
+        }
     } else {
         let new_offset = posix_io::lseek(env, fd, offset, SEEK_SET);
         assert_eq!(new_offset, offset);
