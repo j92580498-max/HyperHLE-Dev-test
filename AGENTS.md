@@ -301,6 +301,34 @@ name the branch for its primary deliverable and split genuinely independent
 deliverables into separate branches rather than widening one. Releases are tags
 on `trunk` (`dev-docs/releases.md`), not a branch root.
 
+### One branch, one subject
+
+The root says *why* a branch exists; the slug must say *what*, and everything on
+the branch has to be that one thing. A branch is not a shipping container for
+whatever was fixed in one sitting.
+
+This matters most when work is chosen by measurement. Clearing the top of a
+ranked list produces a pile of small, unrelated changes at once — a libc
+function, a Foundation abort, two UIKit properties — and the tempting move is to
+commit them together because they were *found* together. Do not. How they were
+discovered is not what they are. Someone reverting the UIKit change, or reading
+back why a Foundation method stopped aborting, should not have to disentangle
+either from a random-number generator.
+
+Split by the subsystem the change belongs to, not by the session that produced
+it:
+
+- One branch per framework or runtime area — `feat/uikit-...`, `fix/foundation-...`,
+  `feat/libc-...`. Two changes belong together when they are the same subject,
+  not merely the same afternoon.
+- Prefer several small merges to one wide one. Each should stand on its own and
+  be revertible on its own.
+- If the commit message needs the word "and" to list unrelated deliverables, or
+  reads as a list of areas, it is more than one branch.
+
+A batch of survey-driven fixes is therefore normally several branches merged in
+sequence, each named for its area, not a single `fix/assorted-crashes`.
+
 `trunk` is the only permanent branch, and the other roots fall into two
 lifecycles. The single-deliverable roots — `feat/`, `fix/`, `infra/`, and
 `docs/` — are one-shot: each exists to land one change, so once that change is
