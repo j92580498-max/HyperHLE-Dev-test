@@ -496,6 +496,32 @@ unsafe fn composite_layer_recursive(
     // It might need to be reworked in the future into a guest presentationLayer
     let host_obj = animation_state.create_presentation_layer(env, layer);
 
+    // What each layer contributes. A blank screen and a correct one are
+    // otherwise indistinguishable from the outside, and this is what showed
+    // that The Jim & Frank Mysteries HD composites only a white window and two
+    // fade overlays — white x (1 - 0.4) = the exact grey seen on screen.
+    if crate::log::debug_enabled_for(module_path!()) {
+        let class_name = {
+            let class = crate::objc::ObjC::read_isa(layer, &env.mem);
+            env.objc.get_class_name(class).to_string()
+        };
+        let bg = host_obj
+            .background_color
+            .map(|c| format!("rgba({},{},{},{})", c.r, c.g, c.b, c.a));
+        log_dbg!(
+            "composite {:?} {} opacity={} bg={:?} contents={} eagl_pixels={} bounds={}x{} sublayers={}",
+            layer,
+            class_name,
+            host_obj.opacity,
+            bg,
+            host_obj.contents != crate::objc::nil,
+            host_obj.presented_pixels.is_some(),
+            { let w = host_obj.bounds.size.width; w },
+            { let h = host_obj.bounds.size.height; h },
+            host_obj.sublayers.len(),
+        );
+    }
+
     if host_obj.hidden {
         return;
     }

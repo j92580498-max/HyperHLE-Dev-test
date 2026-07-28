@@ -258,6 +258,15 @@ pub const CLASSES: ClassExports = objc_classes! {
                 .lookup_selector(&format!("_set{camel_case_key_string}:"))
                 .filter(|&sel| env.objc.class_has_method(class, sel))
         });
+    if crate::log::debug_enabled_for(module_path!()) {
+        let cls: Class = msg![env; this class];
+        let cls_name = env.objc.get_class_name(cls).to_string();
+        let found: String = match setter {
+            Some(sel) => sel.as_str(&env.mem).to_string(),
+            None => "<none — falling back to ivar>".to_string(),
+        };
+        log_dbg!("KVC set '{}' on {} -> {}", key_string, cls_name, found);
+    }
     if let Some(sel) = setter {
         // nil only means something to an object-typed setter. For any other
         // type there is no value to write, so Apple's documented behaviour is
