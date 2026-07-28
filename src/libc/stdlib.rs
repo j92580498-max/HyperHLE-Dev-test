@@ -24,6 +24,7 @@ pub struct State {
     rand: u32,
     random: u32,
     arc4random: u32,
+    drand48: u64,
 }
 
 // Sizes of zero are implementation-defined. macOS will happily give you back
@@ -107,6 +108,40 @@ fn free(env: &mut Environment, ptr: MutVoidPtr) {
 /// decision rather than an emulator failure, so the log does not read as if
 /// tapHLE crashed, then stop: continuing past an abort would run code the app
 /// has already concluded is unsafe to run.
+/// The `drand48` family. These are specified as a 48-bit linear congruential
+/// generator with fixed constants, and the sequence is part of the contract —
+/// code that seeds with a known value expects known numbers back — so this
+/// implements the actual algorithm rather than delegating to `rand`.
+const DRAND48_A: u64 = 0x5DEECE66D;
+const DRAND48_C: u64 = 0xB;
+const DRAND48_MASK: u64 = (1 << 48) - 1;
+
+fn drand48_next(env: &mut Environment) -> u64 {
+    let state = (env.libc_state.stdlib.drand48.wrapping_mul(DRAND48_A)).wrapping_add(DRAND48_C)
+        & DRAND48_MASK;
+    env.libc_state.stdlib.drand48 = state;
+    state
+}
+
+fn srand48(env: &mut Environment, seed: i32) {
+    // The low 16 bits are set to a fixed value by the standard, not to zero.
+    env.libc_state.stdlib.drand48 = (((seed as u32 as u64) << 16) | 0x330E) & DRAND48_MASK;
+}
+
+fn drand48(env: &mut Environment) -> f64 {
+    drand48_next(env) as f64 / (1u64 << 48) as f64
+}
+
+/// The top 31 bits, as a non-negative long.
+fn lrand48(env: &mut Environment) -> i32 {
+    (drand48_next(env) >> 17) as i32
+}
+
+/// The top 32 bits, as a signed long.
+fn mrand48(env: &mut Environment) -> i32 {
+    (drand48_next(env) >> 16) as u32 as i32
+}
+
 fn abort(_env: &mut Environment) {
     panic!("The app called abort(). This is the app deliberately terminating itself, not a tapHLE failure - the reason is usually logged just above.");
 }
@@ -625,6 +660,10 @@ pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(reallocf(_, _)),
     export_c_func!(free(_)),
     export_c_func!(abort()),
+    export_c_func!(srand48(_)),
+    export_c_func!(drand48()),
+    export_c_func!(lrand48()),
+    export_c_func!(mrand48()),
     export_c_func!(atexit(_)),
     export_c_func!(atoi(_)),
     export_c_func!(atol(_)),
