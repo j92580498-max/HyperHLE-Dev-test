@@ -296,6 +296,22 @@ gains from it. Decide in this order and stop at the first match:
    lints, developer tooling and diagnostics, the compatibility-database
    machinery, versioning, release — → `infra/`.
 
+### Update the changelog on the branch that earns it
+
+`CHANGELOG.md` is the user-facing record and `dev-docs/releases.md` requires a
+changelog heading for every numbered release. Write the entry on the branch that
+makes the change, not at release time.
+
+Commit messages and the changelog are different artefacts and neither replaces
+the other. A commit message explains one change to somebody reading the history:
+why it was made, what was rejected, what evidence backs it. A changelog entry
+tells a user what they gain, in their terms, and several merges often collapse
+into one line — or into none, when the change is invisible to them.
+
+Reconstructing it afterwards is the failure mode this prevents. Thirty merges
+later nobody can separate what a user would notice from what only a maintainer
+would, and the entry ends up as a restatement of the branch names.
+
 Use a short, hyphenated slug after the root. When a change spans categories,
 name the branch for its primary deliverable and split genuinely independent
 deliverables into separate branches rather than widening one. Releases are tags
@@ -335,6 +351,15 @@ lifecycles. The single-deliverable roots — `feat/`, `fix/`, `infra/`, and
 fully merged (no commits ahead of `trunk`) the work is finished and the branch
 is deleted, locally and on the remote. Its history is preserved in `trunk`, so
 nothing is lost and it can be recreated from `trunk` if related work resumes.
+
+A one-shot branch that is *not* yet fully merged stays open, and that is the
+normal way a large change is built: a subsystem too big to land in one merge
+keeps its branch while it has commits ahead of `trunk`. The rule is about
+finished work, not about forcing everything into a single commit. Prefer to
+split such a change into independently mergeable pieces anyway — a branch open
+for weeks drifts from `trunk` and its review gets harder the longer it lives —
+but a genuinely indivisible system is a legitimate reason to keep one open.
+Deleting is triggered by being fully merged, never by the calendar.
 
 A `compat/<app-slug>` branch is the deliberate exception. It is the long-lived
 home for an ongoing game target that advances through many checkpoints toward
