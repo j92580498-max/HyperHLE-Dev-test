@@ -21,6 +21,8 @@ use crate::Environment;
 pub struct State {
     /// `NSUserDefaults*`
     standard_defaults: Option<id>,
+    /// `NSUbiquitousKeyValueStore*`
+    ubiquitous_store: Option<id>,
 }
 impl State {
     fn get(env: &mut Environment) -> &mut State {
@@ -299,6 +301,54 @@ pub const CLASSES: ClassExports = objc_classes! {
     let dict = env.objc.borrow::<NSUserDefaultsHostObject>(this).app_domain_dict;
     msg![env; dict writeToFile:plist_file_path atomically:true]
 }
+
+@end
+
+// iCloud's key-value store. There is no iCloud here and never will be, so this
+// is a store that is permanently empty and never syncs — which is exactly what
+// an app sees on a device with iCloud switched off, a state every app using it
+// must already handle.
+//
+// It is a real class rather than nothing because seven apps in a 1501-app
+// survey asked for +defaultStore during startup and died on its absence, long
+// before any of them would have cared what was in it.
+@implementation NSUbiquitousKeyValueStore: NSObject
+
++ (id)defaultStore {
+    if let Some(existing) = State::get(env).ubiquitous_store {
+        return existing;
+    }
+    let store: id = msg![env; this new];
+    State::get(env).ubiquitous_store = Some(store);
+    store
+}
+
+- (id)objectForKey:(id)_key { nil }
+- (id)stringForKey:(id)_key { nil }
+- (id)arrayForKey:(id)_key { nil }
+- (id)dictionaryForKey:(id)_key { nil }
+- (id)dataForKey:(id)_key { nil }
+- (i64)longLongForKey:(id)_key { 0 }
+- (f64)doubleForKey:(id)_key { 0.0 }
+- (bool)boolForKey:(id)_key { false }
+
+- (())setObject:(id)_value forKey:(id)_key {}
+- (())setString:(id)_value forKey:(id)_key {}
+- (())setArray:(id)_value forKey:(id)_key {}
+- (())setDictionary:(id)_value forKey:(id)_key {}
+- (())setData:(id)_value forKey:(id)_key {}
+- (())setLongLong:(i64)_value forKey:(id)_key {}
+- (())setDouble:(f64)_value forKey:(id)_key {}
+- (())setBool:(bool)_value forKey:(id)_key {}
+- (())removeObjectForKey:(id)_key {}
+
+- (id)dictionaryRepresentation {
+    msg_class![env; NSDictionary dictionary]
+}
+
+// Nothing was stored, so there is nothing to push; reporting success is
+// truthful and is what the caller does nothing with anyway.
+- (bool)synchronize { true }
 
 @end
 

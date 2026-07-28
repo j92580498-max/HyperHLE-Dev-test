@@ -57,12 +57,19 @@ pub const CLASSES: ClassExports = objc_classes! {
 + (id)nibWithNibName:(id)nib_name // NSString *
               bundle:(id)bundle { //NSBundle *
     let main_bundle = msg_class![env; NSBundle mainBundle];
-    let bundle: id = if bundle == nil {
+    let bundle: id = if bundle == nil || bundle == main_bundle {
         main_bundle
     } else {
-        // TODO: non-main bundles
-        assert_eq!(bundle, main_bundle);
-        bundle
+        // tapHLE has only the main bundle, so a nib named against another one
+        // is looked for there. That is where an app's own nibs actually live:
+        // the other bundle is normally a framework whose resources were folded
+        // into the app at build time. Aborting instead lost the whole interface
+        // over a lookup that usually succeeds.
+        log!(
+            "TODO: [UINib nibWithNibName:bundle:] with the non-main bundle {:?}; looking in the main bundle instead",
+            bundle
+        );
+        main_bundle
     };
 
     retain(env, nib_name);
