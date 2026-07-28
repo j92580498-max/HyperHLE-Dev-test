@@ -48,8 +48,9 @@ pub use selectors::{selector, SEL};
 pub(crate) use blocks::block_invoke_function;
 use classes::{
     class_copyPropertyList, class_getInstanceSize, class_getProperty, class_getSuperclass,
-    objc_getClass, objc_lookUpClass, property_getAttributes, property_getName, ClassHostObject,
-    FakeClass, UnimplementedClass,
+    objc_allocateClassPair, objc_disposeClassPair, objc_getClass, objc_lookUpClass,
+    objc_registerClassPair, property_getAttributes, property_getName, ClassHostObject, FakeClass,
+    UnimplementedClass,
 };
 pub(crate) use messages::objc_msgSend;
 use messages::{
@@ -166,6 +167,9 @@ const FUNCTIONS: FunctionExports = &[
     export_c_func!(method_getTypeEncoding(_)),
     export_c_func!(method_exchangeImplementations(_, _)),
     export_c_func!(objc_lookUpClass(_)),
+    export_c_func!(objc_allocateClassPair(_, _, _)),
+    export_c_func!(objc_registerClassPair(_)),
+    export_c_func!(objc_disposeClassPair(_)),
     export_c_func!(objc_setProperty_nonatomic(_, _, _, _)),
     export_c_func!(objc_setProperty_atomic(_, _, _, _)),
     export_c_func!(objc_setProperty_nonatomic_copy(_, _, _, _)),
