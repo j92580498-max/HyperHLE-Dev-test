@@ -418,15 +418,18 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 - (())setValue:(id)_value
 forUndefinedKey:(id)key { // NSString*
-    // TODO: Raise NSUnknownKeyException
+    // Foundation raises NSUnknownKeyException, which an app can catch and
+    // routinely does: setting an unknown key is how nib loading tolerates an
+    // outlet the class no longer declares. tapHLE cannot raise, and aborting
+    // turned that survivable mismatch into a dead app. Log what was missing —
+    // that is the useful half of the exception — and carry on.
     let class: Class = ObjC::read_isa(this, &env.mem);
-    let class_name_string = env.objc.get_class_name(class).to_owned(); // TODO: Avoid copying
+    let class_name_string = env.objc.get_class_name(class).to_owned();
     let key_string = to_rust_string(env, key);
-    panic!("Object {:?} of class {:?} ({:?}) does not have a setter for {} ({:?})\
-        \nAvailable selectors: {}\nAvailable ivars: {}",
-        this, class_name_string, class, key_string, key,
-        env.objc.debug_all_class_selectors_as_strings(&env.mem, class).join(", "),
-        env.objc.debug_all_class_ivars_as_strings(class).join(", "));
+    log!(
+        "Warning: {:?} of class {:?} has no setter or ivar for the key {:?}, which Foundation would raise NSUnknownKeyException for; ignoring it",
+        this, class_name_string, key_string
+    );
 }
 
 - (())willChangeValueForKey:(id)_key { // NSString *
