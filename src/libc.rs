@@ -13,6 +13,7 @@ mod generic_char;
 
 pub mod arpa;
 pub mod clocale;
+pub mod compiler_rt;
 pub mod crypto;
 pub mod ctype;
 pub mod cxxabi;
@@ -64,6 +65,7 @@ pub const DYLIB: crate::dyld::HostDylib = crate::dyld::HostDylib {
     function_exports: &[
         arpa::inet::FUNCTIONS,
         clocale::FUNCTIONS,
+        compiler_rt::FUNCTIONS,
         ctype::FUNCTIONS,
         cxxabi::FUNCTIONS,
         crypto::FUNCTIONS,

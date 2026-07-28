@@ -373,12 +373,31 @@ fn objc_msgSend_inner(
 
     let orig_class = super2.unwrap_or_else(|| ObjC::read_isa(receiver, &env.mem));
     if orig_class == nil {
-        // A nil isa on a non-nil receiver means a freed object is being messaged
-        // (typically an over-release). Dump guest state so the offending call
-        // site can be found, as the "does not respond to selector" panic does.
+        // A nil isa on a non-nil receiver means a freed object is being messaged,
+        // typically after an over-release.
+        //
+        // On Apple's runtime this is undefined behaviour that very often does
+        // nothing visible: the memory has not been reused yet, or the object was
+        // a constant string or other immortal whose release did nothing in the
+        // first place. So apps ship with this bug and work, and killing them
+        // here reports a real defect at the least useful possible moment — far
+        // from the over-release that caused it, with nothing on the stack that
+        // identifies the culprit. It was the second largest tapHLE-side crash in
+        // a survey of 1501 apps.
+        //
+        // Treat it as a message to nil, which is what the guest's own code is
+        // written to tolerate. The warning is not rate-limited, because how
+        // often this happens is itself the signal.
         let selector_str = selector.as_str(&env.mem).to_string();
-        env.dump_current_guest_state();
-        panic!("Receiver {receiver:?} has a nil isa while sending selector {selector_str:?}");
+        log!(
+            "Warning: sending {:?} to {:?}, which has already been deallocated. \
+             It was over-released elsewhere; treating this as a message to nil.",
+            selector_str,
+            receiver
+        );
+        // Same answer as the nil receiver above: zeroed return registers.
+        env.cpu.regs_mut()[0..2].fill(0);
+        return;
     }
     if !skip_initialize {
         maybe_initialize_class(env, receiver);

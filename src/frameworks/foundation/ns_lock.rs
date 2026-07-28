@@ -11,16 +11,18 @@
 
 use crate::environment::MutexType::PTHREAD_MUTEX_RECURSIVE;
 use crate::environment::{MutexId, PTHREAD_MUTEX_DEFAULT};
-use crate::frameworks::foundation::NSInteger;
+use crate::frameworks::foundation::{NSInteger, NSTimeInterval};
 use crate::libc::pthread::cond::{
     pthread_cond_broadcast, pthread_cond_destroy, pthread_cond_init, pthread_cond_signal,
-    pthread_cond_t, pthread_cond_wait,
+    pthread_cond_t, pthread_cond_timedwait, pthread_cond_wait,
 };
 use crate::libc::pthread::mutex::{
     pthread_mutex_destroy, pthread_mutex_init, pthread_mutex_lock, pthread_mutex_t,
     pthread_mutex_trylock, pthread_mutex_unlock,
 };
+use crate::libc::time::timespec;
 use crate::mem::{guest_size_of, ConstPtr, MutPtr};
+use crate::objc::msg_class;
 use crate::objc::{id, msg, nil, objc_classes, release, ClassExports, HostObject};
 
 struct NSLockHostObject {
@@ -188,12 +190,21 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (bool)waitUntilDate:(id)limit { // NSDate *
-    // A timed wait needs pthread_cond_timedwait, which tapHLE does not have.
-    // Waiting without the limit would hang an app that expected to be released
-    // by the deadline, so report the timeout instead: the caller re-checks its
-    // predicate and loops, which is the contract this method is used under.
-    log!("TODO: [(NSCondition *){:?} waitUntilDate:{:?}] cannot wait with a deadline; reporting a timeout", this, limit);
-    false
+    let deadline: NSTimeInterval = msg![env; limit timeIntervalSince1970];
+    // pthread_cond_timedwait takes an absolute time as a timespec, which is the
+    // same clock NSDate's interval-since-1970 is on.
+    let seconds = deadline.trunc().max(0.0);
+    let time = timespec {
+        tv_sec: seconds as _,
+        tv_nsec: ((deadline - seconds) * 1_000_000_000.0) as _,
+    };
+    let abs_time: MutPtr<timespec> = env.mem.alloc_and_write(time);
+    let &NSConditionLockHostObject { mutex, cond, .. } = env.objc.borrow(this);
+    let result = pthread_cond_timedwait(env, cond, mutex, abs_time.cast_const());
+    env.mem.free(abs_time.cast());
+    // Zero means signalled before the deadline; anything else is the timeout,
+    // which is what the caller re-checks its predicate for.
+    result == 0
 }
 
 - (())signal {
