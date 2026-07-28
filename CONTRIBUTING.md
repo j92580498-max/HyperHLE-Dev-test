@@ -50,6 +50,46 @@ Archive.org item reference is accepted only under the exact unavailable-build
 and verification protocol in `compatibility/README.md`; do not post guessed
 items or use an archive as a substitute for an actively marketed game.
 
+## Have a large app collection? Survey it instead of picking one app
+
+The highest-value thing a contributor with many IPAs can do is **not** to pick a
+favourite app and chase it. It is to measure where every app in the collection
+stops, so the project can fix the causes that block the most apps.
+
+```
+cargo build --release
+python dev-scripts/survey.py run --apps "D:\path\to\your ipas"
+python dev-scripts/survey.py rank
+python dev-scripts/survey.py rank --symbols
+```
+
+This launches each app briefly, records where it stopped, and ranks the causes
+by how many apps hit them. It is resumable, so a large collection can be left
+running overnight and picked up later.
+
+**The result file is yours and must never be committed or uploaded.** It lists
+the apps you own. The default path is outside the repository and `.gitignore`
+covers the pattern; share the *findings*, not the file. A useful contribution
+looks like:
+
+> Surveyed 900 apps. Top causes: 40 want `-[UIAlertView setMessage:]`, 31 die on
+> an unbound `UIApplicationLaunchOptionsURLKey`, 22 hit the same assertion at
+> `src/objc/messages.rs:402`.
+
+That is an issue anyone can act on, and it discloses nothing about your library.
+
+If you work with a coding agent, hand it the result file and ask it to implement
+the top causes as *general* emulator support rather than per-app special cases —
+`dev-docs/app-debugging-playbook.md` is the method, and `dev-scripts/` has tools
+for turning a fault address into a symbol name or a selector. Ask it to re-run
+the survey after each batch: the ranking moves as causes are cleared, and that
+loop is the point.
+
+A survey row is a few seconds of unattended running. It is **not** a
+compatibility rating and must not be filed as one — nothing in it presses a
+button, so an app waiting on a tap looks stuck. Ratings still come from actually
+playing the app under `compatibility/README.md`.
+
 ## Compatibility records and app branches
 
 `compatibility/README.md` is the canonical protocol. The maintainer may accept
