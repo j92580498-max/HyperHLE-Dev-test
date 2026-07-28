@@ -17,7 +17,7 @@
 
 use super::ns_string::{from_rust_string, to_rust_string};
 use super::{ns_dictionary, NSTimeInterval, NSUInteger};
-use crate::dyld::{ConstantExports, HostConstant};
+use crate::dyld::{export_c_func, ConstantExports, FunctionExports, HostConstant};
 use crate::frameworks::foundation::ns_run_loop::{
     add_perform_request, cancel_all_perform_requests_for_target, cancel_perform_requests,
 };
@@ -757,6 +757,36 @@ const NSKeyValueChangeNewKey: &str = "NSKeyValueChangeNewKey";
 const NSKeyValueChangeOldKey: &str = "NSKeyValueChangeOldKey";
 const NSKeyValueChangeIndexesKey: &str = "NSKeyValueChangeIndexesKey";
 const NSKeyValueChangeNotificationIsPriorKey: &str = "NSKeyValueChangeNotificationIsPriorKey";
+
+/// `NSAllocateObject(Class, extraBytes, zone)` — Foundation's own allocation
+/// entry point, which class methods call instead of `+alloc` when they were
+/// compiled against the C API. The extra bytes are for trailing storage a class
+/// declares beyond its ivars; nothing in tapHLE uses them, and a class that
+/// wanted them would need host-side support anyway, so a non-zero request is
+/// reported rather than silently under-allocated.
+fn NSAllocateObject(
+    env: &mut Environment,
+    class: Class,
+    extra_bytes: NSUInteger,
+    zone: MutVoidPtr,
+) -> id {
+    if extra_bytes != 0 {
+        log!(
+            "TODO: NSAllocateObject() asked for {} extra bytes, which are not allocated",
+            extra_bytes
+        );
+    }
+    msg![env; class allocWithZone:zone]
+}
+
+fn NSDeallocateObject(env: &mut Environment, object: id) {
+    () = msg![env; object dealloc];
+}
+
+pub const FUNCTIONS: FunctionExports = &[
+    export_c_func!(NSAllocateObject(_, _, _)),
+    export_c_func!(NSDeallocateObject(_)),
+];
 
 pub const CONSTANTS: ConstantExports = &[
     (

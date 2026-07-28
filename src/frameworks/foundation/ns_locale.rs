@@ -20,7 +20,40 @@ const NSLocaleCountryCode: &str = "NSLocaleCountryCode";
 const NSLocaleIdentifier: &str = "NSLocaleIdentifier";
 const NSLocaleLanguageCode: &str = "NSLocaleLanguageCode";
 
+/// Read by apps choosing between metric and imperial units. tapHLE reports the
+/// host region, and an unbound key is a null pointer the app dereferences.
+const NSLocaleUsesMetricSystem: &str = "NSLocaleUsesMetricSystem";
+const NSLocaleMeasurementSystem: &str = "NSLocaleMeasurementSystem";
+const NSLocaleDecimalSeparator: &str = "NSLocaleDecimalSeparator";
+const NSLocaleGroupingSeparator: &str = "NSLocaleGroupingSeparator";
+const NSLocaleCurrencySymbol: &str = "NSLocaleCurrencySymbol";
+const NSLocaleCurrencyCode: &str = "NSLocaleCurrencyCode";
+
 pub const CONSTANTS: ConstantExports = &[
+    (
+        "_NSLocaleUsesMetricSystem",
+        HostConstant::NSString(NSLocaleUsesMetricSystem),
+    ),
+    (
+        "_NSLocaleMeasurementSystem",
+        HostConstant::NSString(NSLocaleMeasurementSystem),
+    ),
+    (
+        "_NSLocaleDecimalSeparator",
+        HostConstant::NSString(NSLocaleDecimalSeparator),
+    ),
+    (
+        "_NSLocaleGroupingSeparator",
+        HostConstant::NSString(NSLocaleGroupingSeparator),
+    ),
+    (
+        "_NSLocaleCurrencySymbol",
+        HostConstant::NSString(NSLocaleCurrencySymbol),
+    ),
+    (
+        "_NSLocaleCurrencyCode",
+        HostConstant::NSString(NSLocaleCurrencyCode),
+    ),
     (
         "_NSLocaleCountryCode",
         HostConstant::NSString(NSLocaleCountryCode),

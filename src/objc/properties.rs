@@ -270,6 +270,49 @@ pub(super) fn objc_getProperty(
 /// Undocumented function (see link above) apparently used by auto-generated
 /// methods for properties to set an ivar and handle reference counting, copying
 /// and locking.
+/// The specialised entry points clang emits instead of `objc_setProperty` when
+/// the atomicity and copy behaviour are known at compile time. Each is that
+/// function with those two arguments already decided.
+pub(super) fn objc_setProperty_nonatomic(
+    env: &mut Environment,
+    this: id,
+    _cmd: SEL,
+    offset: GuestISize,
+    value: id,
+) {
+    objc_setProperty(env, this, _cmd, offset, value, false, 0)
+}
+
+pub(super) fn objc_setProperty_atomic(
+    env: &mut Environment,
+    this: id,
+    _cmd: SEL,
+    offset: GuestISize,
+    value: id,
+) {
+    objc_setProperty(env, this, _cmd, offset, value, true, 0)
+}
+
+pub(super) fn objc_setProperty_nonatomic_copy(
+    env: &mut Environment,
+    this: id,
+    _cmd: SEL,
+    offset: GuestISize,
+    value: id,
+) {
+    objc_setProperty(env, this, _cmd, offset, value, false, 1)
+}
+
+pub(super) fn objc_setProperty_atomic_copy(
+    env: &mut Environment,
+    this: id,
+    _cmd: SEL,
+    offset: GuestISize,
+    value: id,
+) {
+    objc_setProperty(env, this, _cmd, offset, value, true, 1)
+}
+
 pub(super) fn objc_setProperty(
     env: &mut Environment,
     this: id,

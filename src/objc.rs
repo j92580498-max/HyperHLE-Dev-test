@@ -64,7 +64,8 @@ use methods::{
 use objects::{objc_object, object_getClass, HostObjectEntry};
 use properties::{
     ivar_list_t, objc_copyStruct, objc_getProperty, objc_property_t, objc_setProperty,
-    property_list_t,
+    objc_setProperty_atomic, objc_setProperty_atomic_copy, objc_setProperty_nonatomic,
+    objc_setProperty_nonatomic_copy, property_list_t,
 };
 use selectors::{sel_getUid, sel_registerName};
 use synchronization::{objc_sync_enter, objc_sync_exit};
@@ -165,6 +166,10 @@ const FUNCTIONS: FunctionExports = &[
     export_c_func!(method_getTypeEncoding(_)),
     export_c_func!(method_exchangeImplementations(_, _)),
     export_c_func!(objc_lookUpClass(_)),
+    export_c_func!(objc_setProperty_nonatomic(_, _, _, _)),
+    export_c_func!(objc_setProperty_atomic(_, _, _, _)),
+    export_c_func!(objc_setProperty_nonatomic_copy(_, _, _, _)),
+    export_c_func!(objc_setProperty_atomic_copy(_, _, _, _)),
     export_c_func!(objc_msgSend(_, _)),
     export_c_func!(objc_msgSend_stret(_, _, _)),
     export_c_func!(objc_msgSendSuper2(_, _)),

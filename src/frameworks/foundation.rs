@@ -141,6 +141,7 @@ pub const DYLIB: crate::dyld::HostDylib = crate::dyld::HostDylib {
     function_exports: &[
         FUNCTIONS,
         ns_exception::FUNCTIONS,
+        ns_object::FUNCTIONS,
         ns_file_manager::FUNCTIONS,
         ns_log::FUNCTIONS,
         ns_objc_runtime::FUNCTIONS,

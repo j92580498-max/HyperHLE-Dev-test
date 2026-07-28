@@ -359,7 +359,18 @@ pub const CLASSES: ClassExports = objc_classes! {
 /// dereferencing the name, so leaving it unbound is a null read.
 const NSUserDefaultsDidChangeNotification: &str = "NSUserDefaultsDidChangeNotification";
 
-pub const CONSTANTS: ConstantExports = &[(
-    "_NSUserDefaultsDidChangeNotification",
-    HostConstant::NSString(NSUserDefaultsDidChangeNotification),
-)];
+/// Never posted: the store is permanently empty, so nothing ever changes
+/// externally. Apps observe it, and observing dereferences the name.
+const NSUbiquitousKeyValueStoreDidChangeExternallyNotification: &str =
+    "NSUbiquitousKeyValueStoreDidChangeExternallyNotification";
+
+pub const CONSTANTS: ConstantExports = &[
+    (
+        "_NSUbiquitousKeyValueStoreDidChangeExternallyNotification",
+        HostConstant::NSString(NSUbiquitousKeyValueStoreDidChangeExternallyNotification),
+    ),
+    (
+        "_NSUserDefaultsDidChangeNotification",
+        HostConstant::NSString(NSUserDefaultsDidChangeNotification),
+    ),
+];
