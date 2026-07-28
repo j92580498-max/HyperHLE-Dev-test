@@ -39,6 +39,8 @@ pub const ENOTSUP: i32 = 45;
 pub const ECONNRESET: i32 = 54;
 pub const ETIMEDOUT: i32 = 60;
 pub const EOVERFLOW: i32 = 84;
+/// Darwin's "attribute not found", reported by the extended-attribute calls.
+pub const ENOATTR: i32 = 93;
 
 #[derive(Default)]
 pub struct State {
@@ -126,6 +128,7 @@ fn strerror(env: &mut Environment, err_num: i32) -> ConstPtr<u8> {
             EAGAIN => "Resource temporarily unavailable",
             EPROTONOSUPPORT => "Protocol not supported",
             EAFNOSUPPORT => "Address family not supported by protocol family",
+            ENOATTR => "Attribute not found",
             ENOTSUP => "Operation not supported",
             ECONNRESET => "Connection reset by peer",
             ETIMEDOUT => "Operation timed out",
