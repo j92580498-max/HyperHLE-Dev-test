@@ -46,6 +46,7 @@ pub mod sys;
 pub mod sysctl;
 pub mod time;
 pub mod unistd;
+pub mod unwind;
 pub mod wchar;
 pub mod zlib;
 
@@ -111,6 +112,7 @@ pub const DYLIB: crate::dyld::HostDylib = crate::dyld::HostDylib {
         stdlib::FUNCTIONS,
         stdlib::qsort::FUNCTIONS,
         string::FUNCTIONS,
+        unwind::FUNCTIONS,
         sys::mman::FUNCTIONS,
         sys::mount::FUNCTIONS,
         sys::ptrace::FUNCTIONS,
@@ -148,4 +150,5 @@ pub struct State {
     mach_vm: mach::vm_map::State,
     malloc: malloc::State,
     mman: sys::mman::State,
+    unwind: unwind::State,
 }
