@@ -104,8 +104,9 @@ watch the agent's progress. Automated frame capture and coordinate-based input
 are encouraged for repeatability, but human-observed rendering, interaction,
 orientation, and audio remain distinct evidence.
 
-For database entry, level five must use an Archive content-hash-verified
-artifact against a committed tapHLE revision. Full playability is not required:
+For database entry, level five must name the app build it was earned on, read
+from `tapHLE --info`, against a committed tapHLE revision. Full playability is
+not required:
 a reproducible boot, menu, or in-game milestone can justify promoting the
 branch when its remaining blocker is recorded and regression checks pass.
 
