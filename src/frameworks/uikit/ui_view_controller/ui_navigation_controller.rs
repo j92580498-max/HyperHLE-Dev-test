@@ -668,6 +668,22 @@ pub const CLASSES: ClassExports = objc_classes! {
     this
 }
 
+// A bar button item is not a UIControl, but apps configure it as though it
+// were — this was the single most common missing selector once bar items began
+// decoding from nibs, in 40 apps. A bar item has exactly one thing it can do,
+// so the event mask has nothing to select between and the target/action pair
+// lands where -setTarget:/-setAction: would have put it.
+- (())addTarget:(id)target action:(SEL)action forControlEvents:(NSUInteger)_events {
+    let host_object = env.objc.borrow_mut::<UIBarButtonItemHostObject>(this);
+    host_object.target = target;
+    host_object.action = Some(action);
+}
+- (())removeTarget:(id)_target action:(SEL)_action forControlEvents:(NSUInteger)_events {
+    let host_object = env.objc.borrow_mut::<UIBarButtonItemHostObject>(this);
+    host_object.target = nil;
+    host_object.action = None;
+}
+
 - (id)initWithTitle:(id)title // NSString*
               style:(NSInteger)_style
              target:(id)target

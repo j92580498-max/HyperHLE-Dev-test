@@ -158,6 +158,14 @@ def load_slices(ipa_path):
 
 
 def candidates_for(image, pc, thumb, window=48):
+    # Do not widen this hoping to attribute more faults; it was tried at 256 and
+    # attributed exactly the same twelve of seventy, while adding false
+    # candidates. The unattributed ones are not missing imports whose load was
+    # simply out of reach — they are null pointers from somewhere else entirely
+    # (an uninitialised object field, a subsystem that failed to start), and no
+    # amount of looking for a symbol-pointer load will name them. Diagnosing
+    # those means reading each one, which is why they are a long tail rather
+    # than one shared cause.
     """PC-relative addresses computed shortly before `pc` that name an import."""
     file_pos = image.file_offset(pc)
     if file_pos is None:
