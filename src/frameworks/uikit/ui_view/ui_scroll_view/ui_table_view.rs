@@ -31,7 +31,7 @@ use crate::frameworks::foundation::ns_index_path::{for_row_in_section, section_a
 use crate::frameworks::foundation::{NSInteger, NSUInteger};
 use crate::objc::{
     id, impl_HostObject_with_superclass, msg, msg_class, msg_super, nil, objc_classes, release,
-    retain, ClassExports, HostObject, NSZonePtr,
+    retain, ClassExports, NSZonePtr,
 };
 use crate::Environment;
 

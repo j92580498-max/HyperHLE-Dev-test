@@ -553,9 +553,32 @@ const UIApplicationWillEnterForegroundNotification: &str =
     "UIApplicationWillEnterForegroundNotification";
 const UIApplicationWillResignActiveNotification: &str = "UIApplicationWillResignActiveNotification";
 const UIApplicationWillTerminateNotification: &str = "UIApplicationWillTerminateNotification";
-/// Other app notifications
+/// Status bar notifications, and the `userInfo` keys they carry
+const UIApplicationWillChangeStatusBarOrientationNotification: &str =
+    "UIApplicationWillChangeStatusBarOrientationNotification";
+const UIApplicationDidChangeStatusBarOrientationNotification: &str =
+    "UIApplicationDidChangeStatusBarOrientationNotification";
+const UIApplicationWillChangeStatusBarFrameNotification: &str =
+    "UIApplicationWillChangeStatusBarFrameNotification";
+const UIApplicationDidChangeStatusBarFrameNotification: &str =
+    "UIApplicationDidChangeStatusBarFrameNotification";
+const UIApplicationStatusBarOrientationUserInfoKey: &str =
+    "UIApplicationStatusBarOrientationUserInfoKey";
+const UIApplicationStatusBarFrameUserInfoKey: &str = "UIApplicationStatusBarFrameUserInfoKey";
+/// Launch option keys. tapHLE always passes an empty launch options dictionary,
+/// so looking any of these up yields nil, which is the same answer the real
+/// thing gives for an ordinary launch from the home screen. They still have to
+/// exist: an app that reads its launch options dereferences the key without
+/// checking it, so leaving one unbound is a null pointer waiting to be read.
+const UIApplicationLaunchOptionsURLKey: &str = "UIApplicationLaunchOptionsURLKey";
+const UIApplicationLaunchOptionsSourceApplicationKey: &str =
+    "UIApplicationLaunchOptionsSourceApplicationKey";
 const UIApplicationLaunchOptionsRemoteNotificationKey: &str =
     "UIApplicationLaunchOptionsRemoteNotificationKey";
+const UIApplicationLaunchOptionsLocalNotificationKey: &str =
+    "UIApplicationLaunchOptionsLocalNotificationKey";
+const UIApplicationLaunchOptionsAnnotationKey: &str = "UIApplicationLaunchOptionsAnnotationKey";
+/// Other app notifications
 const UIApplicationDidReceiveMemoryWarningNotification: &str =
     "UIApplicationDidReceiveMemoryWarningNotification";
 
@@ -591,8 +614,48 @@ pub const CONSTANTS: ConstantExports = &[
         HostConstant::NSString(UIApplicationDidReceiveMemoryWarningNotification),
     ),
     (
+        "_UIApplicationWillChangeStatusBarOrientationNotification",
+        HostConstant::NSString(UIApplicationWillChangeStatusBarOrientationNotification),
+    ),
+    (
+        "_UIApplicationDidChangeStatusBarOrientationNotification",
+        HostConstant::NSString(UIApplicationDidChangeStatusBarOrientationNotification),
+    ),
+    (
+        "_UIApplicationWillChangeStatusBarFrameNotification",
+        HostConstant::NSString(UIApplicationWillChangeStatusBarFrameNotification),
+    ),
+    (
+        "_UIApplicationDidChangeStatusBarFrameNotification",
+        HostConstant::NSString(UIApplicationDidChangeStatusBarFrameNotification),
+    ),
+    (
+        "_UIApplicationStatusBarOrientationUserInfoKey",
+        HostConstant::NSString(UIApplicationStatusBarOrientationUserInfoKey),
+    ),
+    (
+        "_UIApplicationStatusBarFrameUserInfoKey",
+        HostConstant::NSString(UIApplicationStatusBarFrameUserInfoKey),
+    ),
+    (
+        "_UIApplicationLaunchOptionsURLKey",
+        HostConstant::NSString(UIApplicationLaunchOptionsURLKey),
+    ),
+    (
+        "_UIApplicationLaunchOptionsSourceApplicationKey",
+        HostConstant::NSString(UIApplicationLaunchOptionsSourceApplicationKey),
+    ),
+    (
         "_UIApplicationLaunchOptionsRemoteNotificationKey",
         HostConstant::NSString(UIApplicationLaunchOptionsRemoteNotificationKey),
+    ),
+    (
+        "_UIApplicationLaunchOptionsLocalNotificationKey",
+        HostConstant::NSString(UIApplicationLaunchOptionsLocalNotificationKey),
+    ),
+    (
+        "_UIApplicationLaunchOptionsAnnotationKey",
+        HostConstant::NSString(UIApplicationLaunchOptionsAnnotationKey),
     ),
 ];
 

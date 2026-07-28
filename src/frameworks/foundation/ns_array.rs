@@ -132,6 +132,12 @@ pub const CLASSES: ClassExports = objc_classes! {
 // These probably comes from some category related to plists.
 - (id)initWithContentsOfFile:(id)path { // NSString*
     release(env, this);
+    if path == nil {
+        // There is no file to read, so there is no array. Apps reach here by
+        // building a path out of something that turned out to be nil, and
+        // expect the same nil they would get for a file that does not exist.
+        return nil;
+    }
     let path = ns_string::to_rust_string(env, path);
     deserialize_plist_from_file(
         env,
@@ -382,6 +388,9 @@ pub const CLASSES: ClassExports = objc_classes! {
 // These probably comes from some category related to plists.
 - (id)initWithContentsOfFile:(id)path { // NSString*
     release(env, this);
+    if path == nil {
+        return nil;
+    }
     let path = ns_string::to_rust_string(env, path);
     let tmp = deserialize_plist_from_file(
         env,

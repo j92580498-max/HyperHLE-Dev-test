@@ -474,14 +474,37 @@ pub fn run_run_loop(
                     } = selector_objects.remove(index).unwrap();
                     log_dbg!("Running object selector request {target:?} {:?} {argument:?} on run loop {run_loop:?}", selector.as_str(env.mem.as_mut()));
 
-                    if selector.as_str(&env.mem).ends_with(':') {
-                        () = msg_send(env, (target, selector, argument));
-                    } else {
-                        // `performSelector:withObject:afterDelay:` may carry
-                        // an object even when the target selector has no
-                        // parameter. The Objective-C call has no slot for it,
-                        // so dispatch the selector and discard the object.
-                        () = msg_send(env, (target, selector));
+                    // `performSelector:withObject:afterDelay:` supplies at most
+                    // one object, but the selector it names may take a
+                    // different number of arguments. Foundation builds an
+                    // NSInvocation sized from the target's method signature and
+                    // sets only the argument it was given, so the rest arrive
+                    // as nil. Matching that matters: dispatching with too few
+                    // arguments leaves the remaining registers holding whatever
+                    // the last call left there, and the callee cannot tell that
+                    // from a real object — a nil check on it passes, and the
+                    // guest then messages a stale pointer.
+                    let parameters = selector.as_str(&env.mem).matches(':').count();
+                    match parameters {
+                        0 => {
+                            // No slot for the object, so discard it.
+                            () = msg_send(env, (target, selector));
+                        }
+                        1 => () = msg_send(env, (target, selector, argument)),
+                        2 => () = msg_send(env, (target, selector, argument, nil)),
+                        3 => () = msg_send(env, (target, selector, argument, nil, nil)),
+                        4 => () = msg_send(env, (target, selector, argument, nil, nil, nil)),
+                        _ => {
+                            // Beyond this the argument list would have to be
+                            // built dynamically. Dispatching anyway would leave
+                            // the extra arguments holding stale registers, so
+                            // say so rather than corrupt the call.
+                            log!(
+                                "TODO: performSelector: on {:?} takes {} arguments, which is more than can be filled in; not dispatching it",
+                                selector.as_str(&env.mem),
+                                parameters,
+                            );
+                        }
                     }
 
                     release(env, target);
