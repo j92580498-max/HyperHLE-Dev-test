@@ -17,6 +17,33 @@
 - Add MP3 streaming support, AudioQueue OpenAL source cleanup, clean
   secondary-thread shutdown, and state-aware EAGL frame capture for
   agent-driven Windows testing.
+- Start hundreds of apps that previously died before showing anything. Support
+  was chosen by surveying where 1501 apps stop and fixing the most common
+  causes: Objective-C autorelease-pool and exception-handler entry points,
+  runtime class creation, integer-division and C++ allocation builtins, and a
+  large set of Foundation, UIKit, Core Animation, Media Player and Audio
+  Session constants that apps read during startup.
+- Stop treating ordinary runtime conditions as fatal. Retaining a constant
+  string, asking for a class that does not exist, an out-of-range array index,
+  a mapping the allocator cannot satisfy, and messaging an object that was
+  released too many times are all defined or recoverable on a device, and each
+  previously ended the app.
+- Add UITabBarController, UIToolbar, UIProgressView, UIPageControl,
+  NSURLProtocol, NSCondition and NSUbiquitousKeyValueStore, and let nibs decode
+  bar items, colours in more colour spaces, and navigation and scroll view
+  properties.
+- Verified three-star in-game milestones for Tap Tap Revenge 2, Omium,
+  Parachute Panic HD and Scoops, and a two-star start for JellyCar.
+
+### Known limitations
+
+- Throwing an Objective-C or C++ exception is still unimplemented and reports
+  itself clearly; registering the handlers, which is what almost every app
+  actually needed, works.
+- UITabBarController and UIToolbar hold and report their contents but are not
+  drawn, so an app relying on the tab bar to change tabs stays on the first tab.
+- Zoom, pattern colours and content gravity are stored and reported back rather
+  than applied.
 
 Earlier release history belongs to the upstream touchHLE project and can be
 found in its repository history.
