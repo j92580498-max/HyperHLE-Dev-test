@@ -23,7 +23,7 @@ use crate::frameworks::foundation::ns_run_loop::{
 };
 use crate::frameworks::foundation::ns_thread::detach_new_thread_inner;
 use crate::libc::semaphore::{host_destroy_semaphore, sem_wait};
-use crate::mem::{ConstVoidPtr, MutVoidPtr};
+use crate::mem::{ConstVoidPtr, MutVoidPtr, Ptr};
 use crate::objc::{
     autorelease, id, msg, msg_class, msg_send, msg_send_no_type_checking, nil, objc_classes,
     retain, Class, ClassExports, NSZonePtr, ObjC, TrivialHostObject, IMP, SEL,
@@ -786,7 +786,77 @@ fn NSDeallocateObject(env: &mut Environment, object: id) {
     () = msg![env; object dealloc];
 }
 
+/// `NSDefaultMallocZone` — the zone Foundation allocates from by default.
+///
+/// Zones were a way to place related allocations near each other, and have been
+/// vestigial since well before this era: on iPhone OS every zone is the one
+/// malloc heap. tapHLE has no zones at all, and its `allocWithZone:` ignores the
+/// argument, so a zone here is a token an app passes back rather than something
+/// it can act on.
+///
+/// The token is null, which is what Foundation itself accepts everywhere a zone
+/// is taken and what `+alloc` already passes. Handing back a fabricated non-null
+/// pointer would invite an app to dereference it.
+fn NSDefaultMallocZone(_env: &mut Environment) -> MutVoidPtr {
+    Ptr::null()
+}
+
+fn NSCreateZone(
+    _env: &mut Environment,
+    _start_size: NSUInteger,
+    _granularity: NSUInteger,
+    _can_free: bool,
+) -> MutVoidPtr {
+    // One heap, so a "new" zone is the same zone.
+    Ptr::null()
+}
+
+fn NSRecycleZone(_env: &mut Environment, _zone: MutVoidPtr) {}
+
+fn NSZoneFromPointer(_env: &mut Environment, _ptr: MutVoidPtr) -> MutVoidPtr {
+    Ptr::null()
+}
+
+fn NSZoneMalloc(env: &mut Environment, _zone: MutVoidPtr, size: NSUInteger) -> MutVoidPtr {
+    env.mem.alloc(size.max(1))
+}
+
+fn NSZoneCalloc(
+    env: &mut Environment,
+    _zone: MutVoidPtr,
+    count: NSUInteger,
+    size: NSUInteger,
+) -> MutVoidPtr {
+    env.mem.calloc(count.saturating_mul(size).max(1))
+}
+
+fn NSZoneRealloc(
+    env: &mut Environment,
+    _zone: MutVoidPtr,
+    ptr: MutVoidPtr,
+    size: NSUInteger,
+) -> MutVoidPtr {
+    if ptr.is_null() {
+        return env.mem.alloc(size.max(1));
+    }
+    env.mem.realloc(ptr, size.max(1))
+}
+
+fn NSZoneFree(env: &mut Environment, _zone: MutVoidPtr, ptr: MutVoidPtr) {
+    if !ptr.is_null() {
+        env.mem.free(ptr);
+    }
+}
+
 pub const FUNCTIONS: FunctionExports = &[
+    export_c_func!(NSDefaultMallocZone()),
+    export_c_func!(NSCreateZone(_, _, _)),
+    export_c_func!(NSRecycleZone(_)),
+    export_c_func!(NSZoneFromPointer(_)),
+    export_c_func!(NSZoneMalloc(_, _)),
+    export_c_func!(NSZoneCalloc(_, _, _)),
+    export_c_func!(NSZoneRealloc(_, _, _)),
+    export_c_func!(NSZoneFree(_, _)),
     export_c_func!(NSAllocateObject(_, _, _)),
     export_c_func!(NSDeallocateObject(_)),
 ];
