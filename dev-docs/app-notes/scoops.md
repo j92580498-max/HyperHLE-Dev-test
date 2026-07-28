@@ -55,8 +55,21 @@ Still dies during startup with `Error during CPU execution: MemoryError`, on
 `73a43594`, after a session that added a great deal of Foundation, UIKit and
 CoreGraphics surface. None of it touched this.
 
-Worth noting as a group: **Scoops, JellyCar 1 and JellyCar 3 all fail with the
-same guest `MemoryError`** on the same build. Three apps sharing one symptom is
-worth one investigation rather than three — the register dump and a disassembly
-of the faulting PC, per this playbook's guidance, starting with whichever has the
-smallest binary.
+Scoops, JellyCar 1 and JellyCar 3 all fail with the same guest `MemoryError` on
+the same build, and it is tempting to treat that as one bug. **The register
+dumps do not support it**:
+
+```text
+JellyCar 1   PC 0x30190   LR 0x30187   R0 0xb3787344 (a float bit pattern)  R3 0
+JellyCar 3   PC 0x71aea   LR 0x71a6d   R1 0x001e2988                        R3 1
+Scoops       PC 0x8e1b0   LR 0x8e1a0   R1 0x00020a9c                        R2 0
+```
+
+Three unrelated fault sites, and since these are three different binaries the
+addresses are not comparable in the first place — so a shared symptom here is
+close to no evidence of a shared cause. `MemoryError` is simply what tapHLE
+reports for *any* bad guest access.
+
+Each needs its own disassembly around its own faulting PC. An earlier version of
+this note proposed one investigation for all three; that was optimistic and is
+retracted.
