@@ -9,7 +9,7 @@ You can use your own coding agent to work on it. You do not need to know how to
 program, and you do not need to wait for someone else to take your request.
 tapHLE gives the agent rules, tests, and a step-by-step debugging guide.
 
-**[Start here: help a game work with a coding agent](HELP_A_GAME.md)**
+**[Start here: make a game work with a coding agent](HELP_A_GAME.md)**
 
 Opening an issue does not promise that another contributor will do the work.
 It gives you and your agent a place to record the goal and avoid duplicate
