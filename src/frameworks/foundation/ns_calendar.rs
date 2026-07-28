@@ -12,6 +12,7 @@
 //! Locales, time zones and non-Gregorian calendars are not modelled.
 
 use super::{ns_string, NSInteger, NSTimeInterval, NSUInteger};
+use crate::dyld::{ConstantExports, HostConstant};
 use crate::frameworks::core_foundation::time::SECS_FROM_UNIX_TO_APPLE_EPOCHS;
 use crate::libc::time::{calendar_date_to_timestamp, time_t, timestamp_to_calendar_date, tm};
 use crate::objc::{
@@ -23,6 +24,74 @@ use crate::Environment;
 /// `NSUndefinedDateComponent` — the value an unset component reads back as.
 /// This is `NSIntegerMax`, which is `i32::MAX` on the 32-bit guest ABI.
 const NS_UNDEFINED_DATE_COMPONENT: NSInteger = NSInteger::MAX;
+
+/// Calendar identifiers. Their values are the CoreFoundation identifier strings,
+/// which is what `-initWithCalendarIdentifier:` above already compares against.
+///
+/// Only the Gregorian calendar is actually implemented, so an app asking for one
+/// of the others gets Gregorian behaviour. Exporting them anyway is still
+/// strictly better than leaving them unbound: an unbound one is a null pointer
+/// that the app dereferences without checking, and a survey of 1300 apps found
+/// twelve — Bad Piggies, Pitfall!, Organ Trail and others — dying on exactly
+/// that read of `NSBuddhistCalendar` before reaching any of their own code.
+const NSGregorianCalendar: &str = "gregorian";
+const NSBuddhistCalendar: &str = "buddhist";
+const NSChineseCalendar: &str = "chinese";
+const NSHebrewCalendar: &str = "hebrew";
+const NSIslamicCalendar: &str = "islamic";
+const NSIslamicCivilCalendar: &str = "islamic-civil";
+const NSJapaneseCalendar: &str = "japanese";
+const NSRepublicOfChinaCalendar: &str = "roc";
+const NSPersianCalendar: &str = "persian";
+const NSIndianCalendar: &str = "indian";
+const NSISO8601Calendar: &str = "iso8601";
+
+pub const CONSTANTS: ConstantExports = &[
+    (
+        "_NSGregorianCalendar",
+        HostConstant::NSString(NSGregorianCalendar),
+    ),
+    (
+        "_NSBuddhistCalendar",
+        HostConstant::NSString(NSBuddhistCalendar),
+    ),
+    (
+        "_NSChineseCalendar",
+        HostConstant::NSString(NSChineseCalendar),
+    ),
+    (
+        "_NSHebrewCalendar",
+        HostConstant::NSString(NSHebrewCalendar),
+    ),
+    (
+        "_NSIslamicCalendar",
+        HostConstant::NSString(NSIslamicCalendar),
+    ),
+    (
+        "_NSIslamicCivilCalendar",
+        HostConstant::NSString(NSIslamicCivilCalendar),
+    ),
+    (
+        "_NSJapaneseCalendar",
+        HostConstant::NSString(NSJapaneseCalendar),
+    ),
+    (
+        "_NSRepublicOfChinaCalendar",
+        HostConstant::NSString(NSRepublicOfChinaCalendar),
+    ),
+    (
+        "_NSPersianCalendar",
+        HostConstant::NSString(NSPersianCalendar),
+    ),
+    (
+        "_NSIndianCalendar",
+        HostConstant::NSString(NSIndianCalendar),
+    ),
+    (
+        "_NSISO8601Calendar",
+        HostConstant::NSString(NSISO8601Calendar),
+    ),
+];
 
 // Pre-iOS-8 `NSCalendarUnit` flags (the same bits as `kCFCalendarUnit*`), which
 // is what an iPhone OS 3.2 app uses.
@@ -128,6 +197,15 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (id)initWithCalendarIdentifier:(id)identifier { // NSString*
+    if identifier != nil {
+        let name = ns_string::to_rust_string(env, identifier);
+        if name != NSGregorianCalendar {
+            log!(
+                "TODO: [NSCalendar initWithCalendarIdentifier:{:?}] - only the Gregorian calendar is implemented, so this will behave as Gregorian",
+                name
+            );
+        }
+    }
     let identifier: id = msg![env; identifier copy];
     env.objc.borrow_mut::<NSCalendarHostObject>(this).identifier = identifier;
     this

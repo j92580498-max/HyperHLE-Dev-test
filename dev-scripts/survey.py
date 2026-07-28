@@ -360,6 +360,87 @@ def cmd_reclassify(args):
     print(f"re-keyed {changed} of {len(rows)} rows")
 
 
+FAULT_PC = re.compile(r"\bPC: (0x[0-9a-f]+)")
+FAULT_ADDR = re.compile(r"null-page access at (0x[0-9a-f]+)")
+
+
+def _load_attributor():
+    """Import attribute-fault.py, whose hyphenated name is not a module name."""
+    import importlib.util
+
+    path = Path(__file__).with_name("attribute-fault.py")
+    spec = importlib.util.spec_from_file_location("attribute_fault", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def cmd_attribute(args):
+    """Name the import behind each null dereference, and rank by apps killed.
+
+    This is the step that makes the symbol ranking mean something. `rank
+    --symbols` counts how often an import is *referenced*, which over-weights
+    symbols that every binary mentions and never uses. This counts how often one
+    actually killed an app, by resolving the faulting instruction back to the
+    slot it read through.
+
+    A result is `confirmed` when the symbol it names also appears in the list
+    tapHLE reported as unbound for that same app — two independent routes
+    agreeing that this exact import had no value.
+    """
+    rows = load_catalogue(Path(args.catalogue))
+    attributor = _load_attributor()
+
+    faulted = [r for r in rows if r["reason_key"] == "guest:memory-error"]
+    by_symbol = collections.defaultdict(set)
+    unattributed = []
+    null_deref = 0
+
+    for row in faulted:
+        tail = row.get("raw_tail") or ""
+        where = FAULT_ADDR.search(tail) or FAULT_ADDR.search(row.get("detail") or "")
+        # A fault at exactly 0 is a null import being read through. A fault at a
+        # small non-zero offset is a field of a null object, which is a failed
+        # subsystem rather than a missing symbol, and is not attributable here.
+        if not where or int(where.group(1), 16) != 0:
+            continue
+        null_deref += 1
+        pc = FAULT_PC.search(tail)
+        if not pc:
+            unattributed.append((row, "no PC in the retained output"))
+            continue
+        try:
+            results = attributor.attribute(
+                row["ipa"], int(pc.group(1), 16), set(row.get("missing_symbols") or [])
+            )
+        except Exception as e:  # a malformed or unusual binary must not stop the pass
+            unattributed.append((row, f"{type(e).__name__}: {e}"))
+            continue
+        if not results:
+            unattributed.append((row, f"no symbol-pointer load near {pc.group(1)}"))
+            continue
+        best = results[0]
+        if args.confirmed_only and not best["confirmed"]:
+            unattributed.append((row, f"unconfirmed guess {best['symbol']}"))
+            continue
+        by_symbol[best["symbol"]].add(row.get("bundle_identifier") or row["ipa"])
+
+    print(
+        f"{len(faulted)} apps died on a guest MemoryError; {null_deref} of those "
+        f"read through a null pointer at address 0.\n"
+    )
+    ranked = sorted(by_symbol.items(), key=lambda kv: (-len(kv[1]), kv[0]))
+    print("imports that actually killed apps:\n")
+    for symbol, apps in ranked[: args.top]:
+        print(f"{len(apps):5d}  {symbol}")
+    attributed = sum(len(a) for a in by_symbol.values())
+    print(f"\nattributed {attributed}, unattributed {len(unattributed)}")
+    if args.verbose:
+        for row, why in unattributed:
+            name = row.get("display_name") or Path(row["ipa"]).stem
+            print(f"  {name}: {why}")
+
+
 def cmd_rank(args):
     rows = load_catalogue(Path(args.catalogue))
     if not rows:
@@ -458,6 +539,18 @@ def main():
     )
     recl.add_argument("--verbose", action="store_true")
     recl.set_defaults(func=cmd_reclassify)
+
+    attr = sub.add_parser(
+        "attribute", help="name the import behind each null dereference"
+    )
+    attr.add_argument("--top", type=int, default=30)
+    attr.add_argument("--verbose", action="store_true", help="list what could not be attributed")
+    attr.add_argument(
+        "--confirmed-only",
+        action="store_true",
+        help="count only symbols tapHLE also reported unbound for that app",
+    )
+    attr.set_defaults(func=cmd_attribute)
 
     rank = sub.add_parser("rank", help="rank causes by how many apps hit them")
     rank.add_argument("--symbols", action="store_true", help="rank unbound imports instead")

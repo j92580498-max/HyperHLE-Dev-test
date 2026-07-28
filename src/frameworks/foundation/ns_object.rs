@@ -17,6 +17,7 @@
 
 use super::ns_string::{from_rust_string, to_rust_string};
 use super::{ns_dictionary, NSTimeInterval, NSUInteger};
+use crate::dyld::{ConstantExports, HostConstant};
 use crate::frameworks::foundation::ns_run_loop::{
     add_perform_request, cancel_all_perform_requests_for_target, cancel_perform_requests,
 };
@@ -158,6 +159,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 - (id)self {
     this
 }
+
 
 - (NSUInteger)retainCount {
     env.objc.get_refcount(this).into()
@@ -743,3 +745,38 @@ fn kvc_get_boxed_value(env: &mut Environment, this: id, getter: SEL) -> id {
         ),
     }
 }
+
+/// Keys of the change dictionary passed to a key-value observer.
+///
+/// tapHLE accepts KVO registration but never delivers a change, so nothing here
+/// builds such a dictionary. The symbols still have to exist: an app that
+/// observes anything references them to read the change out, and an unbound one
+/// is a null pointer it dereferences to do so.
+const NSKeyValueChangeKindKey: &str = "NSKeyValueChangeKindKey";
+const NSKeyValueChangeNewKey: &str = "NSKeyValueChangeNewKey";
+const NSKeyValueChangeOldKey: &str = "NSKeyValueChangeOldKey";
+const NSKeyValueChangeIndexesKey: &str = "NSKeyValueChangeIndexesKey";
+const NSKeyValueChangeNotificationIsPriorKey: &str = "NSKeyValueChangeNotificationIsPriorKey";
+
+pub const CONSTANTS: ConstantExports = &[
+    (
+        "_NSKeyValueChangeKindKey",
+        HostConstant::NSString(NSKeyValueChangeKindKey),
+    ),
+    (
+        "_NSKeyValueChangeNewKey",
+        HostConstant::NSString(NSKeyValueChangeNewKey),
+    ),
+    (
+        "_NSKeyValueChangeOldKey",
+        HostConstant::NSString(NSKeyValueChangeOldKey),
+    ),
+    (
+        "_NSKeyValueChangeIndexesKey",
+        HostConstant::NSString(NSKeyValueChangeIndexesKey),
+    ),
+    (
+        "_NSKeyValueChangeNotificationIsPriorKey",
+        HostConstant::NSString(NSKeyValueChangeNotificationIsPriorKey),
+    ),
+];

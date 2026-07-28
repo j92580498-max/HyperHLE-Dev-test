@@ -336,8 +336,10 @@ impl super::ObjC {
             panic!("No entry found for object {object:?}, it may have already been deallocated");
         };
         let Some(refcount) = entry.refcount.as_mut() else {
-            // Might mean a missing `retain` override.
-            panic!("Attempt to get refcount on static-lifetime object {object:?}!");
+            // Immortal objects have no count to report. Apple's runtime answers
+            // with a saturated value for these rather than treating the question
+            // as an error, and so does this.
+            return NonZeroU32::new(u32::MAX).unwrap();
         };
         *refcount
     }
@@ -350,8 +352,20 @@ impl super::ObjC {
             panic!("No entry found for object {object:?}, it may have already been deallocated");
         };
         let Some(refcount) = entry.refcount.as_mut() else {
-            // Might mean a missing `retain` override.
-            panic!("Attempt to increment refcount on static-lifetime object {object:?}!");
+            // A static-lifetime object is immortal, and retaining an immortal
+            // object is legal and does nothing — on Apple's runtime a constant
+            // string or a shared singleton behaves exactly this way. Aborting
+            // here treated ordinary, correct guest code as an error: it was the
+            // single largest tapHLE-side crash in a survey of 1300 apps.
+            //
+            // It can still indicate a missing `retain` override on a tapHLE
+            // class, which is why it is logged rather than passed over in
+            // silence.
+            log_once!(
+                "Note: retain on a static-lifetime object, which is a no-op. If an object \
+                 unexpectedly outlives its owner, a missing retain/release override is one cause."
+            );
+            return;
         };
         *refcount = refcount.checked_add(1).unwrap();
     }
@@ -368,8 +382,11 @@ impl super::ObjC {
             panic!("No entry found for object {object:?}, it may have already been deallocated");
         };
         let Some(refcount) = entry.refcount.as_mut() else {
-            // Might mean a missing `release` override.
-            panic!("Attempt to decrement refcount on static-lifetime object {object:?}!");
+            // The counterpart of the retain case above: releasing an immortal
+            // object is legal and does nothing. Returning false is what makes it
+            // a no-op — it says the object must not be deallocated, which is
+            // precisely what "immortal" means.
+            return false;
         };
         if refcount.get() == 1 {
             entry.refcount = None;

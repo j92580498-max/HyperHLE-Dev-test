@@ -15,6 +15,17 @@ pub type NSErrorDomain = id;
 
 pub const NSCocoaErrorDomain: &str = "NSCocoaErrorDomain";
 pub const NSOSStatusErrorDomain: &str = "NSOSStatusErrorDomain";
+/// The remaining error domains Foundation declares. Nothing here raises errors
+/// in them yet, but apps reference the symbols to compare against an error's
+/// domain, and an unbound one is a null pointer they dereference to do it.
+pub const NSPOSIXErrorDomain: &str = "NSPOSIXErrorDomain";
+pub const NSMachErrorDomain: &str = "NSMachErrorDomain";
+
+// `NSUnderlyingErrorKey` is exported from foundation.rs, with Apple's actual
+// value "NSUnderlyingError" rather than the symbol's own name.
+const NSFilePathErrorKey: &str = "NSFilePathErrorKey";
+const NSStringEncodingErrorKey: &str = "NSStringEncodingErrorKey";
+const NSLocalizedRecoverySuggestionErrorKey: &str = "NSLocalizedRecoverySuggestionErrorKey";
 
 const NSLocalizedDescriptionKey: &str = "NSLocalizedDescriptionKey";
 const NSLocalizedFailureReasonErrorKey: &str = "NSLocalizedFailureReasonErrorKey";
@@ -129,5 +140,25 @@ pub const CONSTANTS: ConstantExports = &[
     (
         "_NSOSStatusErrorDomain",
         HostConstant::NSString(NSOSStatusErrorDomain),
+    ),
+    (
+        "_NSPOSIXErrorDomain",
+        HostConstant::NSString(NSPOSIXErrorDomain),
+    ),
+    (
+        "_NSMachErrorDomain",
+        HostConstant::NSString(NSMachErrorDomain),
+    ),
+    (
+        "_NSFilePathErrorKey",
+        HostConstant::NSString(NSFilePathErrorKey),
+    ),
+    (
+        "_NSStringEncodingErrorKey",
+        HostConstant::NSString(NSStringEncodingErrorKey),
+    ),
+    (
+        "_NSLocalizedRecoverySuggestionErrorKey",
+        HostConstant::NSString(NSLocalizedRecoverySuggestionErrorKey),
     ),
 ];

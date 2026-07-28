@@ -127,13 +127,16 @@ pub const DYLIB: crate::dyld::HostDylib = crate::dyld::HostDylib {
     ],
     constant_exports: &[
         CONSTANTS,
+        ns_calendar::CONSTANTS,
         ns_error::CONSTANTS,
         ns_exception::CONSTANTS,
         ns_file_manager::CONSTANTS,
         ns_keyed_unarchiver::CONSTANTS,
         ns_locale::CONSTANTS,
+        ns_object::CONSTANTS,
         ns_run_loop::CONSTANTS,
         ns_url_connection::CONSTANTS,
+        ns_user_defaults::CONSTANTS,
     ],
     function_exports: &[
         FUNCTIONS,
@@ -248,11 +251,8 @@ const CONSTANTS: ConstantExports = &[
                 .cast_const()
         }),
     ),
-    // `NSGregorianCalendar` (the pre-iOS-8 calendar identifier) is an NSString
-    // whose value is "gregorian"; apps pass it to
-    // -[NSCalendar initWithCalendarIdentifier:]. Previously an unhandled
-    // non-lazy symbol left null, so dereferencing it crashed.
-    ("_NSGregorianCalendar", HostConstant::NSString("gregorian")),
+    // `NSGregorianCalendar` and its sibling calendar identifiers now live with
+    // the class that consumes them, in ns_calendar::CONSTANTS.
     // NSHTTPCookie property keys. Their values are the documented dictionary
     // keys; apps (e.g. via networking SDKs) reference them, and an unhandled
     // non-lazy symbol left null crashes on dereference.

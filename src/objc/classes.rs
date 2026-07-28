@@ -1253,6 +1253,20 @@ pub(super) fn objc_getClass(env: &mut Environment, name: ConstPtr<u8>) -> id {
         .unwrap_or_else(|| panic!("objc_getClass() for unimplemented class {name_str}"))
 }
 
+/// `objc_lookUpClass` — the same lookup as `objc_getClass`, except that a class
+/// the runtime does not know is reported as nil instead of being an error.
+///
+/// That difference is the entire reason apps call it: it is how you ask whether
+/// an optional class exists before using it, which is exactly what code guarding
+/// a newer-OS feature does. Treating an unknown name as fatal here would break
+/// the check it was written to perform.
+pub(super) fn objc_lookUpClass(env: &mut Environment, name: ConstPtr<u8>) -> id {
+    let Ok(name_str) = env.mem.cstr_at_utf8(name) else {
+        return nil;
+    };
+    env.objc.get_class(name_str, false, &env.mem).unwrap_or(nil)
+}
+
 pub(super) fn class_getSuperclass(env: &mut Environment, cls: Class) -> Class {
     env.objc.class_get_superclass(cls)
 }
