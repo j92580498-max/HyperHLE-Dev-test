@@ -72,12 +72,30 @@ DEFAULT_CATALOGUE = (
 # for follow-up with dev-scripts/disasm-guest-fault.py.
 CLASSIFIERS = [
     (
+        "unimplemented-function",
+        re.compile(r"Call to unimplemented function (?P<sym>\S+)"),
+        lambda m: (f"function:{m.group('sym')}", m.group(0)),
+    ),
+    (
         "selector",
         re.compile(
-            r'(?:Object|Class) 0x[0-9a-f]+ \((?:metaclass )?"(?P<cls>[^"]+)", 0x[0-9a-f]+\) '
-            r'does not respond to selector "(?P<sel>[^"]+)"'
+            r'(?:Object|Class) .*? \((?:class |metaclass )?"(?P<cls>[^"]+)", .*?\)'
+            r'.*? does not respond to selector "(?P<sel>[^"]+)"'
         ),
-        lambda m: (f"selector:{m.group('cls')}.{m.group('sel')}", m.group(0)),
+        lambda m: (f"selector:{m.group('cls')}.{m.group('sel')}", m.group(0)[:200]),
+    ),
+    (
+        "unimplemented-class-method",
+        re.compile(
+            r'Class "(?P<cls>[^"]+)" \([^)]*\) is unimplemented\. '
+            r'Call to \w+ method "(?P<sel>[^"]+)"'
+        ),
+        lambda m: (f"class-stub:{m.group('cls')}.{m.group('sel')}", m.group(0)[:200]),
+    ),
+    (
+        "missing-class",
+        re.compile(r"Missing implementation for class (?P<cls>[^!\n]+)!"),
+        lambda m: (f"class-missing:{m.group('cls').strip()}", m.group(0)[:200]),
     ),
     (
         "host-object",
@@ -242,6 +260,12 @@ def run_one(exe, ipa, workdir, timeout):
         "exit_code": exit_code,
         "seconds": elapsed,
         "missing_symbols": missing,
+        # Kept so `reclassify` can re-key an existing survey when the taxonomy
+        # improves. It will: the first version bucketed the four most common
+        # causes as bare tapHLE source locations, throwing away the function,
+        # class and selector names that say what to actually implement. Nobody
+        # should have to re-run a ten-hour survey to benefit from that.
+        "raw_tail": output[-4000:],
     }
 
 
@@ -310,21 +334,61 @@ def cmd_run(args):
         print(f"[{index}/{len(apps)}] {name}: {result['reason_key']}", flush=True)
 
 
+def cmd_reclassify(args):
+    """Re-key an existing survey against the current taxonomy, without re-running.
+
+    Surveys are expensive and the taxonomy is not finished, so improving the
+    classifiers must not invalidate work already done. Rows keep a bounded tail
+    of their output for exactly this, and older rows can usually still be re-keyed
+    from the panic message kept in `detail`.
+    """
+    path = Path(args.catalogue)
+    rows = load_catalogue(path)
+    if not rows:
+        sys.exit("catalogue is empty")
+    changed = 0
+    for row in rows:
+        found = classify(row.get("raw_tail") or row.get("detail") or "")
+        if found and found[0] != row["reason_key"]:
+            if args.verbose:
+                print(f"  {row['reason_key']}  ->  {found[0]}")
+            row["reason_key"], row["detail"] = found
+            changed += 1
+    with open(path, "w", encoding="utf-8") as f:
+        for row in rows:
+            f.write(json.dumps(row) + "\n")
+    print(f"re-keyed {changed} of {len(rows)} rows")
+
+
 def cmd_rank(args):
     rows = load_catalogue(Path(args.catalogue))
     if not rows:
         sys.exit("catalogue is empty; run `triage.py run` first")
+    # Count distinct apps, not rows. A collection typically holds several
+    # versions of the same app — this sample had eight Angry Birds and five Air
+    # Videos — and ranking by rows lets one app that happens to be well
+    # represented outrank a cause that blocks many different ones. Identity comes
+    # from the bundle identifier; rows without one fall back to their path so
+    # they are still counted once each.
+    def app_key(row):
+        return row.get("bundle_identifier") or row["ipa"]
+
+    groups = collections.defaultdict(set)
     if args.symbols:
-        counter = collections.Counter()
         for row in rows:
-            counter.update(row.get("missing_symbols") or [])
-        title = "unbound imports, by how many apps reference them"
+            for symbol in row.get("missing_symbols") or []:
+                groups[symbol].add(app_key(row))
+        title = "unbound imports, by how many distinct apps reference them"
     else:
-        counter = collections.Counter(row["reason_key"] for row in rows)
-        title = "first break, by how many apps hit it"
-    print(f"{len(rows)} apps catalogued — {title}\n")
-    for key, count in counter.most_common(args.top):
-        print(f"{count:5d}  {key}")
+        for row in rows:
+            groups[row["reason_key"]].add(app_key(row))
+        title = "first break, by how many distinct apps hit it"
+
+    distinct = len({app_key(row) for row in rows})
+    ranked = sorted(groups.items(), key=lambda kv: (-len(kv[1]), kv[0]))
+    print(f"{distinct} distinct apps ({len(rows)} files) — {title}\n")
+    for key, apps in ranked[: args.top]:
+        print(f"{len(apps):5d}  {key}")
 
 
 def cmd_show(args):
@@ -388,6 +452,12 @@ def main():
     )
     run.add_argument("--allow-dirty", action="store_true")
     run.set_defaults(func=cmd_run)
+
+    recl = sub.add_parser(
+        "reclassify", help="re-key an existing survey against the current taxonomy"
+    )
+    recl.add_argument("--verbose", action="store_true")
+    recl.set_defaults(func=cmd_reclassify)
 
     rank = sub.add_parser("rank", help="rank causes by how many apps hit them")
     rank.add_argument("--symbols", action="store_true", help="rank unbound imports instead")
