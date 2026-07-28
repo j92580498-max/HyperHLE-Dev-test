@@ -17,6 +17,51 @@ prerelease is `0.3.0-alpha.1`, and the first stable tapHLE release will be
 - Reserve 1.0 for a dependable Windows distribution with established release,
   configuration, save-data, and compatibility expectations.
 
+## When to cut one
+
+The trigger is the changelog, not a commit count and not a judgement call about
+significance:
+
+**If `## Unreleased` in `CHANGELOG.md` has at least one user-visible entry and
+`trunk` is green, cut a prerelease before starting the next body of work.**
+
+That is the whole rule. It is deliberately mechanical, because the previous
+wording — a "meaningful milestone" — had no edge, and something with no edge
+never fires: the project reached hundreds of commits and an untouched
+`Unreleased` heading without a single release. A rule that depends on deciding
+whether work was important enough will always lose to the next piece of work.
+
+Consequences worth stating so the rule is not quietly softened:
+
+- An `alpha.N` is cheap and is meant to be. Bump `N` and cut another; there is
+  no cost to a prerelease that turns out to be a small one, and a large cost to
+  a backlog nobody can summarise.
+- If `Unreleased` is empty, there is nothing to release. Refactors, tests,
+  tooling and documentation legitimately produce no entry, and a period with no
+  release is the correct outcome rather than a missed one.
+- Do not batch several capabilities into one release to make it look
+  substantial. The changelog records what happened; the version number is a
+  label, not a verdict.
+
+The version *number* still follows the rules above: within `0.3.0`, successive
+prereleases increment `alpha.N`; a meaningful capability milestone increments the
+minor version and restarts at `alpha.1`.
+
+## Release notes are the changelog
+
+The body of a published release is the `CHANGELOG.md` section for that version,
+used as it stands. Do not write release notes separately.
+
+Two hand-maintained descriptions of the same release drift, and the one nobody
+reads is maintained worst. Keeping a single source also means the entries are
+written on the branch that earned them, while the reasoning is still to hand,
+rather than reconstructed from the log at tag time.
+
+At release, rename `## Unreleased` to `## <version> — <date>`, open a fresh
+empty `## Unreleased` above it, and paste that section into the published
+release. If a release would have no changelog section, that is a sign it should
+not be published.
+
 Do not put app names, upstream revisions, dates, or a permanent `tap` suffix in
 the Cargo version. Compatibility records already identify exact app versions
 and emulator commits. Release notes should record the upstream base when that
