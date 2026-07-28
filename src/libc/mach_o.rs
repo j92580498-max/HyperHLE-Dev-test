@@ -6,7 +6,7 @@
 //! `Mach-O` related functions.
 
 use crate::dyld::{export_c_func, FunctionExports};
-use crate::mem::MutPtr;
+use crate::mem::{GuestUSize, MutPtr};
 use crate::Environment;
 
 fn get_end(env: &mut Environment) -> u32 {
@@ -55,7 +55,19 @@ fn _NSGetExecutablePath(env: &mut Environment, buf: MutPtr<u8>, bufsize: MutPtr<
     0
 }
 
+/// `_dyld_get_image_vmaddr_slide` — how far an image was moved from its
+/// preferred load address by ASLR.
+///
+/// tapHLE loads each image at the address its Mach-O headers ask for, so the
+/// slide is genuinely zero rather than merely unknown. Code calling this is
+/// normally converting a link-time address into a runtime one, and zero is the
+/// correct conversion here.
+fn _dyld_get_image_vmaddr_slide(_env: &mut Environment, _image_index: u32) -> GuestUSize {
+    0
+}
+
 pub const FUNCTIONS: FunctionExports = &[
+    export_c_func!(_dyld_get_image_vmaddr_slide(_)),
     export_c_func!(get_end()),
     export_c_func!(get_etext()),
     export_c_func!(_NSGetExecutablePath(_, _)),
