@@ -32,6 +32,6 @@ verified.
 - [ ] No leaked/private Apple implementation material or incompatible code was
       used.
 - [ ] Upstream changes were reviewed under `dev-docs/upstream-sync.md`.
-- [ ] Any compatibility result used an exact Archive content-hash-verified
-      artifact on a committed tapHLE revision; no dirty-worktree result was
-      entered in the database.
+- [ ] Any compatibility result named the app build it was earned on, read from
+      `tapHLE --info`, on a committed tapHLE revision; no dirty-worktree result
+      was entered in the database.

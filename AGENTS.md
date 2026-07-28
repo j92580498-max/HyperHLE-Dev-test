@@ -227,20 +227,23 @@ targets. That directory is gitignored, so the bytes never enter Git, and it is
 the directory tapHLE's app picker reads. Do not invent a cache directory
 elsewhere, and never create one outside the checkout: a stray folder in the
 maintainer's working area is litter, and a second copy of an IPA is exactly the
-duplication `dev-docs/app-debugging-playbook.md` warns about. Treat the
-downloaded bytes as opaque until their MD5 and SHA-1 match the live metadata and
-their SHA-256 is recorded; only then may the IPA be opened, inspected, or run. The Archive filename remains canonical. If Windows requires
-a different local filename, map it explicitly with `--archive-filename`.
-Inspect the verified IPA's embedded `Info.plist`, and cross-check it with local
-`tapHLE --info` when available. Never commit the IPA, extracted files, assets,
-keys, save data, or raw log. A report may claim a result only for a
-content-hash-verified artifact and a committed tapHLE revision. Reports are
-immutable: append a new one instead of editing an old observation.
+duplication `dev-docs/app-debugging-playbook.md` warns about. Record where the
+file came from, and record a locally computed SHA-256 so a later run can confirm
+it tested the same bytes. Matching a fresh download against the same host's
+published hashes is no longer required: it only proves the transfer did not
+corrupt, and no report depends on it.
+
+**Read the app's identity from `tapHLE --info` before composing any report** —
+bundle identifier, bundle version, short version, minimum OS version. Never take
+identity from a filename, a download page, or memory. Never commit the IPA,
+extracted files, assets, keys, save data, or raw log. A report may claim a
+result only for an artifact identified this way on a committed tapHLE revision.
+Reports are immutable: append a new one instead of editing an old observation.
 
 Use `compat/<app-slug>` for app work, such as `compat/ricky`. Exploratory
 checkpoint commits are welcome on that branch. Keep unfinished, unverified, or
 unstable experiments there. A stable checkpoint that reproduces a useful
-hash-verified milestone on a committed revision, records the exact achieved
+milestone on a committed revision, records the exact achieved
 state and known limitations, and passes normal regression checks should be
 merged to `trunk`. Full playability is not required. Provisional dirty worktree
 results never enter the compatibility database.

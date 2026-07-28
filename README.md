@@ -55,11 +55,10 @@ previews. The versioning and packaging policy is documented in
 
 **[See the compatibility ratings (1–5 stars)](https://taphle.ephun.net/compatibility).**
 That live database is the current record. The legacy JSON records remain only
-until they are migrated. Results are
-hash-checked for exact app builds. For an old game that is no longer sold, a
-record may link to the exact Archive.org file that was tested. The file name,
-hashes, and app version must all match. Read `compatibility/README.md` for the
-full rules. These rules do not cover a game that is still sold, and the project
+until they are migrated. Every result names the
+exact app build it was earned on, read from the bundle metadata of the file that
+was actually run. For an old game that is no longer sold, a record may also note
+where that file came from. Read `compatibility/README.md` for the full rules. These rules do not cover a game that is still sold, and the project
 respects DMCA notices and rightsholder requests.
 
 The project is not affiliated with or endorsed by Apple Inc. iPhone, iOS,

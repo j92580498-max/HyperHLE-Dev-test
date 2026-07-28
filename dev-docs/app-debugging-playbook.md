@@ -108,24 +108,26 @@ Use `-Action Uninstall` only to intentionally remove the scheduled tasks.
 
 ## Freeze the artifact identity first
 
-For an Archive-backed target, follow `compatibility/README.md` exactly. Use the
-item URL supplied by the maintainer; never search for a substitute.
+Read the app's identity from `tapHLE --info` — bundle identifier, bundle
+version, short version, minimum OS version — and record it in the app note.
+**A filename is not identity**, and neither is a download page title or your
+recollection of which app you launched. Do this once per artifact, and re-read it
+before composing any report.
 
-At intake and again before a report-worthy clean run, use the full
-`compatibility.py verify-archive` protocol. Before every intervening runtime
-experiment, at minimum recalculate the local SHA-256:
+For an Archive-backed target, use the item URL supplied by the maintainer; never
+search for a substitute. Record where the file came from so someone else can
+obtain it, and record a locally computed SHA-256 so a later run can confirm it is
+testing the same bytes:
 
 ```powershell
 Get-FileHash -Algorithm SHA256 -LiteralPath '<exact local IPA>'
 ```
 
-The local SHA-256 must match the value calculated during full verification and
-recorded in the compatibility database for that exact filename. Archive
-metadata supplies the MD5/SHA-1 checks used by the full protocol; do not imply
-that it publishes the repository's SHA-256. If any hash does not match, stop
-using that local copy. Confirm the embedded bundle identifier/version and
-`tapHLE --info` output once per artifact and record the result in the app note.
-A copied filename is not identity.
+That comparison — this run against an earlier run — is the one worth making.
+Matching a fresh download against the same host's published MD5/SHA-1 is not
+required and no longer gates anything; see "Why the download hash gate is gone"
+in `compatibility/README.md`. A missing or mismatched published hash is not a
+reason to refuse to test a file.
 
 Do not duplicate IPAs between run directories. Keep them outside Git and pass
 their absolute path to tapHLE.
