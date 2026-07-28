@@ -663,6 +663,21 @@ Keep implementation, agent-policy documentation, and compatibility reports in
 separable commits. This makes incomplete app experiments easy to continue or
 revert without losing durable process improvements.
 
+### Include a screenshot when you have one
+
+A screenshot of the milestone is welcome in a report and makes the rating much
+easier for a human to confirm or overturn — a picture of the running game
+settles "in game" faster than any amount of prose about it. Prefer the OS-level
+screenshot of tapHLE's window over tapHLE's own frame capture, for the reason
+in "A frame capture is not necessarily the screen".
+
+It is **not required**. Some milestones are not visual at all, desktop capture
+sometimes returns a black client area, and a report is perfectly valid without
+one. Never hold back or delay a verified result because a screenshot could not
+be obtained, and never describe a screen you did not actually look at in order
+to have something to say — an accurate report with no image beats an
+illustrated guess. Say what you observed and how you observed it.
+
 ## Continuation-note template
 
 Create `dev-docs/app-notes/<app-slug>.md` on the app branch when work will span

@@ -133,6 +133,7 @@ pub const DYLIB: crate::dyld::HostDylib = crate::dyld::HostDylib {
         ns_keyed_unarchiver::CONSTANTS,
         ns_locale::CONSTANTS,
         ns_run_loop::CONSTANTS,
+        ns_url_connection::CONSTANTS,
     ],
     function_exports: &[
         FUNCTIONS,

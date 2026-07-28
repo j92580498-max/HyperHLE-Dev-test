@@ -11,8 +11,9 @@
 
 use super::UIViewHostObject;
 use crate::dyld::{ConstantExports, HostConstant};
+use crate::environment::Environment;
 use crate::frameworks::core_graphics::cg_affine_transform::CGAffineTransform;
-use crate::frameworks::core_graphics::{CGPoint, CGRect};
+use crate::frameworks::core_graphics::{CGFloat, CGPoint, CGRect};
 use crate::frameworks::foundation::ns_string;
 use crate::frameworks::uikit::ui_application::{
     UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight,
@@ -22,6 +23,7 @@ use crate::frameworks::uikit::ui_device::{
     UIDeviceOrientationLandscapeLeft, UIDeviceOrientationLandscapeRight,
     UIDeviceOrientationPortraitUpsideDown,
 };
+use crate::mem::ConstVoidPtr;
 use crate::objc::{
     id, msg, msg_class, msg_super, nil, objc_classes, release, retain, ClassExports,
 };
@@ -315,7 +317,36 @@ pub const UIKeyboardWillHideNotification: &str = "UIKeyboardWillHideNotification
 pub const UIKeyboardDidHideNotification: &str = "UIKeyboardDidHideNotification";
 pub const UIKeyboardBoundsUserInfoKey: &str = "UIKeyboardBoundsUserInfoKey";
 
+/// `UIWindowLevel` values. These are `CGFloat`s rather than strings, so unlike
+/// the notification names they have to be materialised into guest memory. tapHLE
+/// does not order windows by level, but an app that sets `windowLevel` reads the
+/// constant to do it, and an unbound one is a null pointer it will dereference.
+fn window_level(env: &mut Environment, value: CGFloat) -> ConstVoidPtr {
+    env.mem.alloc_and_write(value).cast().cast_const()
+}
+fn UIWindowLevelNormal(env: &mut Environment) -> ConstVoidPtr {
+    window_level(env, 0.0)
+}
+fn UIWindowLevelStatusBar(env: &mut Environment) -> ConstVoidPtr {
+    window_level(env, 1000.0)
+}
+fn UIWindowLevelAlert(env: &mut Environment) -> ConstVoidPtr {
+    window_level(env, 2000.0)
+}
+
 pub const CONSTANTS: ConstantExports = &[
+    (
+        "_UIWindowLevelNormal",
+        HostConstant::Custom(UIWindowLevelNormal),
+    ),
+    (
+        "_UIWindowLevelStatusBar",
+        HostConstant::Custom(UIWindowLevelStatusBar),
+    ),
+    (
+        "_UIWindowLevelAlert",
+        HostConstant::Custom(UIWindowLevelAlert),
+    ),
     (
         "_UIWindowDidBecomeKeyNotification",
         HostConstant::NSString(UIWindowDidBecomeKeyNotification),

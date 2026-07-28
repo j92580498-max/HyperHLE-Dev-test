@@ -6,12 +6,28 @@
 //! `NSURLConnection`.
 
 use super::{ns_string, NSInteger};
+use crate::dyld::{ConstantExports, HostConstant};
 use crate::environment::Environment;
 use crate::mem::MutPtr;
 use crate::objc::{autorelease, id, msg, msg_class, nil, objc_classes, release, ClassExports};
 use std::borrow::Cow;
 
 const NSURLErrorDomain: &str = "NSURLErrorDomain";
+/// `userInfo` key on the errors this domain produces. Nothing here populates it
+/// yet, but apps reference the symbol to read it out of an error, and an unbound
+/// one is a null pointer they will dereference.
+const NSErrorFailingURLStringKey: &str = "NSErrorFailingURLStringKey";
+
+pub const CONSTANTS: ConstantExports = &[
+    (
+        "_NSURLErrorDomain",
+        HostConstant::NSString(NSURLErrorDomain),
+    ),
+    (
+        "_NSErrorFailingURLStringKey",
+        HostConstant::NSString(NSErrorFailingURLStringKey),
+    ),
+];
 
 /// Our helper type, Foundation just uses ints.
 type NSURLErrorCode = NSInteger;

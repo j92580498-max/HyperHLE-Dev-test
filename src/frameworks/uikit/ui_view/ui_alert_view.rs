@@ -19,7 +19,6 @@ use crate::objc::{
     retain, ClassExports, NSZonePtr,
 };
 use crate::Environment;
-use std::borrow::Cow;
 
 #[derive(Default)]
 struct UIAlertViewHostObject {
@@ -29,8 +28,35 @@ struct UIAlertViewHostObject {
     /// How many buttons have been configured. The cancel button, when there is
     /// one, is always the first.
     button_count: NSInteger,
+    /// Retained. `UIAlertView` also exposes these as settable properties, so
+    /// they cannot simply be logged at construction time and discarded: apps
+    /// commonly build the alert with a bare `init` and fill them in afterwards.
+    title: id,
+    message: id,
 }
 impl_HostObject_with_superclass!(UIAlertViewHostObject);
+
+/// Replace one of the retained string properties, in the order a setter must:
+/// retain the new value before releasing the old, in case they are the same.
+fn set_string_property(env: &mut Environment, alert: id, new: id, is_title: bool) {
+    retain(env, new);
+    let host_object = env.objc.borrow_mut::<UIAlertViewHostObject>(alert);
+    let old = if is_title {
+        std::mem::replace(&mut host_object.title, new)
+    } else {
+        std::mem::replace(&mut host_object.message, new)
+    };
+    release(env, old);
+}
+
+/// Render a string property for logging, tolerating nil.
+fn describe(env: &mut Environment, string: id) -> String {
+    if string == nil {
+        "(nil)".to_string()
+    } else {
+        ns_string::to_rust_string(env, string).to_string()
+    }
+}
 
 /// Send an optional `(alertView, buttonIndex)` delegate method, if implemented.
 fn send_index_callback(
@@ -101,10 +127,6 @@ pub const CLASSES: ClassExports = objc_classes! {
                      delegate:(id)delegate
             cancelButtonTitle:(id)cancelButtonTitle
             otherButtonTitles:(id)otherButtonTitles {
-    let message_str = if message == nil { Cow::from("(nil)") } else { ns_string::to_rust_string(env, message) };
-    let title_str = if title == nil { Cow::from("(nil)") } else { ns_string::to_rust_string(env, title) };
-    log!("UIAlertView: title: {:?}, message: {:?}", title_str, message_str);
-
     // TODO: otherButtonTitles is a nil-terminated variadic list. Only the
     // cancel button's presence is tracked, which is what dismissal needs.
     let _ = otherButtonTitles;
@@ -113,7 +135,30 @@ pub const CLASSES: ClassExports = objc_classes! {
     let host_object = env.objc.borrow_mut::<UIAlertViewHostObject>(new);
     host_object.delegate = delegate;
     host_object.button_count = if cancelButtonTitle == nil { 0 } else { 1 };
+    set_string_property(env, new, title, /* is_title: */ true);
+    set_string_property(env, new, message, /* is_title: */ false);
     new
+}
+
+- (id)title {
+    env.objc.borrow::<UIAlertViewHostObject>(this).title
+}
+- (())setTitle:(id)title {
+    set_string_property(env, this, title, /* is_title: */ true);
+}
+
+- (id)message {
+    env.objc.borrow::<UIAlertViewHostObject>(this).message
+}
+- (())setMessage:(id)message {
+    set_string_property(env, this, message, /* is_title: */ false);
+}
+
+- (())dealloc {
+    let &UIAlertViewHostObject { title, message, .. } = env.objc.borrow(this);
+    release(env, title);
+    release(env, message);
+    msg_super![env; this dealloc]
 }
 
 - (id)delegate {
@@ -146,6 +191,12 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (())show {
+    // Logged here rather than at construction: the title and message are
+    // settable, so this is the first point at which they are certainly final.
+    let &UIAlertViewHostObject { title, message, .. } = env.objc.borrow(this);
+    let title_str = describe(env, title);
+    let message_str = describe(env, message);
+    log!("UIAlertView: title: {:?}, message: {:?}", title_str, message_str);
     log!("UIAlertView: cannot be displayed; reporting it as cancelled");
     let cancel_index: NSInteger = msg![env; this cancelButtonIndex];
     dismiss(env, this, cancel_index, /* clicked: */ true);

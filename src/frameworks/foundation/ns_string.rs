@@ -312,6 +312,40 @@ fn report_no_error(env: &mut Environment, error: MutPtr<id>) {
     }
 }
 
+/// The deprecated `initWithContentsOfFile:`/`initWithContentsOfURL:` take no
+/// encoding and are documented to determine one themselves. Honour a byte order
+/// mark when there is one, and otherwise assume the default C string encoding,
+/// which is right for the ASCII and UTF-8 text these apps actually ship.
+fn sniff_encoding(env: &mut Environment, bytes: &[u8]) -> NSStringEncoding {
+    if bytes.len() > 1 && (bytes[..2] == [0xFE, 0xFF] || bytes[..2] == [0xFF, 0xFE]) {
+        NSUTF16StringEncoding
+    } else if bytes.len() > 2 && bytes[..3] == [0xEF, 0xBB, 0xBF] {
+        NSUTF8StringEncoding
+    } else {
+        msg_class![env; NSString defaultCStringEncoding]
+    }
+}
+
+/// Body of the deprecated one-argument `initWithContentsOfURL:`, shared by the
+/// concrete string classes. They are siblings under NSString, so neither
+/// inherits the other's implementations and both have to declare it.
+fn init_with_contents_of_url(env: &mut Environment, this: id, url: id) -> id {
+    if url == nil {
+        release(env, this);
+        return nil;
+    }
+    let data: id = msg_class![env; NSData dataWithContentsOfURL:url];
+    if data == nil {
+        release(env, this);
+        return nil;
+    }
+    let bytes: ConstPtr<u8> = msg![env; data bytes];
+    let length: NSUInteger = msg![env; data length];
+    let prefix = env.mem.bytes_at(bytes, length.min(3)).to_vec();
+    let encoding = sniff_encoding(env, &prefix);
+    msg![env; this initWithData:data encoding:encoding]
+}
+
 pub const CLASSES: ClassExports = objc_classes! {
 
 (env, this, _cmd);
@@ -391,6 +425,12 @@ pub const CLASSES: ClassExports = objc_classes! {
     let new: id = msg![env; new initWithContentsOfFile:path
                                               encoding:encoding
                                                  error:error];
+    autorelease(env, new)
+}
+
++ (id)stringWithContentsOfURL:(id)url { // NSURL*
+    let new: id = msg![env; this alloc];
+    let new: id = msg![env; new initWithContentsOfURL:url];
     autorelease(env, new)
 }
 
@@ -1594,6 +1634,10 @@ pub const CLASSES: ClassExports = objc_classes! {
     this
 }
 
+- (id)initWithContentsOfURL:(id)url { // NSURL*
+    init_with_contents_of_url(env, this, url)
+}
+
 - (id)initWithContentsOfURL:(id)url // NSURL*
                     encoding:(NSStringEncoding)encoding
                        error:(MutPtr<id>)error { // NSError**
@@ -1766,6 +1810,27 @@ pub const CLASSES: ClassExports = objc_classes! {
     let host_object = StringHostObject::decode(Cow::Owned(bytes), encoding);
     *env.objc.borrow_mut(this) = host_object;
     this
+}
+
+- (id)initWithContentsOfURL:(id)url { // NSURL*
+    init_with_contents_of_url(env, this, url)
+}
+
+- (id)initWithContentsOfURL:(id)url // NSURL*
+                    encoding:(NSStringEncoding)encoding
+                       error:(MutPtr<id>)error { // NSError**
+    if url == nil {
+        report_no_error(env, error);
+        release(env, this);
+        return nil;
+    }
+    let data: id = msg_class![env; NSData dataWithContentsOfURL:url];
+    if data == nil {
+        report_no_error(env, error);
+        release(env, this);
+        return nil;
+    }
+    msg![env; this initWithData:data encoding:encoding]
 }
 
 - (id)initWithContentsOfFile:(id)path // NSString*

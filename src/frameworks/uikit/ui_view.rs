@@ -297,6 +297,36 @@ pub const CLASSES: ClassExports = objc_classes! {
     () = msg_class![env; CATransaction setValue:value forKey:(get_static_str(env, tapHLE_kCATransactionAnimationRepeatCount))];
 }
 
++ (())setAnimationBeginsFromCurrentState:(bool)from_current_state {
+    // This chooses whether an animation that interrupts another starts from the
+    // interrupted one's presented values or from the model values. tapHLE does
+    // not model an in-flight animation's presented state, so both answers are
+    // the same here and there is nothing to record. The view still reaches the
+    // right final state either way; only the path it takes could differ.
+    log_dbg!("TODO: ignoring [UIView setAnimationBeginsFromCurrentState:{}]", from_current_state);
+}
+
++ (())setAnimationTransition:(NSInteger)transition
+                     forView:(id)view
+                       cache:(bool)cache {
+    // Flip and curl transitions. Ignoring the transition leaves the view
+    // hierarchy in its correct final state, just without the effect.
+    log_dbg!(
+        "TODO: ignoring [UIView setAnimationTransition:{} forView:{:?} cache:{}]",
+        transition, view, cache
+    );
+}
+
++ (bool)areAnimationsEnabled {
+    let disabled: bool = msg_class![env; CATransaction disableActions];
+    !disabled
+}
+
++ (())setAnimationsEnabled:(bool)enabled {
+    log_dbg!("[UIView setAnimationsEnabled:{}]", enabled);
+    () = msg_class![env; CATransaction setDisableActions:(!enabled)];
+}
+
 + (())setAnimationDelegate:(id)delegate {
     log_dbg!("[UIView setAnimationDelegate:{:?}]", delegate);
     retain(env, delegate);

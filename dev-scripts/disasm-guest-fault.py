@@ -133,24 +133,37 @@ def main():
     seg_name, vmaddr, fileoff = hit
     file_pos = pc - vmaddr + fileoff
 
-    # Thumb instructions are 2 or 4 bytes, so stepping back a fixed number of
-    # bytes can land mid-instruction. Disassemble from a little earlier and keep
-    # only what lines up with the PC.
-    lead = args.before * 4
-    start_file = max(0, file_pos - lead)
-    start_addr = pc - (file_pos - start_file)
-    window = macho[start_file : file_pos + args.after * 4 + 8]
-
     md = Cs(CS_ARCH_ARM, CS_MODE_THUMB if thumb else CS_MODE_ARM)
     md.detail = False
-    instructions = list(md.disasm(window, start_addr))
 
-    # If nothing lines up exactly with the PC, the lead-in desynchronised; retry
-    # anchored at the PC so the faulting instruction is at least correct.
-    if not any(i.address == pc for i in instructions):
+    # Thumb instructions are 2 or 4 bytes, so stepping back a fixed number of
+    # bytes can land mid-instruction and produce a plausible-looking but
+    # completely wrong listing. There is no way to know the correct alignment
+    # from the PC alone, so try every 2-byte-aligned start in the lead-in and
+    # keep the candidates that decode cleanly all the way onto the PC. The
+    # earliest such start is the one that stayed in step the longest.
+    step = 2 if thumb else 4
+    lead = args.before * 4
+    tail = macho[file_pos : file_pos + args.after * 4 + 8]
+
+    instructions = None
+    for back in range(lead - (lead % step), -1, -step):
+        start_file = file_pos - back
+        if start_file < 0:
+            continue
+        candidate = list(md.disasm(macho[start_file:file_pos] + tail, pc - back))
+        # A clean run reaches the PC on an instruction boundary and has no gaps
+        # before it, which is what capstone signals by stopping early.
+        if any(i.address == pc for i in candidate) and sum(
+            i.size for i in candidate if i.address < pc
+        ) == back:
+            instructions = candidate
+            break
+
+    if instructions is None:
         print("note: could not resynchronise before the PC; showing from the PC only",
               file=sys.stderr)
-        instructions = list(md.disasm(macho[file_pos : file_pos + args.after * 4 + 8], pc))
+        instructions = list(md.disasm(tail, pc))
 
     print(f"executable : {name}")
     print(f"arch       : {args.arch} ({'thumb' if thumb else 'arm'})")
