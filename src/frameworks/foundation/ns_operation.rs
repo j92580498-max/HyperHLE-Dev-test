@@ -15,6 +15,15 @@ use crate::objc::{
     ClassExports, HostObject, NSZonePtr, SEL,
 };
 
+/// The `+mainQueue` singleton, which must be the same object every time an app
+/// asks for it: apps compare against it to decide whether they are already on
+/// the main queue.
+#[derive(Default)]
+pub struct State {
+    /// `NSOperationQueue*`
+    main_queue: Option<id>,
+}
+
 struct NSOperationHostObject {
     cancelled: bool,
     executing: bool,
@@ -160,6 +169,24 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 
 @implementation NSOperationQueue: NSObject
+
+// The queue bound to the main thread. tapHLE has no separate main-queue
+// scheduling, so this is an ordinary queue that happens to be a singleton —
+// operations added to it run the same way they do on any other. Apps reach for
+// it constantly to hop work back to the main thread, which is why its absence
+// stopped seven apps in a 1501-app survey before they reached their own code.
++ (id)mainQueue {
+    if let Some(existing) = env.framework_state.foundation.ns_operation.main_queue {
+        return existing;
+    }
+    let queue: id = msg![env; this new];
+    env.framework_state.foundation.ns_operation.main_queue = Some(queue);
+    queue
+}
+
++ (id)currentQueue {
+    msg_class![env; NSOperationQueue mainQueue]
+}
 
 + (id)allocWithZone:(NSZonePtr)_zone {
     let host_object = NSOperationQueueHostObject {

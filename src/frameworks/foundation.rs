@@ -155,6 +155,7 @@ pub struct State {
     ns_locale: ns_locale::State,
     ns_notification_center: ns_notification_center::State,
     ns_null: ns_null::State,
+    ns_operation: ns_operation::State,
     ns_process_info: ns_process_info::State,
     ns_string: ns_string::State,
     ns_thread: ns_thread::State,
