@@ -103,6 +103,14 @@ fn free(env: &mut Environment, ptr: MutVoidPtr) {
     env.mem.free(ptr);
 }
 
+/// `abort` — the app has decided it cannot continue. Report it as the guest's
+/// decision rather than an emulator failure, so the log does not read as if
+/// tapHLE crashed, then stop: continuing past an abort would run code the app
+/// has already concluded is unsafe to run.
+fn abort(_env: &mut Environment) {
+    panic!("The app called abort(). This is the app deliberately terminating itself, not a tapHLE failure - the reason is usually logged just above.");
+}
+
 fn atexit(
     _env: &mut Environment,
     func: GuestFunction, // void (*func)(void)
@@ -616,6 +624,7 @@ pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(realloc(_, _)),
     export_c_func!(reallocf(_, _)),
     export_c_func!(free(_)),
+    export_c_func!(abort()),
     export_c_func!(atexit(_)),
     export_c_func!(atoi(_)),
     export_c_func!(atol(_)),

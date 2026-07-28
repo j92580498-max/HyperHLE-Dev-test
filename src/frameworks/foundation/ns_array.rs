@@ -525,8 +525,23 @@ pub const CLASSES: ClassExports = objc_classes! {
     env.objc.borrow::<ArrayHostObject>(this).array.len().try_into().unwrap()
 }
 - (id)objectAtIndex:(NSUInteger)index {
-    // TODO: throw real exception rather than panic if out-of-bounds?
-    env.objc.borrow::<ArrayHostObject>(this).array[index as usize]
+    // Foundation raises NSRangeException here. tapHLE cannot raise, and the
+    // Rust panic that stood in for it reported the app's own bounds bug as an
+    // emulator crash. Return nil and say what happened: an app with a @try
+    // around this survives on device, and one without at least fails somewhere
+    // it chose.
+    let array = &env.objc.borrow::<ArrayHostObject>(this).array;
+    match array.get(index as usize) {
+        Some(&object) => object,
+        None => {
+            let count = array.len();
+            log!(
+                "Warning: objectAtIndex:{} on array {:?} is out of bounds for {} elements, which Foundation would raise NSRangeException for; returning nil",
+                index, this, count
+            );
+            nil
+        }
+    }
 }
 
 - (id)description {
@@ -779,8 +794,23 @@ pub const CLASSES: ClassExports = objc_classes! {
     env.objc.borrow::<ArrayHostObject>(this).array.len().try_into().unwrap()
 }
 - (id)objectAtIndex:(NSUInteger)index {
-    // TODO: throw real exception rather than panic if out-of-bounds?
-    env.objc.borrow::<ArrayHostObject>(this).array[index as usize]
+    // Foundation raises NSRangeException here. tapHLE cannot raise, and the
+    // Rust panic that stood in for it reported the app's own bounds bug as an
+    // emulator crash. Return nil and say what happened: an app with a @try
+    // around this survives on device, and one without at least fails somewhere
+    // it chose.
+    let array = &env.objc.borrow::<ArrayHostObject>(this).array;
+    match array.get(index as usize) {
+        Some(&object) => object,
+        None => {
+            let count = array.len();
+            log!(
+                "Warning: objectAtIndex:{} on array {:?} is out of bounds for {} elements, which Foundation would raise NSRangeException for; returning nil",
+                index, this, count
+            );
+            nil
+        }
+    }
 }
 
 - (id)description {
