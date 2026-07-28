@@ -823,11 +823,29 @@ impl GLES for GLES1OnGL2<'_> {
         }
     }
     unsafe fn GetIntegerv(&mut self, pname: GLenum, params: *mut GLint) {
-        let (type_, _count) = GET_PARAMS.get_type_info(pname);
-        // TODO: type conversion
-        let allowed_float = type_ == ParamType::Float && pname == gl21::POINT_SIZE_MAX;
-        assert!(type_ == ParamType::Int || allowed_float);
-        gl21::GetIntegerv(pname, params);
+        let (type_, count) = GET_PARAMS.get_type_info(pname);
+        match type_ {
+            ParamType::Int | ParamType::Boolean => gl21::GetIntegerv(pname, params),
+            // glGetIntegerv is defined for every parameter regardless of its
+            // natural type, converting as it goes; only the spelling of the
+            // answer changes. Refusing the float-valued ones made an ordinary
+            // capability query fatal, which stopped nine apps in a survey of
+            // 1501 — and asking for, say, the line-width range as integers is
+            // exactly what a renderer does while working out what it may draw.
+            ParamType::Float | ParamType::FloatSpecial => {
+                let mut floats = [0.0f32; 16];
+                let count = (count as usize).min(floats.len());
+                gl21::GetFloatv(pname, floats.as_mut_ptr());
+                for i in 0..count {
+                    // The specification rounds a float parameter to the nearest
+                    // integer rather than truncating it.
+                    *params.add(i) = floats[i].round() as GLint;
+                }
+            }
+            ParamType::_NonExhaustive => {
+                unreachable!("ParamType::_NonExhaustive is not a real parameter type")
+            }
+        }
     }
     unsafe fn GetTexEnviv(&mut self, target: GLenum, pname: GLenum, params: *mut GLint) {
         let (type_, _count) = TEX_ENV_PARAMS.get_type_info(pname);
