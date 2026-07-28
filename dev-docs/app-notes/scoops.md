@@ -48,3 +48,15 @@ the faulting instruction dereferences a register loaded from a global, check the
 `unhandled non-lazy symbol` warnings in the same log first — that pattern
 accounted for several startup faults elsewhere in this session, and is much
 cheaper to check than a full trace.
+
+## 2026-07-27: unchanged on current code
+
+Still dies during startup with `Error during CPU execution: MemoryError`, on
+`73a43594`, after a session that added a great deal of Foundation, UIKit and
+CoreGraphics surface. None of it touched this.
+
+Worth noting as a group: **Scoops, JellyCar 1 and JellyCar 3 all fail with the
+same guest `MemoryError`** on the same build. Three apps sharing one symptom is
+worth one investigation rather than three — the register dump and a disassembly
+of the faulting PC, per this playbook's guidance, starting with whichever has the
+smallest binary.
