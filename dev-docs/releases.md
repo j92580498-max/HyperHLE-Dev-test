@@ -25,6 +25,12 @@ significance:
 **If `## Unreleased` in `CHANGELOG.md` has at least one user-visible entry and
 `trunk` is green, cut a prerelease before starting the next body of work.**
 
+Run `dev-scripts/release-readiness.ps1` to evaluate this. It reports MET or NOT
+MET with reasons and exits non-zero when a release should not be cut, so the
+answer does not depend on anyone remembering to look. Check it after merging a
+batch of work; `-Quick` skips the test suites for a fast look while a build is
+otherwise occupied, and says that it cannot report readiness on its own.
+
 That is the whole rule. It is deliberately mechanical, because the previous
 wording — a "meaningful milestone" — had no edge, and something with no edge
 never fires: the project reached hundreds of commits and an untouched
