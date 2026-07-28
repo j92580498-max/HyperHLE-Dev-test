@@ -286,6 +286,14 @@ pub const CLASSES: ClassExports = objc_classes! {
     autorelease(env, new)
 }
 
++ (id)numberWithUnsignedLong:(u32)value {
+    // `unsigned long` is 32-bit on the guest ABI, so this is the same storage
+    // as `unsigned int`.
+    let new: id = msg![env; this alloc];
+    let new: id = msg![env; new initWithUnsignedInt:value];
+    autorelease(env, new)
+}
+
 + (id)numberWithInteger:(NSInteger)value {
     // TODO: for greater efficiency we could return a static-lifetime value
 

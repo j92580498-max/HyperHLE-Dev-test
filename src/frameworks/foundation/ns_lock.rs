@@ -13,8 +13,8 @@ use crate::environment::MutexType::PTHREAD_MUTEX_RECURSIVE;
 use crate::environment::{MutexId, PTHREAD_MUTEX_DEFAULT};
 use crate::frameworks::foundation::NSInteger;
 use crate::libc::pthread::cond::{
-    pthread_cond_broadcast, pthread_cond_destroy, pthread_cond_init, pthread_cond_t,
-    pthread_cond_wait,
+    pthread_cond_broadcast, pthread_cond_destroy, pthread_cond_init, pthread_cond_signal,
+    pthread_cond_t, pthread_cond_wait,
 };
 use crate::libc::pthread::mutex::{
     pthread_mutex_destroy, pthread_mutex_init, pthread_mutex_lock, pthread_mutex_t,
@@ -143,6 +143,86 @@ pub const CLASSES: ClassExports = objc_classes! {
     release(env, env.objc.borrow::<NSLockHostObject>(this).name);
     let host_object = env.objc.borrow::<NSLockHostObject>(this);
     env.mutex_state.destroy_mutex(host_object.mutex_id).unwrap();
+    env.objc.dealloc_object(this, &mut env.mem)
+}
+
+@end
+
+// `NSCondition` is a mutex and a condition variable together, without
+// NSConditionLock's integer predicate: the caller owns the predicate and this
+// only provides wait/signal around it. It reuses the same host object, leaving
+// the `condition` field unused.
+@implementation NSCondition: NSObject
+
++ (id)alloc {
+    log_dbg!("[NSCondition alloc]");
+    let mutex = env.mem.alloc(guest_size_of::<pthread_mutex_t>()).cast();
+    let cond = env.mem.alloc(guest_size_of::<pthread_cond_t>()).cast();
+    pthread_mutex_init(env, mutex, ConstPtr::null());
+    pthread_cond_init(env, cond, ConstPtr::null());
+    let host_object = NSConditionLockHostObject { mutex, cond, condition: 0, name: nil };
+    env.objc.alloc_object(this, Box::new(host_object), &mut env.mem)
+}
+
+// NSLocking protocol implementation
+- (())lock {
+    log_dbg!("[(NSCondition *){:?} lock]", this);
+    let mutex = env.objc.borrow::<NSConditionLockHostObject>(this).mutex;
+    pthread_mutex_lock(env, mutex);
+}
+- (())unlock {
+    log_dbg!("[(NSCondition *){:?} unlock]", this);
+    let mutex = env.objc.borrow::<NSConditionLockHostObject>(this).mutex;
+    let mutex_data = env.mem.read(mutex);
+    if !env.mutex_state.mutex_is_locked(mutex_data.mutex_id) {
+        let name = env.objc.borrow::<NSConditionLockHostObject>(this).name;
+        echo!("*** -[NSCondition unlock]: lock (<NSCondition: {:?}> '{:?}') unlocked when not locked", this, name);
+    }
+    pthread_mutex_unlock(env, mutex);
+}
+
+- (())wait {
+    log_dbg!("[(NSCondition *){:?} wait]", this);
+    let &NSConditionLockHostObject { mutex, cond, .. } = env.objc.borrow(this);
+    pthread_cond_wait(env, cond, mutex);
+}
+
+- (bool)waitUntilDate:(id)limit { // NSDate *
+    // A timed wait needs pthread_cond_timedwait, which tapHLE does not have.
+    // Waiting without the limit would hang an app that expected to be released
+    // by the deadline, so report the timeout instead: the caller re-checks its
+    // predicate and loops, which is the contract this method is used under.
+    log!("TODO: [(NSCondition *){:?} waitUntilDate:{:?}] cannot wait with a deadline; reporting a timeout", this, limit);
+    false
+}
+
+- (())signal {
+    let cond = env.objc.borrow::<NSConditionLockHostObject>(this).cond;
+    pthread_cond_signal(env, cond);
+}
+
+- (())broadcast {
+    let cond = env.objc.borrow::<NSConditionLockHostObject>(this).cond;
+    pthread_cond_broadcast(env, cond);
+}
+
+- (())setName:(id)name { // NSString *
+    let old_name = env.objc.borrow::<NSConditionLockHostObject>(this).name;
+    env.objc.borrow_mut::<NSConditionLockHostObject>(this).name = msg![env; name copy];
+    release(env, old_name);
+}
+- (id)name {
+    env.objc.borrow::<NSConditionLockHostObject>(this).name
+}
+
+- (())dealloc {
+    log_dbg!("[(NSCondition *){:?} dealloc]", this);
+    release(env, env.objc.borrow::<NSConditionLockHostObject>(this).name);
+    let &NSConditionLockHostObject { mutex, cond, .. } = env.objc.borrow(this);
+    pthread_cond_destroy(env, cond);
+    pthread_mutex_destroy(env, mutex);
+    env.mem.free(mutex.cast());
+    env.mem.free(cond.cast());
     env.objc.dealloc_object(this, &mut env.mem)
 }
 
