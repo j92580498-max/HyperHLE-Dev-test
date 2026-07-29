@@ -792,6 +792,12 @@ impl GLES for GLES1OnGL2<'_> {
         gl21::DisableClientState(array);
     }
     unsafe fn GetBooleanv(&mut self, pname: GLenum, params: *mut GLboolean) {
+        if !GET_PARAMS.contains(pname) {
+            // GL_INVALID_ENUM: leave the caller's buffer untouched, which is
+            // what a renderer probing for an optional capability expects.
+            log!("Warning: glGetBooleanv() for unknown parameter {pname:#x}, leaving the result unset");
+            return;
+        }
         let (type_, count) = GET_PARAMS.get_type_info(pname);
         match type_ {
             ParamType::Boolean => {
@@ -814,6 +820,14 @@ impl GLES for GLES1OnGL2<'_> {
     }
     // TODO: GetFixedv
     unsafe fn GetFloatv(&mut self, pname: GLenum, params: *mut GLfloat) {
+        if !GET_PARAMS.contains(pname) {
+            // GL_INVALID_ENUM: leave the caller's buffer untouched, which is
+            // what a renderer probing for an optional capability expects.
+            log!(
+                "Warning: glGetFloatv() for unknown parameter {pname:#x}, leaving the result unset"
+            );
+            return;
+        }
         let (type_, _count) = GET_PARAMS.get_type_info(pname);
         match type_ {
             ParamType::Float | ParamType::FloatSpecial => {
@@ -823,6 +837,12 @@ impl GLES for GLES1OnGL2<'_> {
         }
     }
     unsafe fn GetIntegerv(&mut self, pname: GLenum, params: *mut GLint) {
+        if !GET_PARAMS.contains(pname) {
+            // GL_INVALID_ENUM: leave the caller's buffer untouched, which is
+            // what a renderer probing for an optional capability expects.
+            log!("Warning: glGetIntegerv() for unknown parameter {pname:#x}, leaving the result unset");
+            return;
+        }
         let (type_, count) = GET_PARAMS.get_type_info(pname);
         match type_ {
             ParamType::Int | ParamType::Boolean => gl21::GetIntegerv(pname, params),
