@@ -167,7 +167,18 @@ fn maybe_initialize_class(env: &mut Environment, receiver: id) {
         // not have a HostObjectEntry. Their isa still names a real class, so
         // initialize that class before dispatching the first message.
         let class = ObjC::read_isa(receiver, &env.mem);
-        assert!(class != nil);
+        if class == nil {
+            // Except when it does not. A global block literal whose
+            // `_NSConcreteGlobalBlock` import was never bound still reads as a
+            // nil isa here, and a `super` send reaches this point without the
+            // receiver's own isa having been looked at at all. Sending
+            // +initialize is bookkeeping ahead of dispatch, so there is simply
+            // nothing to initialize; the dispatch that follows uses the class
+            // the caller already resolved, and reports its own failure by name
+            // if there is one.
+            log_dbg!("No class to initialize for {:?}, its isa is nil", receiver);
+            return;
+        }
         maybe_initialize_class(env, class);
         return;
     };
@@ -434,7 +445,34 @@ fn objc_msgSend_inner(
             );
         }
 
-        let host_object = env.objc.get_host_object(class).unwrap();
+        let Some(host_object) = env.objc.get_host_object(class) else {
+            // `class` is a pointer that is not any object tapHLE knows, let
+            // alone a class, so there is no method table to search. This is the
+            // same situation as the nil isa handled above and it arrives the
+            // same way: the receiver is not a live object. The case seen in the
+            // survey is `objc_setProperty` releasing whatever the property's
+            // ivar happened to hold before its first assignment.
+            //
+            // Apple's runtime would follow the garbage pointer, and mostly get
+            // away with it - which is why apps ship like this and work. Give
+            // the same answer as a message to nil so the app carries on, and
+            // say so plainly, because the count of these is the signal.
+            let selector_str = selector.as_str(&env.mem).to_string();
+            log!(
+                "Warning: sending {:?} to {:?}, whose {} {:?} is not a class \
+                 tapHLE knows; treating this as a message to nil.",
+                selector_str,
+                receiver,
+                if class == orig_class {
+                    "class"
+                } else {
+                    "superclass"
+                },
+                class
+            );
+            env.cpu.regs_mut()[0..2].fill(0);
+            return;
+        };
 
         if let Some(&super::ClassHostObject {
             superclass,
