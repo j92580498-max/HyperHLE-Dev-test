@@ -395,20 +395,25 @@ pub(super) fn UIApplicationMain(
                 .borrow_mut::<UIApplicationHostObject>(ui_application)
                 .delegate_is_retained = true;
             retain(env, delegate);
+        } else if delegate_class_name == nil {
+            // UIApplicationMain accepts a nil delegate class, and a nib that
+            // sets no delegate is not an error either: an app that builds its
+            // window in main() and never implements the delegate protocol is
+            // unusual but legal, and UIKit simply leaves the delegate nil.
+            // Messages to it are then messages to nil, which is exactly what
+            // such an app expects.
+            log!("No application delegate class was named and the nib set none; running without a delegate");
+        } else if msg![env; delegate_class_name isEqual:principal_class_name] {
+            // If same non-nil class name is used for both principal and
+            // delegate, it means that app is using itself as a delegate
+            let _: () = msg![env; ui_application setDelegate:ui_application];
         } else {
-            assert!(delegate_class_name != nil);
-            if msg![env; delegate_class_name isEqual:principal_class_name] {
-                // If same non-nil class name is used for both principal and
-                // delegate, it means that app is using itself as a delegate
-                let _: () = msg![env; ui_application setDelegate:ui_application];
-            } else {
-                // We have to construct the delegate.
-                let name = ns_string::to_rust_string(env, delegate_class_name);
-                let class = env.objc.get_known_class(&name, &mut env.mem);
-                let delegate: id = msg![env; class new];
-                let _: () = msg![env; ui_application setDelegate:delegate];
-                assert!(delegate != nil);
-            }
+            // We have to construct the delegate.
+            let name = ns_string::to_rust_string(env, delegate_class_name);
+            let class = env.objc.get_known_class(&name, &mut env.mem);
+            let delegate: id = msg![env; class new];
+            let _: () = msg![env; ui_application setDelegate:delegate];
+            assert!(delegate != nil);
         };
         // We can't hang on to the delegate, the guest app may change it at any
         // time.
