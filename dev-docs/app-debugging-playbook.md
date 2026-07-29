@@ -738,6 +738,28 @@ So:
    That single check distinguishes "playing" from "frozen on a plausible
    screenshot", and it is the check that has caught the most.
 
+`dev-scripts/regression-sweep.ps1` does 1, 3 and 4. It sweeps whatever is in
+the app collection directory, so there is no list for an app to fall out of,
+and it takes per-app launch options from `tapHLE_default_options.txt` by bundle
+identifier rather than carrying its own copy of them. It exits non-zero if any
+app failed to start or died.
+
+Run it before merging anything that touches a shared path, and after. Writing
+the check by hand instead is how it shrank to eight apps and a twenty-second
+wait the last time.
+
+It does **not** do 2. Nothing in it leaves the title screen, so it reports
+`STATIC` for an app that is merely waiting for input and for one that is
+wedged, and cannot tell them apart. Reaching a rated milestone still means
+following that app's click map by hand.
+
+Treat `STATIC` as a prompt to look, not as a verdict. Some title screens change
+very slowly - Warlords HD's takes about fifteen seconds - so the sweep samples
+several frames before calling anything still, and even then Flight Control HD
+has read `MOVING` on one run and `STATIC` on the next. That is why `STATIC`
+does not fail the run. A genuine freeze is confirmed by driving the app, not by
+this number.
+
 ### Bisect rather than guess when a regression appears
 
 An app that used to work and now does not has a first bad commit, and finding it
