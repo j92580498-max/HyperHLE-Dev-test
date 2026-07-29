@@ -38,6 +38,12 @@
   than only integer ones, and Objective-C block retention, run-time class
   creation, Core Graphics colour components, Foundation allocation zones and
   extended-attribute calls all work.
+- Stop ending the app over ordinary input. A locale identifier carrying a
+  script or a numeric region, an OpenGL ES parameter name the backend does not
+  know, a nib that produces no objects or sets no view, a message whose
+  declared argument types disagree with the receiver's, and an application
+  started without a delegate class are all things a device accepts, and each
+  one previously aborted at launch.
 
 ### Known limitations
 
