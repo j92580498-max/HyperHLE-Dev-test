@@ -17,6 +17,24 @@ prerelease is `0.3.0-alpha.1`, and the first stable tapHLE release will be
 - Reserve 1.0 for a dependable Windows distribution with established release,
   configuration, save-data, and compatibility expectations.
 
+## The first release is on hold
+
+**The first numbered tapHLE release waits for the new GUI.** Until that ships,
+the trigger below does not fire, however full `Unreleased` gets. This is a
+maintainer decision recorded here so that the rule is visibly held rather than
+quietly not working, and `dev-scripts/release-readiness.ps1` reports it as a
+blocker for the same reason.
+
+The reasoning is that a first release is the one release that gets looked at as
+a statement of what the project is. Everything after it is an increment against
+that baseline. Shipping `0.3.0-alpha.1` as a command-line emulator would set
+the baseline in the wrong place.
+
+This is a hold on the *first* release only. When the GUI ships, lift it by
+flipping the flag at the top of `release-readiness.ps1` and deleting this
+section; the mechanical trigger below then applies from that point on and is
+not subject to further judgement calls.
+
 ## When to cut one
 
 The trigger is the changelog, not a commit count and not a judgement call about

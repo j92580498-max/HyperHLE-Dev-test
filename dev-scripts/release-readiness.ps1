@@ -19,6 +19,13 @@ $ErrorActionPreference = 'Stop'
 $Root = Split-Path -Parent $PSScriptRoot
 Set-Location $Root
 
+# The first numbered release waits for the new GUI; see "The first release is
+# on hold" in dev-docs/releases.md. Set this to $false when the GUI ships and
+# delete that section - after the first release the changelog trigger applies
+# on its own. A held release is stated rather than left to look like a rule
+# that mysteriously never fires.
+$FirstReleaseHeldForGui = $true
+
 $blockers = @()
 $notes = @()
 
@@ -36,6 +43,12 @@ function Invoke-Capture {
     $previous = $ErrorActionPreference
     $ErrorActionPreference = 'Continue'
     try { & cargo @CargoArgs 2>&1 | Out-String } finally { $ErrorActionPreference = $previous }
+}
+
+# 0. The standing hold, checked before anything else so a held release is never
+#    reported as ready no matter how green the rest of the run is.
+if ($FirstReleaseHeldForGui) {
+    Add-Blocker 'The first release is held until the new GUI ships (dev-docs/releases.md).'
 }
 
 # 1. Is there anything to release? This is the trigger, not a formality: an
