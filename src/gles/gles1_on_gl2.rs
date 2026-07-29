@@ -110,30 +110,40 @@ struct ArrayStateBackup {
     buffer_binding: GLuint,
 }
 
-/// List of arrays shared by OpenGL ES 1.1 and OpenGL 2.1.
+/// Report a GL enum tapHLE does not model, once per function and value.
 ///
-/// Report a client-state array tapHLE does not model, once per distinct enum.
+/// `noun` names what the value was being used as, for instance `"a capability"`
+/// or `"a client array"`, so the message reads as a sentence.
 ///
 /// A per-frame call site would otherwise flood the log, but the enum itself is
 /// exactly what a future implementer needs, so it must not be swallowed either.
-/// The likeliest candidate is `GL_POINT_SIZE_ARRAY_OES` (0x8B9C), used by
-/// point-sprite particle systems.
-fn warn_unknown_client_array(function: &str, array: GLenum) {
+/// Among client arrays the likeliest candidate is `GL_POINT_SIZE_ARRAY_OES`
+/// (0x8B9C), used by point-sprite particle systems.
+///
+/// Every caller passes the value through to desktop GL afterwards. A name
+/// tapHLE does not model is one desktop GL does not model either, so it records
+/// GL_INVALID_ENUM and does nothing, which is what OpenGL ES 1.1 specifies and
+/// what the guest's own `glGetError` should therefore see. Aborting instead
+/// turned a guest's own recoverable mistake into an emulator crash.
+fn warn_unhandled_enum(function: &'static str, noun: &str, value: GLenum) {
     use std::collections::HashSet;
     use std::sync::{Mutex, OnceLock};
-    static SEEN: OnceLock<Mutex<HashSet<GLenum>>> = OnceLock::new();
+    static SEEN: OnceLock<Mutex<HashSet<(&'static str, GLenum)>>> = OnceLock::new();
     let seen = SEEN.get_or_init(|| Mutex::new(HashSet::new()));
-    if seen.lock().unwrap().insert(array) {
+    if seen.lock().unwrap().insert((function, value)) {
         log!(
-            "Warning: {}({:#x}) names a client array tapHLE does not model. \
+            "Warning: {}({:#x}) names {} tapHLE does not model. \
              Letting it through so the guest sees GL_INVALID_ENUM. \
-             [reported once per array]",
+             [reported once per value]",
             function,
-            array
+            value,
+            noun
         );
     }
 }
 
+/// List of arrays shared by OpenGL ES 1.1 and OpenGL 2.1.
+///
 /// TODO: GL_POINT_SIZE_ARRAY_OES?
 pub const ARRAYS: &[ArrayInfo] = &[
     ArrayInfo {
@@ -722,18 +732,16 @@ impl GLES for GLES1OnGL2<'_> {
             || cap == gl21::TEXTURE
         {
             log_dbg!("Tolerating glEnable({:#x})", cap);
-        } else {
-            assert!(
-                CAPABILITIES.contains(&cap),
-                "Unexpected capability for glEnable({cap:#x})"
-            );
+        } else if !CAPABILITIES.contains(&cap) {
+            warn_unhandled_enum("glEnable", "a capability", cap);
         }
         gl21::Enable(cap);
     }
     unsafe fn IsEnabled(&mut self, cap: GLenum) -> GLboolean {
-        assert!(
-            CAPABILITIES.contains(&cap) || ARRAYS.iter().any(|&ArrayInfo { name, .. }| name == cap)
-        );
+        if !CAPABILITIES.contains(&cap) && !ARRAYS.iter().any(|&ArrayInfo { name, .. }| name == cap)
+        {
+            warn_unhandled_enum("glIsEnabled", "a capability", cap);
+        }
         gl21::IsEnabled(cap)
     }
     unsafe fn Disable(&mut self, cap: GLenum) {
@@ -746,7 +754,7 @@ impl GLES for GLES1OnGL2<'_> {
         } else if GET_PARAMS.contains(cap) || UNSUPPORTED_GET_PARAMS.contains(cap) {
             log_dbg!("Tolerating glDisable({:#x}) of parameter", cap);
         } else {
-            panic!("Unexpected glDisable({cap:#x})");
+            warn_unhandled_enum("glDisable", "a capability", cap);
         }
         gl21::Disable(cap);
     }
@@ -765,7 +773,7 @@ impl GLES for GLES1OnGL2<'_> {
                 array
             );
         } else if !ARRAYS.iter().any(|&ArrayInfo { name, .. }| name == array) {
-            warn_unknown_client_array("glEnableClientState", array);
+            warn_unhandled_enum("glEnableClientState", "a client array", array);
         }
         // Pass it through either way. An array tapHLE does not model is one
         // desktop GL does not model either, so it records GL_INVALID_ENUM and
@@ -786,7 +794,7 @@ impl GLES for GLES1OnGL2<'_> {
                 array
             );
         } else if !ARRAYS.iter().any(|&ArrayInfo { name, .. }| name == array) {
-            warn_unknown_client_array("glDisableClientState", array);
+            warn_unhandled_enum("glDisableClientState", "a client array", array);
         }
         // See the note in EnableClientState.
         gl21::DisableClientState(array);
@@ -889,21 +897,24 @@ impl GLES for GLES1OnGL2<'_> {
         gl21::GetPointerv(pname, params as *mut _ as *const _);
     }
     unsafe fn Hint(&mut self, target: GLenum, mode: GLenum) {
-        assert!([
+        if ![
             gl21::FOG_HINT,
             gl21::GENERATE_MIPMAP_HINT,
             gl21::LINE_SMOOTH_HINT,
             gl21::PERSPECTIVE_CORRECTION_HINT,
-            gl21::POINT_SMOOTH_HINT
+            gl21::POINT_SMOOTH_HINT,
         ]
-        .contains(&target));
+        .contains(&target)
+        {
+            warn_unhandled_enum("glHint", "a hint target", target);
+        }
         if mode == 0x0 {
             log_dbg!("Tolerating glHint({:#x}, {:#x})", target, mode);
-        } else {
-            assert!(
-                [gl21::FASTEST, gl21::NICEST, gl21::DONT_CARE].contains(&mode),
-                "Unexpected mode in glHint({target:#x}, {mode:#x})"
-            );
+        } else if ![gl21::FASTEST, gl21::NICEST, gl21::DONT_CARE].contains(&mode) {
+            // Observed: glHint(GL_FOG_HINT, GL_NEAREST), a texture filter
+            // passed where a quality hint belongs. The guest is simply
+            // wrong, and being wrong about a hint is not fatal on a device.
+            warn_unhandled_enum("glHint", "a hint mode", mode);
         }
         gl21::Hint(target, mode);
     }
