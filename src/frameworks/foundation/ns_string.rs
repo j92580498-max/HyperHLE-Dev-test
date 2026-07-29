@@ -97,17 +97,26 @@ enum StringHostObject {
 }
 impl HostObject for StringHostObject {}
 impl StringHostObject {
-    fn decode(bytes: Cow<[u8]>, encoding: NSStringEncoding) -> StringHostObject {
+    /// Decode bytes in `encoding`, or `None` if they are not valid in it.
+    ///
+    /// `None` is not an error condition to report: `initWithData:encoding:` and
+    /// its relatives are documented to return nil when the data cannot be
+    /// converted, and apps do pass data that cannot be — a binary property list
+    /// handed to the UTF-8 path is the case seen most. The caller returns nil
+    /// and the app takes the branch it already has for that.
+    fn decode(bytes: Cow<[u8]>, encoding: NSStringEncoding) -> Option<StringHostObject> {
         if bytes.is_empty() {
-            return StringHostObject::Utf8(Cow::Borrowed(""));
+            return Some(StringHostObject::Utf8(Cow::Borrowed("")));
         }
 
         // TODO: error handling
 
-        match encoding {
+        Some(match encoding {
             NSASCIIStringEncoding => {
-                assert!(bytes.iter().all(|byte| byte.is_ascii()));
-                // Safety: guaranteed by above assertion
+                if !bytes.iter().all(|byte| byte.is_ascii()) {
+                    return None;
+                }
+                // Safety: guaranteed by the check above
                 let string = unsafe { String::from_utf8_unchecked(bytes.into_owned()) };
                 StringHostObject::Utf8(Cow::Owned(string))
             }
@@ -119,7 +128,7 @@ impl StringHostObject {
                 StringHostObject::Utf8(Cow::Owned(string))
             }
             NSUTF8StringEncoding => {
-                let string = String::from_utf8(bytes.into_owned()).unwrap();
+                let string = String::from_utf8(bytes.into_owned()).ok()?;
                 StringHostObject::Utf8(Cow::Owned(string))
             }
             NSWindowsCP1252StringEncoding => {
@@ -154,9 +163,8 @@ impl StringHostObject {
                     },
                     _ => unreachable!(),
                 };
-                // TODO: Should the BOM be stripped? Always/sometimes/never?
 
-                StringHostObject::Utf16(if is_big_endian {
+                let units: Vec<u16> = if is_big_endian {
                     bytes
                         .chunks(2)
                         .map(|chunk| u16::from_be_bytes(chunk.try_into().unwrap()))
@@ -166,10 +174,24 @@ impl StringHostObject {
                         .chunks(2)
                         .map(|chunk| u16::from_le_bytes(chunk.try_into().unwrap()))
                         .collect()
-                })
+                };
+
+                // The mark is consumed, not kept: under
+                // NSUTF16StringEncoding it is how the byte order was just
+                // decided, so leaving it in would put an invisible character
+                // at the front of every file that has one. The
+                // explicitly-ordered encodings are different - nothing was
+                // decided from it there, so it stays as the zero width
+                // no-break space it nominally is.
+                let units = match units.split_first() {
+                    Some((0xFEFF, rest)) if encoding == NSUTF16StringEncoding => rest.to_vec(),
+                    _ => units,
+                };
+
+                StringHostObject::Utf16(units)
             }
             _ => panic!("Unimplemented encoding: {encoding:#x}"),
-        }
+        })
     }
     fn to_utf8(&self) -> Result<Cow<'static, str>, FromUtf16Error> {
         match self {
@@ -1546,9 +1568,11 @@ pub const CLASSES: ClassExports = objc_classes! {
 - (id)initWithBytes:(ConstPtr<u8>)bytes
              length:(NSUInteger)len
            encoding:(NSStringEncoding)encoding {
-    // TODO: error handling
     let slice = env.mem.bytes_at(bytes, len);
-    let host_object = StringHostObject::decode(Cow::Borrowed(slice), encoding);
+    let Some(host_object) = StringHostObject::decode(Cow::Borrowed(slice), encoding) else {
+        release(env, this);
+        return nil;
+    };
 
     *env.objc.borrow_mut(this) = host_object;
 
@@ -1604,7 +1628,10 @@ pub const CLASSES: ClassExports = objc_classes! {
         msg_class![env; NSString defaultCStringEncoding]
     };
 
-    let host_object = StringHostObject::decode(Cow::Owned(bytes), encoding);
+    let Some(host_object) = StringHostObject::decode(Cow::Owned(bytes), encoding) else {
+        release(env, this);
+        return nil;
+    };
     *env.objc.borrow_mut(this) = host_object;
     this
 }
@@ -1628,8 +1655,11 @@ pub const CLASSES: ClassExports = objc_classes! {
         return nil;
     };
 
-    // TODO: error handling for encoding
-    let host_object = StringHostObject::decode(Cow::Owned(bytes), encoding);
+    let Some(host_object) = StringHostObject::decode(Cow::Owned(bytes), encoding) else {
+        report_no_error(env, error);
+        release(env, this);
+        return nil;
+    };
     *env.objc.borrow_mut(this) = host_object;
     this
 }
@@ -1807,7 +1837,10 @@ pub const CLASSES: ClassExports = objc_classes! {
         return nil;
     };
     let encoding = msg_class![env; NSString defaultCStringEncoding];
-    let host_object = StringHostObject::decode(Cow::Owned(bytes), encoding);
+    let Some(host_object) = StringHostObject::decode(Cow::Owned(bytes), encoding) else {
+        release(env, this);
+        return nil;
+    };
     *env.objc.borrow_mut(this) = host_object;
     this
 }
@@ -1847,7 +1880,11 @@ pub const CLASSES: ClassExports = objc_classes! {
         release(env, this);
         return nil;
     };
-    let host_object = StringHostObject::decode(Cow::Owned(bytes), encoding);
+    let Some(host_object) = StringHostObject::decode(Cow::Owned(bytes), encoding) else {
+        report_no_error(env, error);
+        release(env, this);
+        return nil;
+    };
     *env.objc.borrow_mut(this) = host_object;
     this
 }
@@ -1855,9 +1892,11 @@ pub const CLASSES: ClassExports = objc_classes! {
 - (id)initWithBytes:(ConstPtr<u8>)bytes
              length:(NSUInteger)len
            encoding:(NSStringEncoding)encoding {
-    // TODO: error handling
     let slice = env.mem.bytes_at(bytes, len);
-    let host_object = StringHostObject::decode(Cow::Borrowed(slice), encoding);
+    let Some(host_object) = StringHostObject::decode(Cow::Borrowed(slice), encoding) else {
+        release(env, this);
+        return nil;
+    };
 
     *env.objc.borrow_mut(this) = host_object;
 
