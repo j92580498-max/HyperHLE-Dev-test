@@ -240,8 +240,9 @@ relativeToURL:(id)base_url { // NSURL*
 };
 
 /// Shared implementation of the non-file-URL component accessors
-/// ([NSURL scheme], [host], [query], [fragment]): parse the stored URL string
-/// with `parser` and return the result as an autoreleased NSString, or nil.
+/// (`[NSURL scheme]`, `[NSURL host]`, `[NSURL query]`, `[NSURL fragment]`):
+/// parse the stored URL string with `parser` and return the result as an
+/// autoreleased NSString, or nil.
 /// File URLs have none of these components here.
 fn url_component(env: &mut Environment, this: id, parser: fn(&str) -> Option<&str>) -> id {
     let ns_string = match env.objc.borrow(this) {

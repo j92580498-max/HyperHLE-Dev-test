@@ -467,7 +467,8 @@ pub fn write(
 
 /// `struct iovec` from `<sys/uio.h>`: a base pointer and a length.
 #[repr(C, packed)]
-struct iovec {
+#[allow(non_camel_case_types)]
+pub struct iovec {
     iov_base: ConstVoidPtr,
     iov_len: GuestUSize,
 }
@@ -475,7 +476,7 @@ unsafe impl SafeRead for iovec {}
 
 /// `ssize_t writev(int fildes, const struct iovec *iov, int iovcnt)`. Scatter
 /// output: writes each `iov` buffer to `fd` in order and returns the total
-/// number of bytes written. Implemented on top of [write], which is the same
+/// number of bytes written. Implemented on top of [write()], which is the same
 /// destination handling every buffer would get individually.
 pub fn writev(
     env: &mut Environment,

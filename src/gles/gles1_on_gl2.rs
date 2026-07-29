@@ -856,10 +856,10 @@ impl GLES for GLES1OnGL2<'_> {
                 let mut floats = [0.0f32; 16];
                 let count = (count as usize).min(floats.len());
                 gl21::GetFloatv(pname, floats.as_mut_ptr());
-                for i in 0..count {
+                for (i, float) in floats.iter().enumerate().take(count) {
                     // The specification rounds a float parameter to the nearest
                     // integer rather than truncating it.
-                    *params.add(i) = floats[i].round() as GLint;
+                    *params.add(i) = float.round() as GLint;
                 }
             }
             ParamType::_NonExhaustive => {
