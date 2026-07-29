@@ -263,7 +263,7 @@ pub const CLASSES: ClassExports = objc_classes! {
         let path: id = msg![env; this objectAtIndex:i];
         let path_extension: id = msg![env; path pathExtension];
         let path_extension = ns_string::to_rust_string(env, path_extension).to_lowercase();
-        if wanted.iter().any(|wanted| *wanted == path_extension) {
+        if wanted.contains(&path_extension) {
             () = msg![env; result addObject:path];
         }
     }

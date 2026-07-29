@@ -769,11 +769,8 @@ unsafe fn ensure_present_program(gles: &mut dyn GLES) -> PresentProgram {
         let mut buf = [0u8; 1024];
         let mut len: GLsizei = 0;
         gles.GetShaderInfoLog(vs, 1024, &mut len, buf.as_mut_ptr() as *mut _);
-        let s = std::str::from_utf8(std::slice::from_raw_parts(
-            buf.as_ptr() as *const u8,
-            len as _,
-        ))
-        .unwrap_or("?");
+        let s =
+            std::str::from_utf8(std::slice::from_raw_parts(buf.as_ptr(), len as _)).unwrap_or("?");
         panic!("present_es2 vertex shader compile failed: {s}");
     }
 
@@ -787,11 +784,8 @@ unsafe fn ensure_present_program(gles: &mut dyn GLES) -> PresentProgram {
         let mut buf = [0u8; 1024];
         let mut len: GLsizei = 0;
         gles.GetShaderInfoLog(fs, 1024, &mut len, buf.as_mut_ptr() as *mut _);
-        let s = std::str::from_utf8(std::slice::from_raw_parts(
-            buf.as_ptr() as *const u8,
-            len as _,
-        ))
-        .unwrap_or("?");
+        let s =
+            std::str::from_utf8(std::slice::from_raw_parts(buf.as_ptr(), len as _)).unwrap_or("?");
         panic!("present_es2 fragment shader compile failed: {s}");
     }
 
@@ -800,26 +794,23 @@ unsafe fn ensure_present_program(gles: &mut dyn GLES) -> PresentProgram {
     gles.AttachShader(prog, fs);
     // Bind to high attribute slots so we never collide with the app's
     // attribute layout (which typically starts at 0).
-    gles.BindAttribLocation(prog, 6, b"aPos\0".as_ptr() as *const _);
-    gles.BindAttribLocation(prog, 7, b"aUV\0".as_ptr() as *const _);
+    gles.BindAttribLocation(prog, 6, c"aPos".as_ptr());
+    gles.BindAttribLocation(prog, 7, c"aUV".as_ptr());
     gles.LinkProgram(prog);
     gles.GetProgramiv(prog, gles2::LINK_STATUS, &mut ok);
     if ok == 0 {
         let mut buf = [0u8; 1024];
         let mut len: GLsizei = 0;
         gles.GetProgramInfoLog(prog, 1024, &mut len, buf.as_mut_ptr() as *mut _);
-        let s = std::str::from_utf8(std::slice::from_raw_parts(
-            buf.as_ptr() as *const u8,
-            len as _,
-        ))
-        .unwrap_or("?");
+        let s =
+            std::str::from_utf8(std::slice::from_raw_parts(buf.as_ptr(), len as _)).unwrap_or("?");
         panic!("present_es2 program link failed: {s}");
     }
 
-    let a_pos = gles.GetAttribLocation(prog, b"aPos\0".as_ptr() as *const _);
-    let a_uv = gles.GetAttribLocation(prog, b"aUV\0".as_ptr() as *const _);
-    let u_tex = gles.GetUniformLocation(prog, b"uTex\0".as_ptr() as *const _);
-    let u_tex_mat = gles.GetUniformLocation(prog, b"uTexMat\0".as_ptr() as *const _);
+    let a_pos = gles.GetAttribLocation(prog, c"aPos".as_ptr());
+    let a_uv = gles.GetAttribLocation(prog, c"aUV".as_ptr());
+    let u_tex = gles.GetUniformLocation(prog, c"uTex".as_ptr());
+    let u_tex_mat = gles.GetUniformLocation(prog, c"uTexMat".as_ptr());
 
     let result = PresentProgram {
         program: prog,

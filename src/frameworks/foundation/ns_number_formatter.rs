@@ -23,9 +23,16 @@ use crate::objc::{
 pub type NSNumberFormatterStyle = NSUInteger;
 pub const NSNumberFormatterNoStyle: NSNumberFormatterStyle = 0;
 pub const NSNumberFormatterDecimalStyle: NSNumberFormatterStyle = 1;
+// The rest of the enum. `setNumberStyle:` accepts these and warns that it
+// renders them as plain decimal, so nothing here references them by name; they
+// are written out because a partial enum invites someone to guess the values.
+#[allow(dead_code)]
 pub const NSNumberFormatterCurrencyStyle: NSNumberFormatterStyle = 2;
+#[allow(dead_code)]
 pub const NSNumberFormatterPercentStyle: NSNumberFormatterStyle = 3;
+#[allow(dead_code)]
 pub const NSNumberFormatterScientificStyle: NSNumberFormatterStyle = 4;
+#[allow(dead_code)]
 pub const NSNumberFormatterSpellOutStyle: NSNumberFormatterStyle = 5;
 
 pub type NSNumberFormatterPadPosition = NSUInteger;

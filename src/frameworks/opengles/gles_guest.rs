@@ -1711,11 +1711,8 @@ fn glCompileShader(env: &mut Environment, shader: GLuint) {
             let mut buf = [0u8; 1024];
             let mut len: GLsizei = 0;
             gles.GetShaderInfoLog(shader, 1024, &mut len, buf.as_mut_ptr() as *mut _);
-            let s = std::str::from_utf8(std::slice::from_raw_parts(
-                buf.as_ptr() as *const u8,
-                len as usize,
-            ))
-            .unwrap_or("?");
+            let s = std::str::from_utf8(std::slice::from_raw_parts(buf.as_ptr(), len as usize))
+                .unwrap_or("?");
             log!("Shader {} compile failed: {}", shader, s);
         }
     });
@@ -1739,11 +1736,8 @@ fn glLinkProgram(env: &mut Environment, program: GLuint) {
             let mut buf = [0u8; 1024];
             let mut len: GLsizei = 0;
             gles.GetProgramInfoLog(program, 1024, &mut len, buf.as_mut_ptr() as *mut _);
-            let s = std::str::from_utf8(std::slice::from_raw_parts(
-                buf.as_ptr() as *const u8,
-                len as usize,
-            ))
-            .unwrap_or("?");
+            let s = std::str::from_utf8(std::slice::from_raw_parts(buf.as_ptr(), len as usize))
+                .unwrap_or("?");
             log!("Program {} link failed: {}", program, s);
         }
     });
@@ -1987,7 +1981,7 @@ fn glUniform4f(
 }
 fn glUniform1iv(env: &mut Environment, location: GLint, count: GLsizei, value: ConstPtr<GLint>) {
     with_ctx_and_mem(env, |gles, mem| unsafe {
-        let n = (count as usize).max(0);
+        let n = count as usize;
         let ptr = mem.ptr_at(value, n.try_into().unwrap_or(0));
         gles.Uniform1iv(location, count, ptr);
     });

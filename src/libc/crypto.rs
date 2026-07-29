@@ -192,6 +192,9 @@ fn cchmac<D: Digest + Default>(key: &[u8], data: &[u8]) -> Vec<u8> {
 /// The early iPhone OS CommonCrypto manual documents AES in CBC mode by
 /// default, a zero IV when none is supplied, PKCS#7 padding, and the ECB-mode
 /// option. See <https://developer.apple.com/library/archive/documentation/System/Conceptual/ManPages_iPhoneOS/man3/CCryptorCreateFromData.3cc.html>.
+// Twelve arguments because that is CommonCrypto's signature; the guest calls
+// this by ABI, so the parameter list is not ours to group.
+#[allow(clippy::too_many_arguments)]
 fn CCCrypt(
     env: &mut Environment,
     operation: u32,
@@ -279,7 +282,7 @@ fn cccrypt_aes(
     if encrypting && padding {
         let padding_len = AES_BLOCK_SIZE - output.len() % AES_BLOCK_SIZE;
         output.resize(output.len() + padding_len, padding_len as u8);
-    } else if output.len() % AES_BLOCK_SIZE != 0 {
+    } else if !output.len().is_multiple_of(AES_BLOCK_SIZE) {
         return Err(KCC_ALIGNMENT_ERROR);
     }
 

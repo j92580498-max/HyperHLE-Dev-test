@@ -22,7 +22,6 @@ use crate::libc::pthread::mutex::{
 };
 use crate::libc::time::timespec;
 use crate::mem::{guest_size_of, ConstPtr, MutPtr};
-use crate::objc::msg_class;
 use crate::objc::{id, msg, nil, objc_classes, release, ClassExports, HostObject};
 
 struct NSLockHostObject {

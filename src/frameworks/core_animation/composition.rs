@@ -508,6 +508,12 @@ unsafe fn composite_layer_recursive(
         let bg = host_obj
             .background_color
             .map(|c| format!("rgba({},{},{},{})", c.r, c.g, c.b, c.a));
+        // Copied out first: `bounds` lives in a packed struct, and the
+        // formatting macros take a reference to each argument, which is not
+        // allowed to be unaligned. Copying the scalars is what makes them
+        // ordinary aligned locals.
+        let bounds_w = host_obj.bounds.size.width;
+        let bounds_h = host_obj.bounds.size.height;
         log_dbg!(
             "composite {:?} {} opacity={} bg={:?} contents={} eagl_pixels={} bounds={}x{} sublayers={}",
             layer,
@@ -516,8 +522,8 @@ unsafe fn composite_layer_recursive(
             bg,
             host_obj.contents != crate::objc::nil,
             host_obj.presented_pixels.is_some(),
-            { let w = host_obj.bounds.size.width; w },
-            { let h = host_obj.bounds.size.height; h },
+            bounds_w,
+            bounds_h,
             host_obj.sublayers.len(),
         );
     }

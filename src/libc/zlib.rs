@@ -29,6 +29,7 @@ use std::io::{Read, Write};
 
 /// `gzFile`. Opaque to the guest; tapHLE hands out a small unique guest
 /// allocation and keeps the real state host-side.
+#[allow(non_camel_case_types)]
 type gzFile = MutVoidPtr;
 
 enum GzStream {
