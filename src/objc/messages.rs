@@ -474,10 +474,26 @@ Type mismatch when sending message {} to {:?}!
                                     expected_type_id,
                                     expected_type_desc
                                 );
-                                if tolerate_type_mismatch {
+                                // Never fatal. Objective-C dispatch does no
+                                // type checking whatsoever — objc_msgSend moves
+                                // registers and the callee interprets them — so
+                                // a mismatch is something the real runtime
+                                // permits and apps genuinely rely on, whether by
+                                // type punning or by declaring a method with a
+                                // slightly different signature than the one
+                                // tapHLE implements. Fourteen apps in a survey
+                                // of 1501 died here.
+                                //
+                                // It is still worth saying. A mismatch means the
+                                // arguments are being interpreted differently
+                                // than the caller intended, and if something
+                                // misbehaves shortly afterwards this is the
+                                // first thing to suspect. `tolerate_type_mismatch`
+                                // now selects silence rather than survival: the
+                                // call sites that pass it know the mismatch is
+                                // expected and would only produce noise.
+                                if !tolerate_type_mismatch {
                                     log!("Warning: {}", msg);
-                                } else {
-                                    panic!("{}", msg);
                                 }
                             }
                         }
