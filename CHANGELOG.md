@@ -54,9 +54,13 @@
   capability the backend does not model, setting an audio unit property on the
   input bus, transforming by a matrix that has picked up a NaN, and running
   `sscanf` off the end of its input are all things a device takes in its
-  stride, and each one previously ended the app where it happened. Of the 61
-  apps a survey of 1501 found stopping at these points, all 61 now get past
-  them.
+  stride, and each one previously ended the app where it happened. The same
+  reading of the survey also cleared an `Info.plist` that writes its supported
+  orientations as a string or a dictionary rather than an array, a table view
+  whose delegate sets no row height, and a `CFPreferences` call that names the
+  app's own bundle identifier rather than the current-application constant. Of
+  the 72 apps a survey of 1501 found stopping at these points, all 72 now get
+  past them.
 - Read what apps were already asking for. NSScanner scans hexadecimal numbers,
   `NSURL` accepts a `file:` URL wherever a URL string is accepted and reports
   the path of a URL that has a scheme and host in front of it, `.strings` files
