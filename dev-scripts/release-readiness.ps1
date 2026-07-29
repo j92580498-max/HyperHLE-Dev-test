@@ -25,6 +25,19 @@ $notes = @()
 function Add-Blocker($text) { $script:blockers += $text }
 function Add-Note($text) { $script:notes += $text }
 
+# Windows PowerShell 5.1 wraps each stderr line from a native program in an
+# ErrorRecord, which `$ErrorActionPreference = 'Stop'` above then treats as
+# terminating - so `cargo test 2>&1` aborts this script the moment cargo
+# prints a "Compiling ..." line, which it does on any build that is not fully
+# cached. Capturing through here keeps stderr merged (the test summary is what
+# we want to read) without letting it end the run.
+function Invoke-Capture {
+    param([string[]]$CargoArgs)
+    $previous = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try { & cargo @CargoArgs 2>&1 | Out-String } finally { $ErrorActionPreference = $previous }
+}
+
 # 1. Is there anything to release? This is the trigger, not a formality: an
 #    empty Unreleased section means the correct action is to do nothing.
 $changelog = Get-Content 'CHANGELOG.md' -Raw
@@ -66,13 +79,22 @@ if ($Quick) {
     cargo fmt --all -- --check *> $null
     if ($LASTEXITCODE -ne 0) { Add-Blocker 'cargo fmt --check fails.' }
 
-    $unit = cargo test --release --lib 2>&1 | Select-String 'test result:'
-    if ($unit -match 'FAILED') { Add-Blocker 'Unit tests fail.' } else { Add-Note 'Unit tests pass.' }
+    # Matched on the success line rather than on a failure word: a *passing*
+    # summary reads "0 failed", and PowerShell's -match is case-insensitive, so
+    # looking for 'FAILED' reports every green run as a red one. Absence of the
+    # success line also covers the suite failing to build at all, which is what
+    # a missing 'test result:' means.
+    $unit = Invoke-Capture @('test', '--release', '--lib')
+    if ($unit -match 'test result: ok\.') {
+        Add-Note 'Unit tests pass.'
+    } else {
+        Add-Blocker 'Unit tests fail.'
+    }
 
     # Named separately because releases.md requires integration tests too, and
     # this is the one that has been failing.
-    $integration = cargo test --release --test integration 2>&1 | Select-String 'test result:'
-    if (-not $integration -or $integration -match 'FAILED') {
+    $integration = Invoke-Capture @('test', '--release', '--test', 'integration')
+    if ($integration -notmatch 'test result: ok\.') {
         Add-Blocker 'Integration tests fail (releases.md requirement 3 names them explicitly).'
     } else {
         Add-Note 'Integration tests pass.'
