@@ -44,6 +44,26 @@
   declared argument types disagree with the receiver's, and an application
   started without a delegate class are all things a device accepts, and each
   one previously aborted at launch.
+- Keep going through more ordinary input still. Scheduling a timer that is
+  already scheduled, asking for virtual-memory statistics with room to spare,
+  reading a localized string from a bundle other than the main one, messaging
+  an object whose class is no longer there, loading data that is not valid text
+  in the encoding it was declared to be in, loading an image in a format tapHLE
+  cannot decode, `dlopen` of a library that is not present, asking a Core
+  Foundation array for a starting capacity, enabling or hinting an OpenGL ES
+  capability the backend does not model, setting an audio unit property on the
+  input bus, transforming by a matrix that has picked up a NaN, and running
+  `sscanf` off the end of its input are all things a device takes in its
+  stride, and each one previously ended the app where it happened. Of the 61
+  apps a survey of 1501 found stopping at these points, all 61 now get past
+  them.
+- Read what apps were already asking for. NSScanner scans hexadecimal numbers,
+  `NSURL` accepts a `file:` URL wherever a URL string is accepted and reports
+  the path of a URL that has a scheme and host in front of it, `.strings` files
+  load whether they are UTF-8 or UTF-16 and whether or not their keys are
+  quoted, a byte order mark is consumed rather than left at the front of the
+  text, and `sscanf` reports the end of its input as `EOF` rather than as no
+  match.
 
 ### Known limitations
 
