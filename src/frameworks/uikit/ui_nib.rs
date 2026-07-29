@@ -105,14 +105,30 @@ pub const CLASSES: ClassExports = objc_classes! {
     let type_: id = get_static_str(env, "nib");
     let path: id  = msg![env; bundle pathForResource:nib_name ofType:type_];
 
-    assert!(path != nil);
-    assert!(msg![env; path isAbsolutePath]);
+    // A nib named in a xib or Info.plist that is not in the bundle is a
+    // packaging mistake in the app, not a reason to stop running it.
+    if path == nil {
+        log!("Warning: no nib named {:?} in the bundle; instantiating nothing", nib_name);
+        return msg_class![env; NSArray array];
+    }
     let nib_path = to_rust_string(env, path).to_string();
 
-    assert!(env.objc.borrow::<UINibHostObject>(this).file_owner == nil);
+    // A UINib is a loadable template, not a one-shot: instantiating the same
+    // nib repeatedly, with a different owner each time, is exactly what a table
+    // view doing cell reuse does. Requiring the owner slot to be empty allowed
+    // only the first instantiation and killed twelve apps in a 1501-app survey
+    // on the second.
     env.objc.borrow_mut::<UINibHostObject>(this).file_owner = owner;
 
-    let unarchiver = load_nib_file(env, this, GuestPathBuf::from(nib_path)).unwrap();
+    // load_nib_file already treats an unloadable nib as a legitimate outcome
+    // and says so; discarding that with unwrap() turned its careful handling
+    // back into a crash. An empty array is what UIKit returns when a nib
+    // produces nothing, and it is what a caller enumerating the result copes
+    // with — the screen is missing either way, but the app survives to show
+    // the rest of itself.
+    let Ok(unarchiver) = load_nib_file(env, this, GuestPathBuf::from(nib_path)) else {
+        return msg_class![env; NSArray array];
+    };
     let top_level_objects_key = get_static_str(env, "UINibTopLevelObjectsKey");
     let top_level_objects = msg![env; unarchiver decodeObjectForKey:top_level_objects_key];
 

@@ -184,13 +184,21 @@ pub const CLASSES: ClassExports = objc_classes! {
         let _: id = msg![env; nib instantiateWithOwner:this options:nil];
 
         let view = env.objc.borrow::<UIViewControllerHostObject>(this).view;
-        // Having nil view at this point probably mean that
-        // out nib's parsing is wrong.
-        // Also we assume here the case of a "detached nib file"
-        // TODO: support "integrated nib file"
-        assert!(view != nil);
-
-        return;
+        if view == nil {
+            // The nib did not set the view outlet. That means tapHLE's nib
+            // parsing missed it, the nib is an "integrated" one this does not
+            // support yet, or the nib could not be loaded at all — and none of
+            // those is a reason to end the app. Falling through to the plain
+            // -loadView below gives the controller an empty view of the right
+            // size, so its screen is blank instead of absent and everything
+            // around it keeps working.
+            log!(
+                "Warning: the nib for {:?} did not set a view; using an empty one",
+                this
+            );
+        } else {
+            return;
+        }
     };
 
     // As a last resort, use plain UIVIew for the root view
