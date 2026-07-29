@@ -59,6 +59,45 @@ if (-not (Test-Path -LiteralPath $AppsDir -PathType Container)) {
 $work = Join-Path $env:TEMP 'taphle-regression-sweep'
 New-Item -ItemType Directory -Force -Path $work | Out-Null
 
+# The swept apps appear on the real desktop and accept real input, and this run
+# occupies it for half an hour. If someone uses the machine meanwhile, a frame
+# comparison stops measuring the emulator: JellyCar 2 was reported as MOVING on
+# one run because the maintainer picked it up and played it, when its title
+# screen is in fact still. Nothing can stop that, so the run measures how long
+# the machine has been idle and says which results it cannot vouch for.
+if (-not ('TapHLE.Idle' -as [type])) {
+    try {
+        Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+namespace TapHLE {
+    public static class Idle {
+        [StructLayout(LayoutKind.Sequential)]
+        private struct LASTINPUTINFO { public uint cbSize; public uint dwTime; }
+        [DllImport("user32.dll")]
+        private static extern bool GetLastInputInfo(ref LASTINPUTINFO plii);
+        public static int SecondsSinceInput() {
+            LASTINPUTINFO info = new LASTINPUTINFO();
+            info.cbSize = (uint)Marshal.SizeOf(typeof(LASTINPUTINFO));
+            if (!GetLastInputInfo(ref info)) { return -1; }
+            return (int)(((uint)Environment.TickCount - info.dwTime) / 1000);
+        }
+    }
+}
+'@
+    } catch {
+        Write-Warning ('Idle detection unavailable: ' + $_.Exception.Message +
+            '. Frames changed by someone using the machine will not be flagged.')
+    }
+}
+
+# -1 means "cannot tell", which is treated as not perturbed rather than as
+# perturbed: a check that cried contamination on every run would be ignored.
+function Get-IdleSeconds {
+    if (-not ('TapHLE.Idle' -as [type])) { return -1 }
+    try { return [TapHLE.Idle]::SecondsSinceInput() } catch { return -1 }
+}
+
 # Apps already known to fail, so that a real regression is not lost among them.
 # A missing entry only means the app is reported normally, which is why this is
 # a denylist and not the list of what to run.
@@ -154,12 +193,15 @@ if ($Only) {
 if ($candidates.Count -eq 0) { throw "No apps to sweep in $AppsDir" }
 
 "Sweeping $($candidates.Count) app(s) from $AppsDir"
+"Each app takes over the desktop. Leave the machine alone while this runs;"
+"anything you click lands in the app being measured."
 ""
 
 $failures = 0
 $static = 0
 $expected = 0
 $fixed = 0
+$perturbed = 0
 
 foreach ($app in $candidates) {
     $reason = Get-KnownBadReason -Name $app.Name
@@ -219,12 +261,23 @@ foreach ($app in $candidates) {
             "$(Get-Label 'NO-FRAME' $reason)  $($app.BaseName) (alive, no frame)"
             continue
         }
+        # Input during the frame window means the frames may show what someone
+        # did, not what the app does on its own. The margin is the capture
+        # window plus a little, since that is the period the comparison covers.
+        $idle = Get-IdleSeconds
+        $window = ($Frames * $Gap) + 15
+        $touched = ($idle -ge 0 -and $idle -lt $window)
+        if ($touched) { $perturbed++ }
+
         if ($first -eq $second) {
             # Not a failure on its own: a title screen is legitimately still.
             # It is a failure for anything rated for gameplay, which is why it
             # is counted and reported at the end.
             "STATIC      $($app.BaseName) ($first)"
             $static++
+        } elseif ($touched) {
+            "MOVING?     $($app.BaseName) ($first -> $second)"
+            "            input ${idle}s ago; this may be the change, not the app"
         } else {
             "MOVING      $($app.BaseName) ($first -> $second)"
         }
@@ -258,6 +311,11 @@ if ($static -gt 0) {
     "A still frame is expected on a title screen and is a regression for"
     "anything rated for gameplay. This sweep cannot tell the two apart,"
     "because it does not drive any app past its title screen."
+}
+if ($perturbed -gt 0) {
+    "$perturbed app(s) saw input while being measured and are marked MOVING?."
+    "Re-run those on an idle machine; a frame that changed because someone"
+    "was using the app says nothing about whether the app still works."
 }
 if ($failures -gt 0) { exit 1 }
 exit 0

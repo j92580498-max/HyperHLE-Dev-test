@@ -760,6 +760,14 @@ has read `MOVING` on one run and `STATIC` on the next. That is why `STATIC`
 does not fail the run. A genuine freeze is confirmed by driving the app, not by
 this number.
 
+**Run it on a machine nobody is using.** Every app appears on the real desktop
+and accepts real input, for around half an hour. JellyCar 2 was recorded as
+`MOVING` on one run because the maintainer picked it up and played it, when its
+title screen does not move on its own. The sweep now checks how long the
+machine has been idle and marks any such result `MOVING?`, but it can only
+report the doubt, not remove it: a run taken while the desktop was in use
+cannot establish that anything still animates.
+
 ### Bisect rather than guess when a regression appears
 
 An app that used to work and now does not has a first bad commit, and finding it
