@@ -133,14 +133,17 @@ fn reload(env: &mut Environment, table: id) {
     let bounds: CGRect = msg![env; table bounds];
     let default_height = env.objc.borrow::<UITableViewHostObject>(table).row_height;
     let delegate = env.objc.borrow::<UITableViewHostObject>(table).delegate;
+    // The selector is only registered once something in the app names it. An
+    // app whose delegate does not implement it never does, so there is nothing
+    // to look up and equally nothing that could respond to it.
     let height_selector = env
         .objc
-        .lookup_selector("tableView:heightForRowAtIndexPath:")
-        .unwrap();
-    let delegate_sets_height: bool = delegate != nil && {
-        let responds: bool = msg![env; delegate respondsToSelector:height_selector];
-        responds
-    };
+        .lookup_selector("tableView:heightForRowAtIndexPath:");
+    let delegate_sets_height: bool = delegate != nil
+        && match height_selector {
+            Some(height_selector) => msg![env; delegate respondsToSelector:height_selector],
+            None => false,
+        };
 
     let mut y = 0.0f32;
     let mut total_rows: NSUInteger = 0;
