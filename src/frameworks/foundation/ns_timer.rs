@@ -237,11 +237,20 @@ pub fn set_time_interval(env: &mut Environment, timer: id, interval: NSTimeInter
     host_object.rust_interval = Duration::from_secs_f64(interval);
 }
 
-/// For use by `NSRunLoop`
-pub(super) fn set_run_loop(env: &mut Environment, timer: id, run_loop: id) {
+/// For use by `NSRunLoop`. Returns whether this run loop now owns the timer;
+/// `false` means another one already does.
+///
+/// A timer may be scheduled on more than one run loop and fires on each, but
+/// only one is modelled here. The first registration is the one that stands:
+/// the timer is already firing, which is what the app asked for, and taking it
+/// over would move it to a loop that may be run less often or not at all.
+pub(super) fn set_run_loop(env: &mut Environment, timer: id, run_loop: id) -> bool {
     let host_object = env.objc.borrow_mut::<NSTimerHostObject>(timer);
-    assert!(host_object.run_loop == nil); // TODO: what do we do here?
+    if host_object.run_loop != nil && host_object.run_loop != run_loop {
+        return false;
+    }
     host_object.run_loop = run_loop;
+    true
 }
 
 /// For use by `NSRunLoop`: check if a timer is due to fire and fire it if

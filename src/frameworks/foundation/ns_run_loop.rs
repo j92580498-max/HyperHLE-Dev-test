@@ -112,12 +112,34 @@ pub const CLASSES: ClassExports = objc_classes! {
         ns_string::to_rust_string(env, mode),
     );
 
+    // Scheduling a timer that is already on this run loop is not an error: an
+    // app that adds the same timer for the default mode and again for the
+    // common modes is asking for one timer in two modes, and one that re-adds a
+    // timer it never invalidated is repeating a request already granted. Either
+    // way the device keeps a single registration, so the second call is
+    // finished here - before the retain, which would otherwise leave the timer
+    // over-retained and permanently alive.
+    if env
+        .objc
+        .borrow::<NSRunLoopHostObject>(this)
+        .timers
+        .contains(&timer)
+    {
+        log_dbg!("Timer {:?} is already on run loop {:?}, ignoring", timer, this);
+        return;
+    }
+
+    // A timer already scheduled on a different run loop keeps that
+    // registration; adding it here as well would fire it twice.
+    if !ns_timer::set_run_loop(env, timer, this) {
+        log_dbg!("Timer {:?} is already on another run loop, ignoring", timer);
+        return;
+    }
+
     retain(env, timer);
 
     let host_object = env.objc.borrow_mut::<NSRunLoopHostObject>(this);
-    assert!(!host_object.timers.contains(&timer)); // TODO: what do we do here?
     host_object.timers.push(timer);
-    ns_timer::set_run_loop(env, timer, this);
 }
 
 // NSMachPort delivery is not implemented. Older networking libraries may
