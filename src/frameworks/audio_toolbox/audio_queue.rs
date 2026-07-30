@@ -1322,6 +1322,60 @@ fn AudioQueuePrime(
     }
 }
 
+// Offline rendering turns an audio queue inside out. Instead of the queue
+// pulling buffers and handing them to the output device on its own clock, the
+// caller drives it: it sets a destination format, then calls
+// AudioQueueOfflineRender to synchronously convert as much audio as it asks
+// for, into its own buffer, as fast as the CPU allows. Apps use it to decode
+// compressed audio through the system codec rather than to play anything, and
+// Unity uses it for exactly that on every compressed clip it loads.
+//
+// tapHLE has no such path: its queues exist to feed OpenAL. Saying so through
+// the documented failure channel is what these two do. That is worth more than
+// it sounds, because the alternative was aborting the emulator: a caller has
+// to handle a queue that will not render offline, since the hardware codec can
+// be busy with another app, so the error path already exists and is well
+// trodden. This app takes it, drops the clip, and carries on.
+//
+// kAudio_UnimplementedError is Core Audio's own "this implementation does not
+// do that", which is precisely the claim being made. Implementing offline
+// rendering properly means a synchronous decode-and-convert path with sample
+// rate and channel conversion, and belongs on its own branch.
+
+/// Core Audio's generic "not implemented" status.
+const kAudio_UnimplementedError: OSStatus = -4;
+
+fn AudioQueueSetOfflineRenderFormat(
+    _env: &mut Environment,
+    in_aq: AudioQueueRef,
+    _in_format: ConstVoidPtr, // const AudioStreamBasicDescription*
+    _in_layout: ConstVoidPtr, // const AudioChannelLayout*
+) -> OSStatus {
+    return_if_null!(in_aq);
+
+    log_once!(
+        "TODO: AudioQueueOfflineRender is not implemented, so \
+         AudioQueueSetOfflineRenderFormat fails. An app decoding audio this way \
+         will lose those sounds but should keep running."
+    );
+    kAudio_UnimplementedError
+}
+
+fn AudioQueueOfflineRender(
+    _env: &mut Environment,
+    in_aq: AudioQueueRef,
+    _in_timestamp: ConstVoidPtr, // const AudioTimeStamp*
+    _io_buffer: AudioQueueBufferRef,
+    _in_number_frames: u32,
+) -> OSStatus {
+    return_if_null!(in_aq);
+
+    // Reachable only if a caller ignored the failure above, but it must not be
+    // the thing that aborts the emulator either.
+    log_once!("TODO: AudioQueueOfflineRender is not implemented");
+    kAudio_UnimplementedError
+}
+
 fn notify_aq_is_running(env: &mut Environment, in_aq: AudioQueueRef) {
     let host_object = State::get(&mut env.framework_state)
         .audio_queues
@@ -1599,6 +1653,8 @@ pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(AudioQueueGetProperty(_, _, _, _)),
     export_c_func!(AudioQueueSetProperty(_, _, _, _)),
     export_c_func!(AudioQueuePrime(_, _, _)),
+    export_c_func!(AudioQueueSetOfflineRenderFormat(_, _, _)),
+    export_c_func!(AudioQueueOfflineRender(_, _, _, _)),
     export_c_func!(AudioQueueStart(_, _)),
     export_c_func!(AudioQueueGetCurrentTime(_, _, _, _)),
     export_c_func!(AudioQueuePause(_)),
