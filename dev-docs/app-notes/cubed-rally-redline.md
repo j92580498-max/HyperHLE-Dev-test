@@ -1,0 +1,102 @@
+# Cubed Rally Redline compatibility work note
+
+- Branch and last pushed commit: `compat/cubed-rally-redline`, see below for the
+  tested revision.
+- Artifact: maintainer's local copy, filename
+  `Cubed Rally Redline (v1.32) [Decrypted].ipa`,
+  SHA-256 `837ED1C107602EC6738CBD29DFE53BCD15F6DD57A429D7F9F88A6BDAD3F7DE87`.
+  Not Archive-backed; no public provenance recorded.
+- Identity, read from `tapHLE --info` (not from the filename): display name
+  `Redline`, bundle identifier `com.nocanwin.redline`, bundle version `1.32`,
+  minimum OS version `5.0`, armv7, iPhone + iPad, landscape only.
+- Highest clean committed milestone: **reaches a race and plays it**. Menus,
+  car select and the controls screen all work; the race starts, the HUD counts
+  distance, the car responds to physics and the player dies. It crashes shortly
+  after death (see the frontier below). Honest rating: **two stars** — stable
+  screens, a loop that starts but does not persist.
+
+## What this app is
+
+A Unity 4.0.1f2 game, built against the iOS 6.0 SDK. That makes it much newer
+than tapHLE's usual targets and the first Unity title to run, so most of what
+was fixed for it is engine-shaped rather than game-shaped: the Mono runtime, its
+allocator, and Core Foundation string and data bridging. `--info` warns that the
+app wants iOS 5.0 and tapHLE supports 4.0 and earlier; that warning is not fatal
+and did not need addressing.
+
+`cryptid` is 0, so the binary is genuinely decrypted and load failures would be
+real results rather than an artefact of a bad dump.
+
+## Click map
+
+Launch options: none (no entry in `tapHLE_default_options.txt`). Window client
+area 480x320, landscape, matching the app's own resolution 1:1.
+
+Wait about 55 s after launch before the first tap — the Mono runtime, scene load
+and asset unload take that long.
+
+**Press duration matters: use ~300 ms.** A 90 ms press is not seen at all, and
+that produced a convincing false negative — the title screen animates on its own
+for a few seconds after load, so a frame comparison right after a missed tap
+still shows a change. Confirm the screen is static first, then tap.
+
+| From | Client tap | To |
+| --- | --- | --- |
+| Title / mode select | (242, 141) | Car select |
+| Car select | (247, 264) | Controls screen |
+| Controls screen | (239, 287) | Race |
+
+## Proven
+
+- Unity engine initialises, Mono loads every assembly including
+  `Assembly-CSharp.dll`, and scenes load (4711 objects for the race scene).
+- `applicationDidBecomeActive()` fires and the Core Animation compositor
+  presents.
+- Gameplay is real, not a still frame: `stdout` records `NoMetric:Play`, then
+  `Player: Dead`, then `NoMetric:EndTimed:Game`, and OS-level screenshots hash
+  differently between samples during the race.
+- These helpers use the base AAPCS convention (operands and results in core
+  registers, not VFP), read off `___fixdfdi` and `___floatdidf` call sites in
+  this binary rather than assumed.
+
+## Rejected
+
+- "The soft-float helpers return in `d0` because iOS is AAPCS-VFP." Disproved by
+  disassembly: the app does `vmov r0, r1, d16` immediately before calling
+  `___fixdfdi` and reads a `___floatdidf` result from `r0`/`r1`.
+- "The app freezes because it is waiting for input." It was spinning on an
+  `mmap` that could not be satisfied; frames were byte-identical for 30 s.
+- "The first tap did not land because touch routing is broken." The press was
+  simply too short.
+
+## Known gaps that are visible but not fatal
+
+- **The track does not render.** During a race the sky, car, HUD and buttons
+  draw, but the terrain does not, so the car falls with nothing under it. This
+  is the most valuable thing to look at next for anyone wanting the game
+  playable rather than merely running; it is a rendering gap, not a crash, and
+  is untouched by any of the work so far.
+- Several menu buttons are white rectangles, i.e. missing textures.
+- No audio. Unity decodes compressed clips through `AudioQueueOfflineRender`,
+  which tapHLE does not implement; the call now fails cleanly and the clip is
+  dropped.
+- No tilt control: Unity reads acceleration through Core Motion's block-based
+  `startAccelerometerUpdatesToQueue:withHandler:`, which is a no-op.
+
+## Next discriminator
+
+The crash after death is `Error during CPU execution: MemoryError`, faulting at
+guest PC `0x3cda10` (ARM, not Thumb — pass `--arm` to
+`dev-scripts/disasm-guest-fault.py`) with `R0 = 0`, `R1 = 0xbe`. The instruction
+is `ldrb r3, [r8]` where `r8 = r0 + r2` and `r0` is the null base pointer. The
+surrounding code compares bytes against `'/'`, `'\t'` and `' '`, so it is a text
+parser walking a buffer it was handed as null.
+
+It is reached on the post-death path, right after a `CFStringGetBytes` measuring
+pass, and this build links `P31RestKit` (Prime31) and calls Flurry, so the
+likely route is score submission or analytics parsing a response that tapHLE's
+networking never produced. Start by finding which call returns the null buffer
+rather than by looking at the parser.
+
+Note this is *after* a complete play session, so it does not block the two-star
+result; it blocks the loop persisting into a second race.

@@ -68,6 +68,19 @@
   quoted, a byte order mark is consumed rather than left at the front of the
   text, and `sscanf` reports the end of its input as `EOF` rather than as no
   match.
+- Run games built with Unity. The engine now starts, loads its Mono runtime and
+  scenes, and reaches gameplay. This needed the 64-bit integer-to-float
+  conversion helpers a managed runtime uses for ordinary arithmetic, the UTF-16
+  and mutable entry points of `CFString` and `CFData`, detaching a renderbuffer
+  from its drawable when a surface is rebuilt, and a Core Motion that describes
+  a device without a gyroscope instead of stopping when asked for one.
+- Stop freezing when an app asks for memory at a particular address. Where the
+  requested address could not be used, only one of the two reasons it might be
+  unusable was recovered from, so a mapping could be refused with most of the
+  address space free. An allocator that retries — which is what a managed
+  runtime does — then never got its memory, and the game sat on its last frame
+  looking as though it were still running.
+- Cubed Rally Redline reaches its menus, car select and a race.
 
 ### Known limitations
 
@@ -78,6 +91,13 @@
   drawn, so an app relying on the tab bar to change tabs stays on the first tab.
 - Zoom, pattern colours and content gravity are stored and reported back rather
   than applied.
+- Audio queues cannot render offline, which is how Unity decodes compressed
+  clips, so those sounds are missing. The call now fails the way a device fails
+  it when the codec is busy, which apps are written to survive, rather than
+  ending the game.
+- Core Motion reports no accelerometer data. Apps reading tilt through
+  `UIAccelerometer` are unaffected; those reading it through Core Motion see no
+  movement, so tilt steering does not work in them.
 
 Earlier release history belongs to the upstream touchHLE project and can be
 found in its repository history.
