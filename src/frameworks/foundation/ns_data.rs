@@ -372,9 +372,13 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (MutVoidPtr)mutableBytes {
-    let host_obj = env.objc.borrow_mut::<NSDataHostObject>(this);
-    assert!(host_obj.length != 0);
-    host_obj.bytes
+    // An empty mutable data object is legal, and asking it for its buffer is
+    // legal too: Apple documents the answer as NULL, which is what an
+    // unallocated host object already holds. Treating it as a programming
+    // error aborted apps following the ordinary create-then-grow sequence,
+    // where the pointer is fetched before the first `setLength:`. Note the
+    // immutable `bytes` accessor above never asserted this.
+    env.objc.borrow::<NSDataHostObject>(this).bytes
 }
 
 - (())setLength:(NSUInteger)new_length {
