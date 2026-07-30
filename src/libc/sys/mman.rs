@@ -11,7 +11,6 @@ use crate::export_c_func;
 use crate::libc::errno::{set_errno, EINVAL, ENOMEM, ENOTSUP};
 use crate::libc::posix_io;
 use crate::libc::posix_io::{off_t, FileDescriptor, SEEK_SET};
-use crate::mem::VMAllocError;
 use crate::mem::{ConstPtr, GuestUSize, MutVoidPtr, PAGE_SIZE_ALIGN_MASK};
 use std::collections::HashMap;
 
@@ -67,12 +66,24 @@ fn mmap(
         match env.mem.vm_alloc(Some(addr.to_bits()), len) {
             Ok(ptr) => Some(ptr),
             // MAP_FIXED means "exactly here or fail", so it gets no fallback.
-            Err(VMAllocError::AddressUnavailable) if flags & MAP_FIXED == 0 => {
+            Err(_) if flags & MAP_FIXED != 0 => None,
+            // Without MAP_FIXED the address is only a hint, and mmap may place
+            // the mapping anywhere when it cannot be honoured. Every reason it
+            // could not be counts, which is the part that was missing: a hint
+            // landing in free space too small for the request fails as
+            // `NoSpace`, not `AddressUnavailable`, and only the latter used to
+            // fall back. So a mapping could be refused with gigabytes of the
+            // address space unused, purely because of where the caller pointed.
+            //
+            // That shows up as a hang rather than a crash. An allocator inside
+            // a managed runtime treats a failed mapping as back-pressure and
+            // retries, so the guest spins on the same doomed request forever
+            // and the app sits frozen on whatever frame it last drew.
+            Err(_) => {
                 let ptr = env.mem.vm_alloc(None, len).ok()?;
                 log!("Warning: mmap could not allocate at hint {addr:?}, allocated at {ptr:?}",);
                 Some(ptr)
             }
-            Err(_) => None,
         }
     };
     let Some(ptr) = allocate(env) else {
