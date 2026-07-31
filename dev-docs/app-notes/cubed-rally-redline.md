@@ -114,13 +114,32 @@ mip chains. It sees no compressed-texture upload. The remaining blank artwork
 is therefore not explained by a missing PVRTC/paletted decoder; inspect texture
 state or draw state next.
 
+A matching client-array trace finds Unity's colour arrays use
+`GL_UNSIGNED_BYTE` (stride 24), not `GL_FIXED`. Fixed-point colour translation
+is not the source of the missing artwork.
+
+A real foreground `SendInput` rerun confirms the three-tap route: title
+`(242, 141)`, car select `(247, 264)`, then controls `(239, 287)`. It reaches
+`NoMetric:Game` and produces a race frame. The car, HUD, clouds, and red guide
+line render, but the dirt track and its green terrain are entirely absent.
+The striped car-selection and controls frames show the same failure outside
+the race. Unity populates many static `ARRAY_BUFFER` VBOs while loading the
+game but does not call `glMapBufferOES`, so mapped-buffer forwarding is not the
+terrain failure.
+
+Temporary global probes that suppress depth testing, face culling, or fog all
+leave the terrain absent. They change layering of sprites/clouds but do not
+make road geometry appear, so do not treat depth range, winding, or fog
+conversion as the current root cause.
+Suppressing blending likewise leaves the terrain absent while visibly breaking
+the sprites and HUD, so normal source/destination compositing is not the
+missing road path either.
+
 A bounded title-scene trace that consumed host GL errors after every guest GLES
 entry point found none. Continue with a draw/state trace or a captured working
 reference, rather than adding more guessed extension constants. The documented
-three-tap route currently does not advance beyond `NoMetric:Hub` under
-synthetic window messages, even when Windows reports those messages accepted.
-Use real foreground input for the next gameplay rerun before revising the click
-map.
+synthetic-message route is not evidence; use real foreground input for every
+gameplay claim.
 
 ## Next discriminator
 
