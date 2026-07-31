@@ -83,6 +83,29 @@ still shows a change. Confirm the screen is static first, then tap.
 - No tilt control: Unity reads acceleration through Core Motion's block-based
   `startAccelerometerUpdatesToQueue:withHandler:`, which is a no-op.
 
+## 2026-07-31 graphics retest
+
+On Windows, the exact recorded IPA still reaches the animated title and the
+Redline car-selection scene in a visible 480x320 window. EAGL captures show
+that the fault is not limited to the race: the selection scene has broad green
+areas and striped/corrupt image panels, while the title has missing art. The
+earlier race capture's flat green terrain therefore belongs to the same broad
+rendering frontier.
+
+Unity queries `GL_MAX_RENDERBUFFER_SIZE_OES` (`0x84e8`) immediately after
+creating its GLES 1.1 context. The GLES1-on-GL2 layer previously treated it as
+unknown and left the guest result untouched. The local follow-up answers that
+supported `OES_framebuffer_object` query through the host extension and has a
+unit regression check. It removes the warning but does **not** change the
+captured title or selection rendering, so do not treat it as the graphics fix.
+
+A bounded title-scene trace that consumed host GL errors after every guest GLES
+entry point found none. Continue with a draw/state trace or a captured working
+reference, rather than adding more guessed extension constants. The documented
+three-tap route currently reaches the Redline selection scene under synthetic
+window messages but did not advance to `NoMetric:Play`; use real foreground
+input for the next gameplay rerun before revising the click map.
+
 ## Next discriminator
 
 The crash after death is `Error during CPU execution: MemoryError`, faulting at
