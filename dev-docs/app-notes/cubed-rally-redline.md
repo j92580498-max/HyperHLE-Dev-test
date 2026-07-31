@@ -108,6 +108,12 @@ and HUD chrome render instead of the earlier broadly blank/corrupt layout. Its
 central menu artwork is still missing, so this is a verified incremental
 rendering improvement, not a graphics-complete or three-star claim.
 
+A bounded title-scene texture-upload trace sees ordinary `glTexImage2D`
+uploads, including 512x1024 RGBA and 256x256 RGBA atlas textures with complete
+mip chains. It sees no compressed-texture upload. The remaining blank artwork
+is therefore not explained by a missing PVRTC/paletted decoder; inspect texture
+state or draw state next.
+
 A bounded title-scene trace that consumed host GL errors after every guest GLES
 entry point found none. Continue with a draw/state trace or a captured working
 reference, rather than adding more guessed extension constants. The documented
