@@ -99,12 +99,22 @@ supported `OES_framebuffer_object` query through the host extension and has a
 unit regression check. It removes the warning but does **not** change the
 captured title or selection rendering, so do not treat it as the graphics fix.
 
+Unity also logged `NPOT RTs are not supported: ignoring SetResolution` before
+the menu scene. Windows uses the GLES1-on-GL2 backend, whose OpenGL 2.1 texture
+implementation supports unrestricted non-power-of-two textures, but the guest
+extension string did not advertise `GL_OES_texture_npot`. Adding that capability
+removes the Unity warning and improves the captured title: the Cubed Rally logo
+and HUD chrome render instead of the earlier broadly blank/corrupt layout. Its
+central menu artwork is still missing, so this is a verified incremental
+rendering improvement, not a graphics-complete or three-star claim.
+
 A bounded title-scene trace that consumed host GL errors after every guest GLES
 entry point found none. Continue with a draw/state trace or a captured working
 reference, rather than adding more guessed extension constants. The documented
-three-tap route currently reaches the Redline selection scene under synthetic
-window messages but did not advance to `NoMetric:Play`; use real foreground
-input for the next gameplay rerun before revising the click map.
+three-tap route currently does not advance beyond `NoMetric:Hub` under
+synthetic window messages, even when Windows reports those messages accepted.
+Use real foreground input for the next gameplay rerun before revising the click
+map.
 
 ## Next discriminator
 

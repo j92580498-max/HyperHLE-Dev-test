@@ -2,6 +2,8 @@
 
 ## Unreleased for 0.3.0-alpha.1
 
+- Let OpenGL ES 1 games use non-power-of-two textures and render targets on
+  Windows, fixing games that otherwise disable their requested display mode.
 - Rebrand the fork as tapHLE across the executable, crates, runtime resources,
   internal symbols, tests, and packaging.
 - Define Windows game compatibility as the product focus, with macOS retained
