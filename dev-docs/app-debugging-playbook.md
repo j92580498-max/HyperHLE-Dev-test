@@ -48,6 +48,10 @@ human playtest for menu, input, gameplay, orientation, or audio claims.
 
 ### Antigravity CLI interactive-desktop harness
 
+This harness is for **Google Antigravity CLI (AGY) only**. Codex and other
+agent surfaces must not use `agy-visible-taphle.ps1`; they should use their own
+visible-window launch, inspection, input, and shutdown facilities instead.
+
 AGY's ordinary Windows commands run on a background desktop. Direct execution,
 `Start-Process`, and `cmd /c start` can initialize tapHLE's SDL, OpenGL, and
 audio paths while leaving its window invisible to the logged-in user. AGY must

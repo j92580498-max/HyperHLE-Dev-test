@@ -114,7 +114,9 @@ frame capture, and close operation. Its ordinary command worker runs on a
 background desktop, so direct launches are not visible or interactable on the
 maintainer's desktop. Follow the fixed AGY command loop in the debugging
 playbook and never infer a visual or input result without its status and frame
-checks.
+checks. This is an **AGY-only** requirement: Codex and other agent surfaces
+must not use the AGY harness. They should run their own visible-window testing
+with controls appropriate to their surface.
 Version bumps, tags, and release packaging follow `dev-docs/releases.md`.
 Agents may prepare release changes, but must not create or push a release tag
 without explicit maintainer authorization.
