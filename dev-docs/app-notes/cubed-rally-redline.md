@@ -203,12 +203,14 @@ green background. The early portrait viewport is not the cause of the lasting
 corruption, and this app should continue to launch without that option.
 
 On a real 300 ms foreground press, the first title action opens the game's
-rate prompt. Pressing its visible `NOT NOW` button logs `NoMetric:ReviewRequest`
-and then raises JSONKit's null-input assertion before the same `0x3cda10`
-parser fault. A temporary trace confirmed this path does not call the existing
-`CFReadStreamOpen` stub, and the existing synchronous `NSURLConnection` log
-does not appear. Do not change either network API on this evidence alone; trace
-the actual data-producing Foundation or third-party boundary first.
+rate prompt. Both visible actions (`NOT NOW` and `RATE`) log
+`NoMetric:ReviewRequest` and then raise JSONKit's null-input assertion before
+the same `0x3cda10` parser fault. `RATE` is therefore not a bypass to the car
+selection scene. A temporary trace confirmed this path does not call the
+existing `CFReadStreamOpen` stub, and the existing synchronous
+`NSURLConnection` log does not appear. Do not change either network API on this
+evidence alone; trace the actual data-producing Foundation or third-party
+boundary first.
 
 ## Next discriminator
 
