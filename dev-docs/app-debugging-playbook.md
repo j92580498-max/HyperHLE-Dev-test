@@ -656,7 +656,8 @@ A dirty-worktree run is a useful experiment but never database evidence.
 
 1. Commit the focused implementation on `compat/<app-slug>`.
 2. Build and run the relevant tests from that exact commit.
-3. Re-verify the IPA hash and replay the milestone on Windows.
+3. Re-verify the IPA hash and replay the milestone on the claimed host. For an
+   iOS-host result, use a physical device rather than only the simulator.
 4. If the milestone is reproducible, append a compatibility report referencing
    the tested implementation commit.
 5. Submit the verified result to the live compatibility database when

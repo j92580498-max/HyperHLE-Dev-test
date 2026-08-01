@@ -4,8 +4,9 @@
 
 - Rebrand the fork as tapHLE across the executable, crates, runtime resources,
   internal symbols, tests, and packaging.
-- Define Windows game compatibility as the product focus, with macOS retained
-  for development convenience and Android outside the active support scope.
+- Define Windows and modern iOS game compatibility as the product focus, with
+  macOS retained for development and iOS builds and Android outside the active
+  support scope.
 - Add AI-agent contribution guidance, provenance rules, upstream quarantine
   instructions, game-focused issue forms, and repository policy checks.
 - Add a simple self-service guide for people using coding agents to improve a
