@@ -114,20 +114,28 @@ fn rotate_fullscreen_size(orientation: DeviceOrientation, screen_size: (u32, u32
         }
     }
 }
-/// Tell SDL2 what orientation we want. Only useful on Android.
+/// Tell SDL2 which device orientations the current game may use.
 fn set_sdl2_orientation(orientation: DeviceOrientation) {
     // Despite the name, this hint works on Android too.
     sdl2::hint::set(
         "SDL_IOS_ORIENTATIONS",
-        match orientation {
-            DeviceOrientation::Portrait => "Portrait",
-            // The inversion is deliberate. These probably correspond to
-            // iPhone OS content orientations?
-            DeviceOrientation::PortraitUpsideDown => "PortraitUpsideDown",
-            DeviceOrientation::LandscapeLeft => "LandscapeRight",
-            DeviceOrientation::LandscapeRight => "LandscapeLeft",
-        },
+        sdl2_orientation_hint(env::consts::OS, orientation),
     );
+}
+
+fn sdl2_orientation_hint(host_os: &str, orientation: DeviceOrientation) -> &'static str {
+    match (host_os, orientation) {
+        ("ios", DeviceOrientation::Portrait | DeviceOrientation::PortraitUpsideDown) => "Portrait",
+        ("ios", DeviceOrientation::LandscapeLeft | DeviceOrientation::LandscapeRight) => {
+            "LandscapeLeft LandscapeRight"
+        }
+        (_, DeviceOrientation::Portrait) => "Portrait",
+        (_, DeviceOrientation::PortraitUpsideDown) => "PortraitUpsideDown",
+        // The inversion is deliberate. These correspond to content
+        // orientations on Android rather than physical device rotation.
+        (_, DeviceOrientation::LandscapeLeft) => "LandscapeRight",
+        (_, DeviceOrientation::LandscapeRight) => "LandscapeLeft",
+    }
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
@@ -241,6 +249,7 @@ pub struct Window {
     fullscreen: bool,
     scale_hack: NonZeroU32,
     internal_gl_ins: Option<Box<dyn GLESContext>>,
+    host_framebuffer: u32,
     splash_image: Option<Image>,
     device_family: DeviceFamily,
     device_orientation: DeviceOrientation,
@@ -266,9 +275,9 @@ pub struct Window {
 impl Window {
     /// Returns [true] if tapHLE is running on a device where we should always
     /// display fullscreen, but SDL2 will let us control the orientation, i.e.
-    /// Android devices.
+    /// Android and iOS devices.
     pub fn rotatable_fullscreen() -> bool {
-        env::consts::OS == "android"
+        matches!(env::consts::OS, "android" | "ios")
     }
     pub fn new(
         title: &str,
@@ -325,12 +334,11 @@ impl Window {
             set_sdl2_orientation(device_orientation);
             let screen_size = video_ctx.display_bounds(0).unwrap().size();
             let (width, height) = rotate_fullscreen_size(device_orientation, screen_size);
-            let window = video_ctx
-                .window(title, width, height)
-                .fullscreen()
-                .opengl()
-                .build()
-                .unwrap();
+            let mut window_builder = video_ctx.window(title, width, height);
+            window_builder.fullscreen().opengl();
+            #[cfg(target_os = "ios")]
+            window_builder.allow_highdpi();
+            let window = window_builder.build().unwrap();
             window
         } else if fullscreen {
             let (width, height) = video_ctx.display_bounds(0).unwrap().size();
@@ -405,6 +413,7 @@ impl Window {
             fullscreen,
             scale_hack,
             internal_gl_ins: None,
+            host_framebuffer: 0,
             splash_image: launch_image,
             device_family,
             device_orientation,
@@ -432,9 +441,34 @@ impl Window {
         // because SDL2 won't let us use more than one graphics API in the same
         // window, and we also need OpenGL ES for the app's own rendering.
         let mut gl_ins = create_gles1_ctx_no_parent_stack(&mut window, options);
-        {
-            let gl_ctx = gl_ins.make_current(&mut window);
+        let host_framebuffer = {
+            let mut gl_ctx = gl_ins.make_current(&mut window);
             log!("Driver info: {}", unsafe { gl_ctx.driver_description() });
+            if env::consts::OS == "ios" {
+                let mut framebuffer = 0;
+                unsafe {
+                    gl_ctx.GetIntegerv(
+                        crate::gles::gles11_raw::FRAMEBUFFER_BINDING_OES,
+                        &mut framebuffer,
+                    );
+                }
+                framebuffer as u32
+            } else {
+                0
+            }
+        };
+        window.host_framebuffer = host_framebuffer;
+        if env::consts::OS == "ios" {
+            let (window_width, window_height) = window.window.size();
+            let (drawable_width, drawable_height) = window.window.drawable_size();
+            log!(
+                "iOS host framebuffer: {}, window: {}×{}, Retina drawable: {}×{}",
+                host_framebuffer,
+                window_width,
+                window_height,
+                drawable_width,
+                drawable_height,
+            );
         }
         window.internal_gl_ins = Some(gl_ins);
 
@@ -741,6 +775,10 @@ impl Window {
                     }
                 }
                 E::AppWillEnterBackground { .. } => {
+                    if cfg!(target_os = "ios") {
+                        log!("Received app-will-resign-active event; allowing iOS to suspend and resume the host.");
+                        continue;
+                    }
                     log!("Received app-will-resign-active event.");
                     assert!(self.high_priority_event.is_none());
                     self.high_priority_event = Some(Event::AppWillResignActive);
@@ -1433,6 +1471,10 @@ impl Window {
         (x, y, scaled_width, scaled_height)
     }
 
+    pub fn host_framebuffer(&self) -> u32 {
+        self.host_framebuffer
+    }
+
     /// Special offset to add to y co-ordinates, only when drawing to screen.
     pub fn viewport_y_offset(&self) -> u32 {
         #[cfg(target_os = "macos")]
@@ -1580,4 +1622,45 @@ pub fn get_preferred_country_codes(env: &mut Environment) -> Vec<String> {
             .filter_map(|loc| loc.country)
             .collect()
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{sdl2_orientation_hint, DeviceOrientation};
+
+    #[test]
+    fn sdl_orientation_hints_preserve_android_and_support_ios() {
+        assert_eq!(
+            sdl2_orientation_hint("android", DeviceOrientation::Portrait),
+            "Portrait"
+        );
+        assert_eq!(
+            sdl2_orientation_hint("android", DeviceOrientation::PortraitUpsideDown),
+            "PortraitUpsideDown"
+        );
+        assert_eq!(
+            sdl2_orientation_hint("android", DeviceOrientation::LandscapeLeft),
+            "LandscapeRight"
+        );
+        assert_eq!(
+            sdl2_orientation_hint("android", DeviceOrientation::LandscapeRight),
+            "LandscapeLeft"
+        );
+
+        for orientation in [
+            DeviceOrientation::Portrait,
+            DeviceOrientation::PortraitUpsideDown,
+        ] {
+            assert_eq!(sdl2_orientation_hint("ios", orientation), "Portrait");
+        }
+        for orientation in [
+            DeviceOrientation::LandscapeLeft,
+            DeviceOrientation::LandscapeRight,
+        ] {
+            assert_eq!(
+                sdl2_orientation_hint("ios", orientation),
+                "LandscapeLeft LandscapeRight"
+            );
+        }
+    }
 }
