@@ -133,3 +133,31 @@ The emulator source is licensed under the Mozilla Public License 2.0. Due to
 dependency license compatibility, distributed binaries are licensed under the
 GNU General Public License version 3 or later. Bundled dynamic libraries and
 fonts have their own notices in `tapHLE_dylibs` and `tapHLE_fonts`.
+
+## A note on AI from the maintainer
+I would specifically like to thank @hikari_no_yume and @ciciplusplus for their
+work on the touchHLE project. Their passion in preserving things that would
+otherwise be lost to time is truly beautiful. Additionally, thanks to
+@johnny901901901 for laying the groundwork for an implementation of the emulator
+on modern iOS (https://github.com/johnny901901901/touchHLE). Other inspiration 
+comes from the LiveExec32 experimentation by the LiveContainer team 
+(https://github.com/LiveContainer/LiveExec32), and from the HyperHLE AI fork experiments
+(https://github.com/HyperHLE/HyperHLE). Their work and the human programmatic touch
+required is truly indispensable. 
+
+I fully recognize that there is controversy surrounding AI-generated code, and 
+in my case, what would probably be most accurately described as "vibe-coding". 
+While I am a decently tech-savvy person and know a little bit of coding, I would 
+never describe myself as a programmer. I use AI to implement fixes that I, at the
+end of the day, do not understand. 
+
+Ethically (whether it be the environment, the security of the program, problems 
+with AI training data, concerns about AI's impact on the job market in computer 
+science), I do get it. I'm often on the fence about it myself, and I understand 
+someone who has spent their life honing a skill like coding might have valid 
+anger seeing someone throw a project together without a deep understanding of the 
+mechanisms that make it possible. I very well may abandon this project, because
+as data centers get built in my community, I feel less and less comfortable heavily
+utilizing AI. In theory, I think it's one of the coolest advancements in technology
+ever, but I never want it to come at the cost of human ingenuity or humanity in art.
+Feel free to reach out to me and tell me your thoughts. I'm all ears. -@ephun
