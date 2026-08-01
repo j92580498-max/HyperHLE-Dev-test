@@ -155,6 +155,11 @@ uploaded atlas rather than being blank or zeroed. The remaining graphics defect
 is therefore after texture decode/upload: distinguish texture-coordinate,
 texture-matrix and texture-combine input state for the bad draw batches.
 
+A temporary `GL_REPLACE` probe for every draw changes the prompt's colours but
+does not restore its collapsed road/background or the race terrain. Texture
+combine is not the missing-geometry cause; inspect the texture-coordinate and
+geometry input state next.
+
 On a real 300 ms foreground press, the first title action opens the game's
 rate prompt. Pressing its visible `NOT NOW` button logs `NoMetric:ReviewRequest`
 and then raises JSONKit's null-input assertion before the same `0x3cda10`
