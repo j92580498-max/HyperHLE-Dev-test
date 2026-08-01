@@ -141,8 +141,7 @@ otherwise be lost to time is truly beautiful. Additionally, thanks to
 @johnny901901901 for laying the groundwork for an implementation of the emulator
 on modern iOS (https://github.com/johnny901901901/touchHLE). Other inspiration 
 comes from the LiveExec32 experimentation by the LiveContainer team 
-(https://github.com/LiveContainer/LiveExec32), and from the HyperHLE AI fork experiments
-(https://github.com/HyperHLE/HyperHLE). Their work and the human programmatic touch
+(https://github.com/LiveContainer/LiveExec32). Their work and the human programmatic touch
 required is truly indispensable. 
 
 I fully recognize that there is controversy surrounding AI-generated code, and 
