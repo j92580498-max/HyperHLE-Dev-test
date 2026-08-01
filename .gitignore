@@ -1,4 +1,10 @@
 /target
+/build
+/dist
+/DerivedData
+xcuserdata/
+*.xcuserstate
+*.xcuserdatad
 /vendor/boost
 /tapHLE_sandbox
 /tapHLE_apps/*
@@ -17,6 +23,10 @@ tapHLE_wallpaper.*
 /touchHLE_apps
 touchHLE_log.txt
 touchHLE_wallpaper.*
+*.p12
+*.cer
+*.mobileprovision
+*.mobiledevicepairing
 
 # Android
 
@@ -24,7 +34,6 @@ touchHLE_wallpaper.*
 .gradle
 /local.properties
 .idea/
-/build
 /captures
 .externalNativeBuild
 .cxx
