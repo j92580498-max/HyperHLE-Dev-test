@@ -187,6 +187,21 @@ selection is not the cause either. Do not repeat level-zero or mip-filter
 probes; identify the draw subset that fails or inspect the remaining pixel and
 raster state.
 
+A deduplicated draw inventory shows that the prompt/UI batches are all
+`GL_TRIANGLES` into framebuffer 1 with a 480x320 viewport. Across textures 31,
+33, 35 and 37 they share the same state: texture, blending, depth testing and
+dithering enabled; vertex, UV and colour client arrays enabled; alpha test,
+culling, fog, lighting, scissor, stencil, logic op and polygon offset disabled;
+`GL_NEAREST_MIPMAP_NEAREST` / `GL_NEAREST` filtering and repeat wrap. Because
+correct and corrupt UI elements pass through that same state, do not pursue a
+state difference between those batches without new evidence. Isolate their
+individual geometry/UV topology or compare the guest-produced arrays instead.
+
+`--landscape-native` changes Unity's first framebuffer-1 viewport from 320x480
+to 480x320, but the settled prompt frame retains the same road-strip cutoff and
+green background. The early portrait viewport is not the cause of the lasting
+corruption, and this app should continue to launch without that option.
+
 On a real 300 ms foreground press, the first title action opens the game's
 rate prompt. Pressing its visible `NOT NOW` button logs `NoMetric:ReviewRequest`
 and then raises JSONKit's null-input assertion before the same `0x3cda10`
