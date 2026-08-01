@@ -180,6 +180,13 @@ geometry, not collapsed guest vertices, indices, transforms, or UV pointers.
 Continue at texture sampling and the remaining fixed-function pixel/raster
 state, or compare these exact batches with a known-good renderer.
 
+Forcing `GL_LINEAR` minification immediately before every indexed and
+non-indexed draw, so all textures sample level zero instead of their uploaded
+mipmap chains, leaves the corrupt prompt and background unchanged. Bad mip
+selection is not the cause either. Do not repeat level-zero or mip-filter
+probes; identify the draw subset that fails or inspect the remaining pixel and
+raster state.
+
 On a real 300 ms foreground press, the first title action opens the game's
 rate prompt. Pressing its visible `NOT NOW` button logs `NoMetric:ReviewRequest`
 and then raises JSONKit's null-input assertion before the same `0x3cda10`
