@@ -169,6 +169,17 @@ matrix are therefore not immediate explanations either; inspect the remaining
 fixed-function raster state or compare the same draw batches to a working
 renderer.
 
+A complete indexed-array scan narrows this further. The 84-index batch spans
+raw X/Y `-0.8..0.8` / `-0.275..0.281` and transformed NDC X/Y
+`-2.125..2.125` / `-1.096..1.120`; its UVs span nearly the full atlas height.
+The 402-index batch spans NDC X/Y `-0.994..0.987` / `-0.990..0.995`, with
+finite UVs covering `0.045..0.182` horizontally and effectively `0..1`
+vertically. Both use the same finite model-view and perspective matrices. The
+corrupt frame therefore reaches desktop GL with viewport-covering indexed
+geometry, not collapsed guest vertices, indices, transforms, or UV pointers.
+Continue at texture sampling and the remaining fixed-function pixel/raster
+state, or compare these exact batches with a known-good renderer.
+
 On a real 300 ms foreground press, the first title action opens the game's
 rate prompt. Pressing its visible `NOT NOW` button logs `NoMetric:ReviewRequest`
 and then raises JSONKit's null-input assertion before the same `0x3cda10`
