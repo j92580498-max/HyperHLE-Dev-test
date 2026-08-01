@@ -160,6 +160,15 @@ does not restore its collapsed road/background or the race terrain. Texture
 combine is not the missing-geometry cause; inspect the texture-coordinate and
 geometry input state next.
 
+For the affected 512x1024-atlas batches, Unity supplies both position and UV
+arrays directly from guest memory as `GL_FLOAT` with a 24-byte stride; neither
+is VBO-backed. Both active texture selectors are `GL_TEXTURE0`, the texture
+matrix is identity, and the sampled first position/UV values are finite and in
+the expected normalized ranges. The pointer translation and primary texture
+matrix are therefore not immediate explanations either; inspect the remaining
+fixed-function raster state or compare the same draw batches to a working
+renderer.
+
 On a real 300 ms foreground press, the first title action opens the game's
 rate prompt. Pressing its visible `NOT NOW` button logs `NoMetric:ReviewRequest`
 and then raises JSONKit's null-input assertion before the same `0x3cda10`
