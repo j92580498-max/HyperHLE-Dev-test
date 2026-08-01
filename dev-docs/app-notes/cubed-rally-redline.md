@@ -212,7 +212,22 @@ existing `CFReadStreamOpen` stub, and the existing synchronous
 evidence alone; trace the actual data-producing Foundation or third-party
 boundary first.
 
-## Next discriminator
+A full Objective-C selector trace identified that boundary in JSONKit's public
+NSString adapter: it calls `CFDataCreateMutable` with the UTF-8 capacity, then
+immediately calls `CFDataGetMutableBytePtr` and converts into the reserved
+storage. tapHLE discarded `NSMutableData` capacity and returned a null pointer.
+Preserving reserved capacity removes the JSONKit null-input assertion and the
+`0x3cda10` fault.
+
+The next run reached `0x3cf4c4`, where the binary dereferenced non-lazy slot
+`0xb50204`. `nl-symbol-at.py` identifies it as
+`_OBJC_IVAR_$_NSObject.isa`; linking that ivar-offset global to a word
+containing offset zero removes this second fault. JSONKit then advances to its
+private guest `JKDictionary` subclass, where an inherited tapHLE
+`NSDictionary` method rejects the object because it has no host
+`DictionaryHostObject`.
+
+## Previous discriminator
 
 The crash after death (and now the review-prompt dismissal) is `Error during CPU execution: MemoryError`, faulting at
 guest PC `0x3cda10` (ARM, not Thumb — pass `--arm` to
@@ -229,3 +244,17 @@ rather than by changing the parser or guessing at a network API.
 
 The post-death occurrence blocks the loop persisting into a second race; the
 review occurrence blocks ordinary menu progression when its prompt is shown.
+
+## Next discriminator
+
+The prompt parser now fails because JSONKit directly allocates its
+`JKDictionary` guest subclass, while tapHLE's inherited `NSDictionary`
+implementation assumes every receiver owns a host `DictionaryHostObject`.
+Trace the first inherited collection selector and make that Foundation
+primitive operate on the guest subclass's real Objective-C storage, or provide
+the smallest correct class-cluster bridge. Do not fake a JSON result or
+special-case JSONKit.
+
+The post-death path may share the same JSONKit sequence but has not been rerun
+with these two fixes. The prompt still blocks ordinary menu progression, and
+the graphics defect remains independently unresolved.
