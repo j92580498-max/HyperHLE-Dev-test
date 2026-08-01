@@ -32,7 +32,7 @@ CMAKE="$ROOT/scripts/cmake-ios.sh"
 DEVELOPER_DIR=${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Developer}
 IPHONEOS_DEPLOYMENT_TARGET=17.4
 CFLAGS="${CFLAGS:-} -ffile-prefix-map=$HOME=/build -fdebug-prefix-map=$HOME=/build"
-CXXFLAGS="${CXXFLAGS:-} -DFMT_CONSTEVAL= -ffile-prefix-map=$HOME=/build -fdebug-prefix-map=$HOME=/build"
+CXXFLAGS="${CXXFLAGS:-} -ffile-prefix-map=$HOME=/build -fdebug-prefix-map=$HOME=/build"
 IOS_LINK_ARGS="--remap-path-prefix=$HOME=/build -C link-arg=-framework -C link-arg=AVFoundation -C link-arg=-framework -C link-arg=AudioToolbox -C link-arg=-framework -C link-arg=CoreBluetooth -C link-arg=-framework -C link-arg=CoreGraphics -C link-arg=-framework -C link-arg=CoreHaptics -C link-arg=-framework -C link-arg=CoreMotion -C link-arg=-framework -C link-arg=Foundation -C link-arg=-framework -C link-arg=GameController -C link-arg=-framework -C link-arg=Metal -C link-arg=-framework -C link-arg=OpenGLES -C link-arg=-framework -C link-arg=QuartzCore -C link-arg=-framework -C link-arg=UIKit"
 
 for command in cargo cmake ninja xcrun; do
