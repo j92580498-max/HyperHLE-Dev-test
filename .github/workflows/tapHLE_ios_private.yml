@@ -1,0 +1,63 @@
+name: Build private iOS IPA
+
+permissions:
+  contents: read
+
+on:
+  workflow_dispatch:
+  # Keep branch pushes only while bringing up this new build path. The final
+  # workflow is manual so an unsigned private-test IPA is never a release.
+  push:
+    branches: ["infra/ios-private-build"]
+
+jobs:
+  build-ios-device:
+    name: Unsigned iOS device IPA
+    runs-on: macos-15
+
+    steps:
+      - name: Checkout tapHLE and pinned dependencies
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Record Apple toolchain
+        run: |
+          xcodebuild -version
+          xcode-select -p
+          xcrun --sdk iphoneos --show-sdk-version
+
+      - name: Install native build prerequisites
+        run: brew install boost cmake ninja
+
+      - name: Install Rust iOS target
+        run: rustup target add aarch64-apple-ios
+
+      - name: Build unsigned device app
+        run: |
+          export TAPHLE_BOOST_ROOT="$(brew --prefix boost)/include"
+          sh platform/ios/scripts/build-host.sh iphoneos Release
+
+      - name: Package and verify private-test IPA
+        run: |
+          sh platform/ios/scripts/package-ipa.sh
+          sh platform/ios/scripts/verify-ipa.sh | tee dist/private-ios-verification.txt
+          {
+            echo "tapHLE commit: $GITHUB_SHA"
+            echo "Workflow run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+            xcodebuild -version
+            rustc -Vv
+          } >dist/private-ios-build.txt
+
+      - name: Upload short-lived private-test artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: tapHLE-private-ios-${{ github.sha }}
+          path: |
+            dist/tapHLE-iOS-unsigned.ipa
+            dist/tapHLE-iOS-unsigned.ipa.sha256
+            dist/private-ios-build.txt
+            dist/private-ios-verification.txt
+          if-no-files-found: error
+          retention-days: 1
