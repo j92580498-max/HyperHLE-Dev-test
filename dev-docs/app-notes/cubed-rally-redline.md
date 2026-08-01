@@ -141,20 +141,42 @@ reference, rather than adding more guessed extension constants. The documented
 synthetic-message route is not evidence; use real foreground input for every
 gameplay claim.
 
+## 2026-08-01 draw and review-prompt trace
+
+The repeated title/cars corruption is produced in the guest renderbuffer,
+before the host window presentation. The affected GUI draws have texturing
+enabled and `GL_COMBINE` selected, but alpha test, lighting and scissor test
+are all disabled; their viewport and scissor box cover the full 480x320
+surface. Those states do not explain the blank/striped artwork.
+
+The 512x1024 RGBA Unity atlas used by the affected UI draws was read back from
+the host after `glTexImage2D`. Both its colour content and alpha mask match the
+uploaded atlas rather than being blank or zeroed. The remaining graphics defect
+is therefore after texture decode/upload: distinguish texture-coordinate,
+texture-matrix and texture-combine input state for the bad draw batches.
+
+On a real 300 ms foreground press, the first title action opens the game's
+rate prompt. Pressing its visible `NOT NOW` button logs `NoMetric:ReviewRequest`
+and then raises JSONKit's null-input assertion before the same `0x3cda10`
+parser fault. A temporary trace confirmed this path does not call the existing
+`CFReadStreamOpen` stub, and the existing synchronous `NSURLConnection` log
+does not appear. Do not change either network API on this evidence alone; trace
+the actual data-producing Foundation or third-party boundary first.
+
 ## Next discriminator
 
-The crash after death is `Error during CPU execution: MemoryError`, faulting at
+The crash after death (and now the review-prompt dismissal) is `Error during CPU execution: MemoryError`, faulting at
 guest PC `0x3cda10` (ARM, not Thumb — pass `--arm` to
 `dev-scripts/disasm-guest-fault.py`) with `R0 = 0`, `R1 = 0xbe`. The instruction
 is `ldrb r3, [r8]` where `r8 = r0 + r2` and `r0` is the null base pointer. The
 surrounding code compares bytes against `'/'`, `'\t'` and `' '`, so it is a text
 parser walking a buffer it was handed as null.
 
-It is reached on the post-death path, right after a `CFStringGetBytes` measuring
-pass, and this build links `P31RestKit` (Prime31) and calls Flurry, so the
-likely route is score submission or analytics parsing a response that tapHLE's
-networking never produced. Start by finding which call returns the null buffer
-rather than by looking at the parser.
+It is reached after a `CFStringGetBytes` measuring pass, and this build links
+P31RestKit (Prime31), ChartBoost and Flurry, so the likely route is score
+submission, review or analytics parsing a response that tapHLE never produced.
+Start by finding the concrete data-producing call that returns the null buffer
+rather than by changing the parser or guessing at a network API.
 
-Note this is *after* a complete play session, so it does not block the two-star
-result; it blocks the loop persisting into a second race.
+The post-death occurrence blocks the loop persisting into a second race; the
+review occurrence blocks ordinary menu progression when its prompt is shown.
