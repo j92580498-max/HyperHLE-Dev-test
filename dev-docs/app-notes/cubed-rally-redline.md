@@ -247,13 +247,13 @@ review occurrence blocks ordinary menu progression when its prompt is shown.
 
 ## Next discriminator
 
-The prompt parser now fails because JSONKit directly allocates its
-`JKDictionary` guest subclass, while tapHLE's inherited `NSDictionary`
-implementation assumes every receiver owns a host `DictionaryHostObject`.
-Trace the first inherited collection selector and make that Foundation
-primitive operate on the guest subclass's real Objective-C storage, or provide
-the smallest correct class-cluster bridge. Do not fake a JSON result or
-special-case JSONKit.
+The prompt parser now fails on `-[JKDictionary init]`. JSONKit directly
+allocates this private `NSMutableDictionary` guest subclass, and tapHLE's
+inherited `NSMutableDictionary -init` immediately borrows a
+`DictionaryHostObject` that the guest-allocated receiver cannot own. Make that
+initializer preserve guest-backed subclasses that provide their own dictionary
+primitives, then rerun the prompt. Do not fake a JSON result or special-case
+JSONKit.
 
 The post-death path may share the same JSONKit sequence but has not been rerun
 with these two fixes. The prompt still blocks ordinary menu progression, and
