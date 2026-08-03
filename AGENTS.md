@@ -9,9 +9,9 @@ policies.
 ## Mission and priorities
 
 tapHLE is a high-level emulator with a broad goal: make as many early iPhone OS
-games as possible work on Windows. Contributors choose concrete games as
-practical compatibility targets. A target is one step toward the broad goal,
-not a limit on the games tapHLE aims to support.
+games as possible work on Windows and modern iOS hosts. Contributors choose
+concrete games as practical compatibility targets. A target is one step toward
+the broad goal, not a limit on the games tapHLE aims to support.
 
 Game work is self-service. A contributor may use an agent to work on a game
 they care about. No contributor is required to take someone else's request.
@@ -21,7 +21,8 @@ compatibility database.
 
 Use this priority order when tradeoffs arise:
 
-1. Move the current target game closer to working on Windows.
+1. Move the current target game closer to working on its requested supported
+   host.
 2. Get a reproducible improvement into a testable state quickly.
 3. Avoid regressions in games or code paths that already work.
 4. Improve architecture when it directly helps the first three priorities.
@@ -32,10 +33,14 @@ safer than a broad redesign. Isolate it, state which observed behavior it
 models, and add the smallest useful regression check. Do not use the rapid
 iteration policy as a reason to make unrelated changes.
 
-Windows is the only product target. macOS support is a development convenience
-for compiling, debugging, or comparing behavior. Android is out of scope; its
-inherited source remains in the tree, but agents should not develop, test, or
-refactor it unless the maintainer explicitly asks.
+Windows and modern iOS are product targets. Windows remains the primary
+desktop development and compatibility environment. The iOS host is
+experimental, requires JIT, and must be validated on a physical device before
+an iOS result is claimed. macOS support is a development convenience for
+compiling, debugging, comparing behavior, and building the iOS host; it is not
+a release target of its own. Android is out of scope; its inherited source
+remains in the tree, but agents should not develop, test, or refactor it unless
+the maintainer explicitly asks.
 
 ## Agent capability
 
@@ -45,7 +50,8 @@ observation, not a settled verdict: it may reflect insufficiently specific task
 instructions on that run rather than a fixed capability limit, so it is not a
 ban on either agent. The durable rule it points to applies to every agent
 regardless of model — give a narrow, well-specified, independently reviewable
-task, and review and exactly retest agent work on Windows before trusting it.
+task, and review and exactly retest agent work on the claimed host before
+trusting it. Windows evidence does not prove iOS-host behavior, or vice versa.
 Record new dated results in `dev-docs/agent-capability-log.md` so this note can
 be revised as evidence accumulates.
 
@@ -84,8 +90,9 @@ bash dev-scripts/audit-agent-safety.sh
 
 ## Contribution loop
 
-1. Establish the exact target: game name and version, Windows environment,
-   tapHLE revision, launch steps, expected behavior, actual behavior, and log.
+1. Establish the exact target: game name and version, host OS/device
+   environment, tapHLE revision, launch steps, expected behavior, actual
+   behavior, and log.
    For an Archive-backed target, run the verification protocol before any app
    inspection or execution. If the local file does not match the recorded
    canonical hashes, do not use that copy for any purpose.
@@ -100,8 +107,8 @@ bash dev-scripts/audit-agent-safety.sh
    behavior visibly bounded and explain why it is needed. Do not report progress
    merely because unrelated missing APIs were stubbed or a crash moved later.
 5. Test at the closest layer, then run the affordable repository checks.
-6. Report what changed, what was actually run on Windows, and what still needs
-   validation with the target game.
+6. Report what changed, which supported hosts were actually tested, and what
+   still needs validation with the target game.
 
 The detailed workflow and intake checklist are in
 `dev-docs/agent-workflow.md`. For app work, also read
@@ -114,7 +121,9 @@ frame capture, and close operation. Its ordinary command worker runs on a
 background desktop, so direct launches are not visible or interactable on the
 maintainer's desktop. Follow the fixed AGY command loop in the debugging
 playbook and never infer a visual or input result without its status and frame
-checks.
+checks. This is an **AGY-only** requirement: Codex and other agent surfaces
+must not use the AGY harness. They should run their own visible-window testing
+with controls appropriate to their surface.
 Version bumps, tags, and release packaging follow `dev-docs/releases.md`.
 Agents may prepare release changes, but must not create or push a release tag
 without explicit maintainer authorization.
@@ -385,8 +394,9 @@ branches to accumulate.
 - `src/objc.rs`, `src/objc/`: Objective-C runtime model.
 - `src/frameworks/`: high-level implementations of iPhone OS frameworks.
 - `src/libc.rs`, `src/libc/`: C/POSIX compatibility layer.
-- `src/window.rs`, `src/gles.rs`, `src/audio.rs`: Windows-facing input,
-  graphics, and audio paths.
+- `src/window.rs`, `src/gles.rs`, `src/audio.rs`: host-facing input, graphics,
+  and audio paths.
+- `platform/ios/`: modern iOS native host, build scripts, and packaging.
 - `src/fs.rs`, `src/environment.rs`: guest filesystem and process state.
 - `tests/integration.rs`, `tests/TestApp_source/`: emulator integration probes.
 - `dev-docs/`: building, debugging, style, agent workflow, and upstream sync.
@@ -402,7 +412,7 @@ them.
 Initialize dependencies once:
 
 ```sh
-git submodule update --init
+git submodule update --init --recursive
 ```
 
 Use the checks proportional to the change:

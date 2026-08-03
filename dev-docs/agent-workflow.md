@@ -1,7 +1,8 @@
 # Agent workflow for game compatibility
 
 This guide expands the contribution loop in `AGENTS.md`. It is optimized for a
-maintainer who names a Windows game and wants useful iteration quickly.
+maintainer who names a game and supported host and wants useful iteration
+quickly.
 
 Use `app-debugging-playbook.md` for the efficient runtime/static-analysis
 protocol. If `app-notes/<app-slug>.md` exists, read it first and continue from
@@ -10,7 +11,8 @@ its highest proven milestone rather than rediscovering the same facts.
 Read `dev-docs/agent-capability-log.md` before choosing an agent. Its dated,
 task-specific observations are evidence rather than a standing ban: give every
 agent a narrow, independently reviewable task, then review and retest its work
-on Windows before relying on it as implementation or compatibility evidence.
+on the claimed host before relying on it as implementation or compatibility
+evidence.
 
 ## 1. Capture a reproducible case
 
@@ -20,7 +22,7 @@ Record these facts before diagnosing:
 | --- | --- |
 | Game identity | Title, version, regional/build identifier |
 | tapHLE identity | Release or Git commit |
-| Host | Windows version, CPU architecture, GPU and driver |
+| Host | Windows version/CPU/GPU/driver, or iOS device and OS version |
 | Launch | Exact path form and tapHLE options |
 | Progress | Last screen, sound, input, or log event that works |
 | Failure | Crash, hang, rendering defect, missing input, or wrong behavior |
@@ -93,11 +95,13 @@ Stop at the highest affordable level and report where you stopped:
 2. A TestApp probe for a guest-visible API or ABI behavior.
 3. `cargo test -- --skip test_app` when the custom SDK is unavailable.
 4. Full `cargo test` with the SDK and LLVM from `tests/README.md`.
-5. A release build and launch of the exact target game on Windows.
+5. A release build and launch of the exact target game on the claimed host.
 
 The fifth level is the only proof that a game compatibility claim is true.
-Passing lower levels still provides useful confidence when game access is
-awaiting the maintainer.
+An iOS-host claim requires a physical-device run; a simulator build is useful
+lower-level evidence but does not prove JIT or device behavior. Passing lower
+levels still provides useful confidence when game or device access is awaiting
+the maintainer.
 
 Keep level-five app runs in a visible emulator window so the maintainer can
 watch the agent's progress. Automated frame capture and coordinate-based input
@@ -118,7 +122,7 @@ Summarize:
 - the root cause or best-supported hypothesis;
 - files and subsystem changed;
 - checks run and their results;
-- exact game/Windows validation performed; and
+- exact game and host validation performed; and
 - the next observation needed if the target still fails.
 
 When a verified result changes the app's star rating, submit it to the

@@ -61,6 +61,7 @@ const kEAGLRenderingAPIOpenGLES3: EAGLRenderingAPI = 3;
 pub(super) struct EAGLContextHostObject {
     pub(super) gles_ctx: Option<Box<dyn GLESContext>>,
     pub(super) api: EAGLRenderingAPI,
+    drawable_framebuffer: GLuint,
     /// Mapping of OpenGL ES renderbuffer names to `EAGLDrawable` instances
     /// (always `CAEAGLLayer*`). Retains the instance so it won't dangle.
     renderbuffer_drawable_bindings: Rc<RefCell<HashMap<GLuint, id>>>,
@@ -80,6 +81,7 @@ pub const CLASSES: ClassExports = objc_classes! {
     let host_object = Box::new(EAGLContextHostObject {
         gles_ctx: None,
         api: kEAGLRenderingAPIOpenGLES1,
+        drawable_framebuffer: 0,
         renderbuffer_drawable_bindings: Rc::new(RefCell::new(HashMap::new())),
         fps_counter: None,
         next_frame_due: None,
@@ -143,13 +145,22 @@ pub const CLASSES: ClassExports = objc_classes! {
     };
 
     let window = env.window.as_mut().expect("OpenGL ES is not supported in headless mode");
-    {
-        let gles_ctx = gles_ins.make_current(window);
+    let drawable_framebuffer = {
+        let mut gles_ctx = gles_ins.make_current(window);
         log!("Driver info: {}", unsafe { gles_ctx.driver_description() });
-    }
+        let mut framebuffer = 0;
+        if cfg!(target_os = "ios") {
+            unsafe {
+                gles_ctx.GetIntegerv(gles11::FRAMEBUFFER_BINDING_OES, &mut framebuffer);
+            }
+        }
+        framebuffer as GLuint
+    };
 
-    env.objc.borrow_mut::<EAGLContextHostObject>(this).gles_ctx = Some(gles_ins);
-    env.objc.borrow_mut::<EAGLContextHostObject>(this).api = api;
+    let host_object = env.objc.borrow_mut::<EAGLContextHostObject>(this);
+    host_object.gles_ctx = Some(gles_ins);
+    host_object.api = api;
+    host_object.drawable_framebuffer = drawable_framebuffer;
 
     env.window.as_mut().unwrap().set_share_with_current_context(false);
 
@@ -173,13 +184,22 @@ pub const CLASSES: ClassExports = objc_classes! {
     };
 
     let window = env.window.as_mut().expect("OpenGL ES is not supported in headless mode");
-    {
-        let gles_ctx = gles_ins.make_current(window);
+    let drawable_framebuffer = {
+        let mut gles_ctx = gles_ins.make_current(window);
         log!("Driver info: {}", unsafe { gles_ctx.driver_description() });
-    }
+        let mut framebuffer = 0;
+        if cfg!(target_os = "ios") {
+            unsafe {
+                gles_ctx.GetIntegerv(gles11::FRAMEBUFFER_BINDING_OES, &mut framebuffer);
+            }
+        }
+        framebuffer as GLuint
+    };
 
-    env.objc.borrow_mut::<EAGLContextHostObject>(this).gles_ctx = Some(gles_ins);
-    env.objc.borrow_mut::<EAGLContextHostObject>(this).api = api;
+    let host_object = env.objc.borrow_mut::<EAGLContextHostObject>(this);
+    host_object.gles_ctx = Some(gles_ins);
+    host_object.api = api;
+    host_object.drawable_framebuffer = drawable_framebuffer;
 
     this
 }
@@ -307,13 +327,13 @@ pub const CLASSES: ClassExports = objc_classes! {
     // delayed, so this needs to be checked before returning.
     let sleep_for = limit_framerate(&mut env.objc.borrow_mut::<EAGLContextHostObject>(this).next_frame_due, &env.options);
 
-    if env.options.print_fps {
+    if env.options.print_fps || cfg!(target_os = "ios") {
         env
             .objc
             .borrow_mut::<EAGLContextHostObject>(this)
             .fps_counter
             .get_or_insert_with(FpsCounter::start)
-            .count_frame(format_args!("EAGLContext {this:?}"));
+            .count_frame(format_args!("EAGLContext {this:?}"), env.options.print_fps);
     }
 
     let fullscreen_layer = find_fullscreen_eagl_layer(env);
@@ -369,7 +389,7 @@ pub const CLASSES: ClassExports = objc_classes! {
         );
         // re-borrow
         unsafe {
-            present_renderbuffer(env);
+            present_renderbuffer(env, this);
         }
     } else {
         if fullscreen_layer != nil {
@@ -536,6 +556,7 @@ unsafe fn present_renderbuffer_es2(
     viewport: (u32, u32, u32, u32),
     rotation_matrix: crate::matrix::Matrix<2>,
     virtual_cursor_visible_at: Option<(f32, f32, bool)>,
+    drawable_framebuffer: GLuint,
 ) {
     use crate::gles::gles2_raw as gles2;
 
@@ -619,7 +640,7 @@ unsafe fn present_renderbuffer_es2(
         gles2::CLAMP_TO_EDGE as _,
     );
 
-    gles.BindFramebuffer(gles2::FRAMEBUFFER, 0);
+    gles.BindFramebuffer(gles2::FRAMEBUFFER, drawable_framebuffer);
     gles.DeleteFramebuffers(1, &src_fb);
 
     // Configure the destination viewport (the window) and clear.
@@ -978,11 +999,15 @@ unsafe fn capture_renderbuffer(
 /// (which should be provided by the app) to a texture and presents it with
 /// [present_frame], trying to avoid noticeably modifying OpenGL ES state while
 /// doing so. The front and back buffers are then swapped.
-unsafe fn present_renderbuffer(env: &mut Environment) {
+unsafe fn present_renderbuffer(env: &mut Environment, context: id) {
     // Save these for when we need to draw the frame
     let viewport = env.window.as_mut().unwrap().viewport();
     let rotation_matrix = env.window.as_mut().unwrap().rotation_matrix();
     let virtual_cursor_visible_at = env.window.as_mut().unwrap().virtual_cursor_visible_at();
+    let drawable_framebuffer = env
+        .objc
+        .borrow::<EAGLContextHostObject>(context)
+        .drawable_framebuffer;
 
     let gles_ctx = super::get_thread_context(
         &mut env.framework_state.opengles,
@@ -994,9 +1019,19 @@ unsafe fn present_renderbuffer(env: &mut Environment) {
     let gles = gles_boxed.as_mut();
 
     if gles.is_es2() {
-        present_renderbuffer_es2(gles, viewport, rotation_matrix, virtual_cursor_visible_at);
+        let old_framebuffer = get_int(gles, gles11::FRAMEBUFFER_BINDING_OES) as GLuint;
+        present_renderbuffer_es2(
+            gles,
+            viewport,
+            rotation_matrix,
+            virtual_cursor_visible_at,
+            drawable_framebuffer,
+        );
+        gles.BindFramebufferOES(gles11::FRAMEBUFFER_OES, drawable_framebuffer);
         std::mem::drop(gles_boxed);
         env.window.as_ref().unwrap().swap_window();
+        let mut gles_boxed = gles_ctx.make_current(env.window.as_mut().unwrap());
+        gles_boxed.BindFramebufferOES(gles11::FRAMEBUFFER_OES, old_framebuffer);
         return;
     }
 
@@ -1046,11 +1081,22 @@ unsafe fn present_renderbuffer(env: &mut Environment) {
         gles11::TEXTURE_MIN_FILTER,
         gles11::LINEAR as _,
     );
+    gles.TexParameteri(
+        gles11::TEXTURE_2D,
+        gles11::TEXTURE_WRAP_S,
+        gles11::CLAMP_TO_EDGE as _,
+    );
+    gles.TexParameteri(
+        gles11::TEXTURE_2D,
+        gles11::TEXTURE_WRAP_T,
+        gles11::CLAMP_TO_EDGE as _,
+    );
 
     // Clean up the framebuffer object since we no longer need it.
-    // This also sets the framebuffer bindings back to zero, so rendering
-    // will go to the default framebuffer (the window).
+    // This also resets the framebuffer binding; select the host window's
+    // drawable framebuffer before presentation.
     gles.DeleteFramebuffersOES(1, &src_framebuffer);
+    gles.BindFramebufferOES(gles11::FRAMEBUFFER_OES, drawable_framebuffer);
 
     // Reset various things that could affect the quad or virtual cursor we're
     // going to draw. Back up the old state while doing so, so it can be
@@ -1186,8 +1232,7 @@ unsafe fn present_renderbuffer(env: &mut Environment) {
 
     std::mem::drop(gles_boxed);
 
-    // SDL2's documentation warns 0 should be bound to the draw framebuffer
-    // when swapping the window, so this is the perfect moment.
+    // Keep the host drawable framebuffer bound while SDL swaps the window.
     env.window.as_ref().unwrap().swap_window();
 
     let mut gles_boxed = gles_ctx.make_current(env.window.as_mut().unwrap());

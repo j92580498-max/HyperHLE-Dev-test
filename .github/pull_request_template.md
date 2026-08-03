@@ -15,11 +15,11 @@ implementation or game-specific workaround.
 - [ ] Relevant unit or TestApp test
 - [ ] `cargo test -- --skip test_app`
 - [ ] `cargo build --release`
-- [ ] Exact target game launched on Windows
+- [ ] Exact target game launched on the claimed host
 - [ ] `python dev-scripts/compatibility.py check`
 
-List the checks actually run, Windows/CPU/GPU details for game validation, and
-any skipped checks with their reason.
+List the checks actually run, host OS/device/CPU/GPU details for game
+validation, and any skipped checks with their reason.
 
 ## Provenance and agents
 
