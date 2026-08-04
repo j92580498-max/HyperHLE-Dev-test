@@ -88,7 +88,11 @@
   address space free. An allocator that retries — which is what a managed
   runtime does — then never got its memory, and the game sat on its last frame
   looking as though it were still running.
-- Cubed Rally Redline reaches its menus, car select and a race.
+- Cubed Rally Redline reaches its menus, car select and a race, and now draws
+  them. It renders landscape directly rather than letting tapHLE rotate the
+  screen for it, so it was being rotated twice and the finished frame arrived
+  as flat horizontal bands; it now launches in landscape-native mode. Racing,
+  crashing, reading the results and starting another race all work.
 
 ### Known limitations
 

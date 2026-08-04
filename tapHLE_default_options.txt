@@ -78,6 +78,14 @@ com.nabilchatbi.Ricky: --landscape-left --button-to-touch=DPadLeft,40,285 --butt
 # avoid coming out rotated 90° and clipped.
 greyhoundgames.warlordshdapp: --landscape-native
 
+# Redline (Cubed Rally Redline)
+# Unity 4 landscape-native renderer: its CAEAGLLayer drawable is already
+# 480x320 and it sets a matching landscape viewport, so tapHLE's usual
+# portrait-drawable-plus-presentation-rotation turns the finished frame into
+# horizontal bands. The guest renderbuffer was verified correct at
+# presentation time while the window showed none of it.
+com.nocanwin.redline: --landscape-native
+
 # Head2Head
 com.darxun: --landscape-right --y-tilt-offset=24
 
