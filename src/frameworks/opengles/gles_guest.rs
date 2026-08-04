@@ -1540,7 +1540,28 @@ fn glMapBufferOES(env: &mut Environment, target: GLenum, access: GLenum) -> MutP
     assert!(access == WRITE_ONLY_OES);
     let buffer_object_name = _get_currently_bound_buffer_object_name(env, target);
     let host_buffer = with_ctx_and_mem_no_skip(env, |gles, _mem| unsafe {
-        gles.MapBufferOES(target, access)
+        // `OES_mapbuffer` only offers GL_WRITE_ONLY, and that is all the guest
+        // can ask for, but tapHLE has to *read* the buffer's current contents:
+        // the guest is handed a private copy, and whatever it does not
+        // overwrite is copied back at unmap. A write-only mapping is not
+        // required to expose the existing bytes, and desktop drivers commonly
+        // return fresh uninitialised memory instead so they can skip a
+        // readback stall. Seeding the copy from that hands the guest garbage,
+        // and unmap then writes the garbage into every part of the buffer the
+        // guest left alone.
+        //
+        // Ask for a readable mapping first, and fall back to the access the
+        // guest requested for a backend that has no such mode. GL_READ_WRITE
+        // is not a valid GLES 1.1 enum, so the failure has to be tidied up
+        // rather than left for the guest to find with glGetError.
+        const GL_READ_WRITE: GLenum = 0x88BA;
+        let readable = gles.MapBufferOES(target, GL_READ_WRITE);
+        if readable.is_null() {
+            while gles.GetError() != 0 {}
+            gles.MapBufferOES(target, access)
+        } else {
+            readable
+        }
     });
     if host_buffer.is_null() {
         nil.cast()
