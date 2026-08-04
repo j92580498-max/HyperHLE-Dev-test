@@ -755,10 +755,17 @@ pub trait GLES {
         unimplemented!("GenerateMipmapOES not implemented by this backend")
     }
 
-    // OES_vertex_array_object. Backends without native VAO support may safely
-    // use these compatibility defaults: the guest still receives non-zero
-    // names, while binding and deletion leave the legacy attribute state in
-    // place.
+    // OES_vertex_array_object.
+    //
+    // These defaults keep a guest that calls them alive, and nothing more.
+    // Binding does not switch attribute state and generating hands out the
+    // same names every call, so an app that stores its arrays in a vertex
+    // array object and later binds it gets whatever the previous draw left
+    // behind. That is invisible at the call site and shows up as another
+    // object's geometry, so a backend that inherits these must not let
+    // `GL_OES_vertex_array_object` be advertised — see `EXTENSIONS` in
+    // `crate::frameworks::opengles::gles_guest`, which is where the extension
+    // string is decided and where the Cubed Rally Redline case is written up.
     unsafe fn GenVertexArraysOES(&mut self, n: GLsizei, arrays: *mut GLuint) {
         for i in 0..n {
             arrays.add(i as usize).write((i + 1) as GLuint);

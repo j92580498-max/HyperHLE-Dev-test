@@ -270,18 +270,10 @@ fn glGetString(env: &mut Environment, name: GLenum) -> ConstPtr<GLubyte> {
         let new_str = with_ctx_and_mem(env, |_gles, mem| {
             // Those values are extracted from the iPod touch 2nd gen, iOS 4.2.1
             let s: &[u8] = match name {
-                gles11::VENDOR => {
-                    b"Imagination Technologies"
-                }
-                gles11::RENDERER => {
-                    b"PowerVR MBXLite with VGPLite"
-                }
-                gles11::VERSION => {
-                    b"OpenGL ES-CM 1.1 (76)"
-                }
-                gles11::EXTENSIONS => {
-                    b"GL_APPLE_framebuffer_multisample GL_APPLE_texture_max_level GL_EXT_discard_framebuffer GL_EXT_texture_filter_anisotropic GL_EXT_texture_lod_bias GL_IMG_read_format GL_IMG_texture_compression_pvrtc GL_IMG_texture_format_BGRA8888 GL_OES_blend_subtract GL_OES_compressed_paletted_texture GL_OES_depth24 GL_OES_draw_texture GL_OES_framebuffer_object GL_OES_mapbuffer GL_OES_matrix_palette GL_OES_point_size_array GL_OES_point_sprite GL_OES_read_format GL_OES_rgb8_rgba8 GL_OES_texture_mirrored_repeat GL_OES_texture_npot GL_OES_vertex_array_object "
-                }
+                gles11::VENDOR => b"Imagination Technologies",
+                gles11::RENDERER => b"PowerVR MBXLite with VGPLite",
+                gles11::VERSION => b"OpenGL ES-CM 1.1 (76)",
+                gles11::EXTENSIONS => EXTENSIONS,
                 _ => unreachable!(),
             };
             mem.alloc_and_write_cstr(s).cast_const()
@@ -736,6 +728,28 @@ fn glVertexPointer(
         gles.VertexPointer(size, type_, stride, pointer)
     })
 }
+
+/// The extension string tapHLE reports to guest apps.
+///
+/// Listing an extension here is a promise that its entry points work, and an
+/// app takes that promise at face value: it checks this string and then uses
+/// the feature instead of the path it would otherwise take.
+///
+/// `GL_OES_vertex_array_object` used to be listed, and was not kept. tapHLE
+/// exports `glGenVertexArraysOES` and `glBindVertexArrayOES`, but the
+/// GLES1-on-GL2 backend — the one Windows runs — inherits the no-op defaults
+/// in [crate::gles::GLES], so binding a vertex array object does nothing and
+/// generating several hands out the same names. Unity checks for the
+/// extension, and on finding it configures each mesh's arrays once into a VAO
+/// and thereafter just binds the VAO before drawing. With binding a no-op,
+/// every such batch drew with whichever pointers the previous draw happened to
+/// leave behind. In Cubed Rally Redline the track was drawn with its own
+/// vertex positions in place of its texture coordinates, sampling one white
+/// corner of the atlas, which is why the world was a flat grey sheet.
+///
+/// Not advertising it costs nothing: an app that cannot have vertex array
+/// objects simply sets its array pointers per draw, which works.
+const EXTENSIONS: &[u8] = b"GL_APPLE_framebuffer_multisample GL_APPLE_texture_max_level GL_EXT_discard_framebuffer GL_EXT_texture_filter_anisotropic GL_EXT_texture_lod_bias GL_IMG_read_format GL_IMG_texture_compression_pvrtc GL_IMG_texture_format_BGRA8888 GL_OES_blend_subtract GL_OES_compressed_paletted_texture GL_OES_depth24 GL_OES_draw_texture GL_OES_framebuffer_object GL_OES_mapbuffer GL_OES_matrix_palette GL_OES_point_size_array GL_OES_point_sprite GL_OES_read_format GL_OES_rgb8_rgba8 GL_OES_texture_mirrored_repeat GL_OES_texture_npot ";
 
 // Drawing
 fn glDrawArrays(env: &mut Environment, mode: GLenum, first: GLint, count: GLsizei) {
@@ -2401,4 +2415,35 @@ fn _get_buffer_size(env: &mut Environment, target: GLenum) -> GLint {
         unsafe { gles.GetBufferParameteriv(target, gles11::BUFFER_SIZE, &mut buffer_size) }
         buffer_size
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::EXTENSIONS;
+
+    /// The entry points for these exist, so nothing fails loudly when an app
+    /// uses them — it just renders wrongly, somewhere else, much later. Only
+    /// re-add one here together with a backend that implements it.
+    #[test]
+    fn no_extension_is_advertised_that_the_gles1_backend_only_stubs() {
+        let advertised = std::str::from_utf8(EXTENSIONS).unwrap();
+        for stubbed in ["GL_OES_vertex_array_object"] {
+            assert!(
+                !advertised.contains(stubbed),
+                "{stubbed} is advertised but the GLES1-on-GL2 backend only stubs it",
+            );
+        }
+    }
+
+    /// Space-separated, with the trailing space the loop above relies on, and
+    /// no accidental doubling — apps split this string on single spaces.
+    #[test]
+    fn the_extension_string_is_well_formed() {
+        let advertised = std::str::from_utf8(EXTENSIONS).unwrap();
+        assert!(advertised.ends_with(' '));
+        assert!(!advertised.contains("  "));
+        for name in advertised.split_whitespace() {
+            assert!(name.starts_with("GL_"), "{name:?} is not an extension name");
+        }
+    }
 }
