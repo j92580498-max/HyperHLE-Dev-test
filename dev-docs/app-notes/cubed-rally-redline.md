@@ -9,16 +9,15 @@
 - Identity, read from `tapHLE --info` (not from the filename): display name
   `Redline`, bundle identifier `com.nocanwin.redline`, bundle version `1.32`,
   minimum OS version `5.0`, armv7, iPhone + iPad, landscape only.
-- Highest clean committed milestone: **the gameplay loop starts and
-  persists, but the game is not playable**. A race starts, the HUD counts
-  distance and score, the car responds to physics, the player crashes, the
-  RESULT screen appears, and its play button starts another race that also
-  runs to a result. **Do not read that as three stars.** The ground is a flat
-  opaque grey sheet with a hard diagonal horizon, and the voxel terrain is a
-  scatter of a few pixels, so a person cannot see where the road is. Rating
-  stays at **two stars** until the rendering is fixed; the loop persisting is a
-  necessary part of three stars, not a sufficient one. See "The rendering
-  frontier, measured (2026-08-04)" for exactly which draw does what.
+- Highest clean committed milestone: **three stars — the game is playable and
+  renders correctly**. Menus, car select, the voxel landscape, the dirt road
+  and its grass verges, water, fences, clouds, particles and the HUD all draw
+  as they should. Two full races were played end to end in one session —
+  `Play`, `Game`, `Player: Dead`, `EndTimed:Game`, `NewGame`, `Game`,
+  `Player: Dead`, `EndTimed:Game` — with zero panics and zero aborts.
+- Tilt steering does not work (Core Motion is a no-op) and some compressed
+  audio is silent (`AudioQueueOfflineRender` is unimplemented). Neither stops
+  play: the on-screen left/right controls steer fine.
 
 ## What this app is
 
@@ -179,7 +178,32 @@ knows what is missing rather than re-deriving it.
 **None of this explains the rendering defect.** Every gap above is a missing
 API; the render failure is in code tapHLE does implement. Keep the two apart.
 
-## The rendering frontier, measured (2026-08-04)
+## The rendering defect and its cause (solved 2026-08-04)
+
+**Root cause: tapHLE advertised `GL_OES_vertex_array_object` without
+implementing it.** The GLES1-on-GL2 backend inherits the no-op defaults from
+the `GLES` trait — `BindVertexArrayOES` does nothing, `GenVertexArraysOES`
+returns colliding names. Unity checks the extension string, believed it, and
+so configured each mesh's array pointers once into a vertex array object and
+thereafter only bound the object before drawing. With binding a no-op, every
+such batch drew with whichever pointers the previous draw had left behind.
+
+That is why the track was drawn with its own vertex positions in place of its
+texture coordinates — sampling one white corner of the sprite atlas, which
+modulated by a half-strength primary colour gives exactly the (128,128,128)
+flat grey that covered the world. It is also why menu artwork was overdrawn by
+other objects' geometry.
+
+Removing the extension from the reported string fixes it: the game falls back
+to setting its array pointers per draw, which always worked. A second defect
+surfaced once the game ran long enough to collect garbage — `mprotect`
+returned -1, so Boehm printed `Mprotect remapping failed` and aborted. Both
+fixes are on trunk.
+
+The measurements that led there are kept below, because they are what ruled
+out everything else.
+
+### How it was measured
 
 Everything written before 2026-08-03 about textures, combiners and mip
 selection was observed through the double-rotation presentation bug and is
@@ -289,24 +313,27 @@ repeating road texture — and the texture bound to it is the sprite atlas.
   own; all colour comes from the texture. So the ribbon's appearance depends
   entirely on where it samples, which is the open question.
 
-### Next discriminator
+### What actually found it
 
-The fault is now boxed in to one thing: **the guest computes `u ∈ [-10, +21]`
-for the road ribbon where it must be computing something inside one tile.**
-Every tapHLE-side explanation that could be tested has been tested and
-eliminated — bound texture, texture contents, mip chain, wrap mode, combiner,
-texture matrix, lighting, vertex colours, camera, projection, modelview.
+Every measurement above was of the *symptom*, and each one narrowed the search
+without reaching the cause, because they all assumed the guest had asked for
+what tapHLE was drawing. The step that broke it open was noticing that the
+broken draws issued **no array-setup calls at all** in their own frame — their
+pointers had been configured in some earlier frame — and then asking how a
+draw can inherit array state. That is what vertex array objects are for, and
+`tapHLE --dump=linking-info` shows the app importing
+`_glGenVertexArraysOES`, `_glBindVertexArrayOES` and `_glDeleteVertexArraysOES`,
+all `linked_to: "host"`.
 
-So stop looking at the GL layer and find what feeds that number. The ribbon is
-rebuilt as the car drives, so the UVs come from a `Mesh.uv` assignment in
-`Assembly-CSharp.dll`. Two routes, in order of cost:
+The transferable lesson: when a draw's arrays are wrong and the guest did not
+set them that frame, suspect the state-object mechanism before suspecting the
+data. And check what tapHLE *claims* to support, not only what it implements —
+an extension string is an API surface, and this one was lying.
 
-1. Decompile `Assembly-CSharp.dll` from the artifact and read the road-builder
-   class. The UV expression will name its inputs directly, and those inputs are
-   what to check against tapHLE.
-2. Failing that, log every `mono_*` marshalling entry point the road builder
-   could pass an array through, and check that a `Vector2[]` written by guest
-   code arrives intact.
+### A note on the numbers above
 
-Do not resume the "geometry is off-screen" or the pre-2026-08-03
-texture/combiner investigations. Both are closed.
+The `u ∈ [-10.4, +21.4]` texture coordinates were never the guest's intent.
+They were the vertex positions of a different object, read through a texture
+coordinate pointer that belonged to a batch drawn earlier. Anyone re-reading
+this section should treat those figures as a description of the corruption,
+not of the road.
