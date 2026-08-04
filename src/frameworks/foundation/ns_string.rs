@@ -518,6 +518,20 @@ pub const CLASSES: ClassExports = objc_classes! {
 // NSCoding is a property of the NSString class cluster, not only of the
 // immutable concrete class. Archived UITextView content can be an
 // NSMutableString, which must decode through this inherited implementation.
+//
+// Encoding belongs here for the same reason, and for a while did not: it sat on
+// _tapHLE_NSString, whose sibling _tapHLE_NSMutableString inherits nothing from
+// it, so archiving a mutable string died on a missing selector. The Jim and
+// Frank Mysteries hit that saving its state during startup.
+- (())encodeWithCoder:(id)coder {
+    let string = to_rust_string(env, this);
+    assert!(string.as_bytes().iter().all(|byte| byte.is_ascii())); // TODO
+
+    // TODO: use some kind of substitution instead?
+    // See "Making Substitutions During Coding" in the doc https://developer.apple.com/library/archive/documentation/Cocoa/Conceptual/Archiving/Articles/codingobjects.html
+    set_value_to_encode_for_current_key(env, coder, plist::Value::String(string.to_string()));
+}
+
 - (id)initWithCoder:(id)coder {
     let class: Class = msg![env; coder class];
     let keyed_unarch_class: Class = msg_class![env; NSKeyedUnarchiver class];
@@ -1531,15 +1545,6 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 // TODO: more init methods
-
-- (())encodeWithCoder:(id)coder {
-    let string = to_rust_string(env, this);
-    assert!(string.as_bytes().iter().all(|byte| byte.is_ascii())); // TODO
-
-    // TODO: use some kind of substitution instead?
-    // See "Making Substitutions During Coding" in the doc https://developer.apple.com/library/archive/documentation/Cocoa/Conceptual/Archiving/Articles/codingobjects.html
-    set_value_to_encode_for_current_key(env, coder, plist::Value::String(string.to_string()));
-}
 
 - (id)initWithData:(id)data // NSData *
           encoding:(NSStringEncoding)encoding {
