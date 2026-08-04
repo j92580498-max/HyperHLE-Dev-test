@@ -12,6 +12,11 @@
 //! stalls it. Cancel is the conservative answer — it is what a user declining
 //! an unexpected prompt would choose, and it never confirms a purchase, a
 //! deletion or a network action on their behalf.
+//!
+//! That reasoning only holds if the reported index really is the cancel
+//! button's. An alert with no cancel button is dismissed with -1, which is what
+//! UIKit reports for one, rather than with some other button standing in for
+//! it — see [cancel_button_index].
 
 use crate::frameworks::foundation::{ns_string, NSInteger};
 use crate::objc::{
@@ -25,9 +30,17 @@ struct UIAlertViewHostObject {
     superclass: super::UIViewHostObject,
     /// Weak, as delegates always are.
     delegate: id,
-    /// How many buttons have been configured. The cancel button, when there is
-    /// one, is always the first.
-    button_count: NSInteger,
+    /// Button titles in index order, so a dismissal can say which button it
+    /// reported rather than only its number.
+    buttons: Vec<String>,
+    /// Whether a cancel button title was supplied to the initializer. Only then
+    /// does the alert have a cancel button, and only then is it index 0.
+    ///
+    /// This is not the same question as "are there any buttons". An app that
+    /// passes a nil `cancelButtonTitle:` and then calls `addButtonWithTitle:`
+    /// has ordinary buttons and no cancel button, and UIKit reports
+    /// `cancelButtonIndex` as -1 for it.
+    has_cancel_button: bool,
     /// Retained. `UIAlertView` also exposes these as settable properties, so
     /// they cannot simply be logged at construction time and discarded: apps
     /// commonly build the alert with a bare `init` and fill them in afterwards.
@@ -47,6 +60,24 @@ fn set_string_property(env: &mut Environment, alert: id, new: id, is_title: bool
         std::mem::replace(&mut host_object.message, new)
     };
     release(env, old);
+}
+
+/// The index UIKit reports for an alert's cancel button.
+///
+/// An alert has a cancel button only if one was named when it was created;
+/// there is no rule that some button must be the cancel button. Treating "has
+/// buttons" as "has a cancel button" is not a harmless approximation, because
+/// index 0 is then whichever button the app happened to add first. The Jim and
+/// Frank Mysteries builds its rate prompt with a nil `cancelButtonTitle:` and
+/// three `addButtonWithTitle:` calls — "Rate Now", "Remind me later", "No,
+/// Thanks" — so reporting 0 pressed *Rate Now*, the app opened its App Store
+/// URL, and tapHLE exited before the game ever started.
+fn cancel_button_index(has_cancel_button: bool) -> NSInteger {
+    if has_cancel_button {
+        0
+    } else {
+        -1
+    }
 }
 
 /// Render a string property for logging, tolerating nil.
@@ -132,9 +163,15 @@ pub const CLASSES: ClassExports = objc_classes! {
     let _ = otherButtonTitles;
 
     let new: id = msg_super![env; this init];
+    let cancel_title = if cancelButtonTitle == nil {
+        None
+    } else {
+        Some(ns_string::to_rust_string(env, cancelButtonTitle).to_string())
+    };
     let host_object = env.objc.borrow_mut::<UIAlertViewHostObject>(new);
     host_object.delegate = delegate;
-    host_object.button_count = if cancelButtonTitle == nil { 0 } else { 1 };
+    host_object.has_cancel_button = cancel_title.is_some();
+    host_object.buttons.extend(cancel_title);
     set_string_property(env, new, title, /* is_title: */ true);
     set_string_property(env, new, message, /* is_title: */ false);
     new
@@ -169,15 +206,11 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (NSInteger)numberOfButtons {
-    env.objc.borrow::<UIAlertViewHostObject>(this).button_count
+    env.objc.borrow::<UIAlertViewHostObject>(this).buttons.len() as NSInteger
 }
 
 - (NSInteger)cancelButtonIndex {
-    if env.objc.borrow::<UIAlertViewHostObject>(this).button_count > 0 {
-        0
-    } else {
-        -1
-    }
+    cancel_button_index(env.objc.borrow::<UIAlertViewHostObject>(this).has_cancel_button)
 }
 
 - (bool)isVisible {
@@ -186,8 +219,9 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (())addButtonWithTitle:(id)title {
-    log!("UIAlertView: button: {:?}", ns_string::to_rust_string(env, title));
-    env.objc.borrow_mut::<UIAlertViewHostObject>(this).button_count += 1;
+    let title_str = ns_string::to_rust_string(env, title).to_string();
+    log!("UIAlertView: button: {:?}", title_str);
+    env.objc.borrow_mut::<UIAlertViewHostObject>(this).buttons.push(title_str);
 }
 
 - (())show {
@@ -197,9 +231,16 @@ pub const CLASSES: ClassExports = objc_classes! {
     let title_str = describe(env, title);
     let message_str = describe(env, message);
     log!("UIAlertView: title: {:?}, message: {:?}", title_str, message_str);
-    log!("UIAlertView: cannot be displayed; reporting it as cancelled");
-    let cancel_index: NSInteger = msg![env; this cancelButtonIndex];
-    dismiss(env, this, cancel_index, /* clicked: */ true);
+
+    let host_object = env.objc.borrow::<UIAlertViewHostObject>(this);
+    let index = cancel_button_index(host_object.has_cancel_button);
+    let reported = match usize::try_from(index).ok().and_then(|i| host_object.buttons.get(i)) {
+        Some(button) => format!("its cancel button ({button:?})"),
+        None => "no button, as it has no cancel button".to_string(),
+    };
+    log!("UIAlertView: cannot be displayed; reporting it as dismissed by {reported}");
+
+    dismiss(env, this, index, /* clicked: */ true);
 }
 
 - (())dismissWithClickedButtonIndex:(NSInteger)index animated:(bool)_animated {
@@ -209,3 +250,23 @@ pub const CLASSES: ClassExports = objc_classes! {
 @end
 
 };
+
+#[cfg(test)]
+mod tests {
+    use super::cancel_button_index;
+
+    /// The index only means "cancel" when the alert was given a cancel button.
+    /// Getting this wrong presses a real button on the user's behalf, which is
+    /// exactly what the module is written to avoid.
+    #[test]
+    fn an_alert_without_a_cancel_button_reports_minus_one() {
+        assert_eq!(cancel_button_index(false), -1);
+    }
+
+    /// When there is one, it is always first: UIKit puts the initializer's
+    /// `cancelButtonTitle:` at index 0, ahead of any button added later.
+    #[test]
+    fn a_cancel_button_is_always_index_zero() {
+        assert_eq!(cancel_button_index(true), 0);
+    }
+}
