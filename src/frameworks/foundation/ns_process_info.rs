@@ -93,6 +93,11 @@ pub const CLASSES: ClassExports = objc_classes! {
     msg![env; main_bundle objectForInfoDictionaryKey:name_key]
 }
 
+- (id)operatingSystemVersionString {
+    assert_process_info_singleton(env, this); // TODO
+    ns_string::get_static_str(env, crate::frameworks::OPERATING_SYSTEM_VERSION_STRING)
+}
+
 - (id)globallyUniqueString {
     assert_process_info_singleton(env, this); // TODO
     let timestamp_nanos = SystemTime::now()
