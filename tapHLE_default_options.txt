@@ -78,6 +78,17 @@ com.nabilchatbi.Ricky: --landscape-left --button-to-touch=DPadLeft,40,285 --butt
 # avoid coming out rotated 90° and clipped.
 greyhoundgames.warlordshdapp: --landscape-native
 
+# Baby Monkey (going backwards on a pig)
+# Landscape-native renderer: its EAGL drawable is already 480x320, so tapHLE's
+# presentation rotation is applied to a frame that is already the right way up,
+# and the window shows a flat slate rectangle even though the menu drew
+# correctly. Verified by capturing the guest renderbuffer and the window at the
+# same moment: the first held the menu, the second did not.
+# Tilt (the analog stick) steers the pig. A = the monkey button, bottom left,
+# which jumps the monkey off the pig before a crash; B = the pig button, bottom
+# right; Start = pause, top left.
+com.kihon.babymonkey: --landscape-native --button-to-touch=A,43,274 --button-to-touch=B,439,274 --button-to-touch=Start,22,22
+
 # Head2Head
 com.darxun: --landscape-right --y-tilt-offset=24
 
