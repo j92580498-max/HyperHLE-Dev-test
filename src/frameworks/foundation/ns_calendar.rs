@@ -25,11 +25,12 @@ use crate::Environment;
 /// This is `NSIntegerMax`, which is `i32::MAX` on the 32-bit guest ABI.
 const NS_UNDEFINED_DATE_COMPONENT: NSInteger = NSInteger::MAX;
 
-/// Calendar identifiers. Their values are the CoreFoundation identifier strings,
-/// which is what `-initWithCalendarIdentifier:` above already compares against.
+/// Calendar identifiers. Their values are the CoreFoundation identifier
+/// strings, which is what `-initWithCalendarIdentifier:` above already compares
+/// against.
 ///
-/// Only the Gregorian calendar is actually implemented, so an app asking for one
-/// of the others gets Gregorian behaviour. Exporting them anyway is still
+/// Only the Gregorian calendar is actually implemented, so an app asking for
+/// one of the others gets Gregorian behaviour. Exporting them anyway is still
 /// strictly better than leaving them unbound: an unbound one is a null pointer
 /// that the app dereferences without checking, and a survey of 1300 apps found
 /// twelve — Bad Piggies, Pitfall!, Organ Trail and others — dying on exactly

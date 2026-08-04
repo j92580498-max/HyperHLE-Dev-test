@@ -312,9 +312,9 @@ impl ObjC {
         selector_strings
     }
 
-    /// Borrow a class's host object as a [ClassHostObject], returning [None] for
-    /// `nil`, unknown, unimplemented, or faked classes (whose method tables we
-    /// cannot edit).
+    /// Borrow a class's host object as a [ClassHostObject], returning [None]
+    /// for `nil`, unknown, unimplemented, or faked classes (whose method tables
+    /// we cannot edit).
     fn class_host_object(&self, class: Class) -> Option<&ClassHostObject> {
         if class == nil {
             return None;

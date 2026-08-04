@@ -338,8 +338,7 @@ impl Window {
             window_builder.fullscreen().opengl();
             #[cfg(target_os = "ios")]
             window_builder.allow_highdpi();
-            let window = window_builder.build().unwrap();
-            window
+            window_builder.build().unwrap()
         } else if fullscreen {
             let (width, height) = video_ctx.display_bounds(0).unwrap().size();
             let window = video_ctx

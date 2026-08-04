@@ -38,8 +38,8 @@ fn get_etext(env: &mut Environment) -> u32 {
 /// `int _NSGetExecutablePath(char *buf, uint32_t *bufsize)` from
 /// `<mach-o/dyld.h>`. Copies the executable's path (NUL-terminated) into `buf`.
 /// Apps use it to locate their own bundle. On success it returns 0 and leaves
-/// `*bufsize` unchanged; if the buffer is too small it returns -1 and stores the
-/// required size (including the NUL) in `*bufsize`, matching the real dyld.
+/// `*bufsize` unchanged; if the buffer is too small it returns -1 and stores
+/// the required size (including the NUL) in `*bufsize`, matching the real dyld.
 fn _NSGetExecutablePath(env: &mut Environment, buf: MutPtr<u8>, bufsize: MutPtr<u32>) -> i32 {
     let path = env.bundle.executable_path().as_str().to_string();
     let bytes = path.as_bytes();

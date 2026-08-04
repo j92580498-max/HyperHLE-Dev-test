@@ -642,10 +642,10 @@ fn AudioQueueSetProperty(
     return_if_null!(in_aq);
 
     // Settable audio-queue properties are configuration hints — level metering,
-    // the format magic cookie, channel assignments, codec policy — that tapHLE's
-    // mixer does not need. Accept and ignore them rather than failing the call;
-    // an app that cannot set an optional property may take an error path it does
-    // not need to.
+    // the format magic cookie, channel assignments, codec policy — that
+    // tapHLE's mixer does not need. Accept and ignore them rather than failing
+    // the call; an app that cannot set an optional property may take an error
+    // path it does not need to.
     log_dbg!(
         "TODO: ignoring AudioQueueSetProperty({:?}, {}, {:?}, {:#x})",
         in_aq,

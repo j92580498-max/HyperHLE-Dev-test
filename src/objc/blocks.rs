@@ -268,9 +268,9 @@ fn _Block_copy(env: &mut Environment, block: ConstVoidPtr) -> MutVoidPtr {
 /// A block starts on the stack, so retaining one in place would keep a pointer
 /// to a frame that is about to disappear. The runtime's answer is to copy it to
 /// the heap instead, and copying an already-heap block is what retains it — so
-/// this is `_Block_copy`, not a separate reference-count operation. Getting that
-/// wrong would not fail here; it would fail later, when the stack frame the
-/// block still pointed into was reused.
+/// this is `_Block_copy`, not a separate reference-count operation. Getting
+/// that wrong would not fail here; it would fail later, when the stack frame
+/// the block still pointed into was reused.
 fn objc_retainBlock(env: &mut Environment, block: ConstVoidPtr) -> MutVoidPtr {
     _Block_copy(env, block)
 }

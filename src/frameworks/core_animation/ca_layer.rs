@@ -104,8 +104,8 @@ pub const kCAFilterTrilinear: &str = "kCAFilterTrilinear";
 
 /// `contentsGravity` values. tapHLE does not honour the gravity when drawing a
 /// layer's contents — they are always stretched to the bounds — but an app sets
-/// it by reading one of these constants, and an unbound one is a null pointer it
-/// dereferences to do so.
+/// it by reading one of these constants, and an unbound one is a null pointer
+/// it dereferences to do so.
 pub const kCAGravityCenter: &str = "center";
 pub const kCAGravityTop: &str = "top";
 pub const kCAGravityBottom: &str = "bottom";

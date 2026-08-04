@@ -37,12 +37,12 @@ impl HostObject for NSAutoreleasePoolHostObject {}
 ///
 /// On Apple's runtime the same mistake is often harmless, because the thing
 /// over-released is frequently a constant string or another immortal singleton
-/// whose `release` does nothing. tapHLE has those too (`_tapHLE_NSString_Static`
-/// and friends), so an app that is healthy on device can die here purely
-/// because tapHLE handed it an ordinary object where Foundation would have
-/// handed back an immortal one. Warning and skipping keeps such an app running
-/// and says plainly what happened; the warning is not suppressed after the
-/// first, because the count is itself the useful signal.
+/// whose `release` does nothing. tapHLE has those too
+/// (`_tapHLE_NSString_Static` and friends), so an app that is healthy on device
+/// can die here purely because tapHLE handed it an ordinary object where
+/// Foundation would have handed back an immortal one. Warning and skipping
+/// keeps such an app running and says plainly what happened; the warning is not
+/// suppressed after the first, because the count is itself the useful signal.
 ///
 /// This does not paper over a leak: the object is already gone. What is skipped
 /// is a second free of memory the guest may have reused.

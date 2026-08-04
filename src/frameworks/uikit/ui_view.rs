@@ -90,9 +90,10 @@ pub struct UIViewHostObject {
     user_interaction_enabled: bool,
     multiple_touch_enabled: bool,
     /// `UIViewAutoresizing`. Stored and reported back, but not acted on: tapHLE
-    /// does not resize subviews when a superview's bounds change. Round-tripping
-    /// it still matters, because layout code reads the mask back to decide what
-    /// to do — and now that views actually receive a layout pass, that happens.
+    /// does not resize subviews when a superview's bounds change.
+    /// Round-tripping it still matters, because layout code reads the mask back
+    /// to decide what to do — and now that views actually receive a layout
+    /// pass, that happens.
     autoresizing_mask: NSUInteger,
     /// Likewise stored and reported back rather than acted on.
     autoresizes_subviews: bool,
@@ -409,7 +410,8 @@ pub const CLASSES: ClassExports = objc_classes! {
                animations:(id)animations // block
                completion:(id)completion { // block, may be nil
     // TODO: UIViewAnimationOptions (curve, autoreverse, repeat, allow user
-    // interaction). Delay is honoured because the older API already supports it.
+    // interaction). Delay is honoured because the older API already supports
+    // it.
     () = msg_class![env; UIView beginAnimations:nil context:(ConstVoidPtr::null())];
     () = msg_class![env; UIView setAnimationDuration:duration];
     () = msg_class![env; UIView setAnimationDelay:delay];

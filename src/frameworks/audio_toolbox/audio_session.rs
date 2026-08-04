@@ -33,9 +33,9 @@ const kAudioSessionProperty_PreferredHardwareSampleRate: AudioSessionPropertyID 
 
 const kAudioSessionCategory_SoloAmbientSound: u32 = fourcc(b"solo");
 const kAudioSessionProperty_CurrentHardwareIOBufferDuration: u32 = fourcc(b"chbd");
-/// Set by apps that want their audio to mix with whatever else is playing. There
-/// is nothing else playing here, so the answer is the same either way — but the
-/// call has to be accepted, because refusing it stopped seven apps in a
+/// Set by apps that want their audio to mix with whatever else is playing.
+/// There is nothing else playing here, so the answer is the same either way —
+/// but the call has to be accepted, because refusing it stopped seven apps in a
 /// 1501-app survey.
 const kAudioSessionProperty_OverrideCategoryMixWithOthers: AudioSessionPropertyID = fourcc(b"cmix");
 /// The current audio route, as a CFStringRef. Read by apps deciding whether to

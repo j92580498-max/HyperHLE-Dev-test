@@ -290,7 +290,8 @@ pub const CLASSES: ClassExports = objc_classes! {
                     selector.as_str(&env.mem),
                     observer
                 );
-                // Signature should be `- (void)notification:(NSNotification *)notif`.
+                // Signature should be `- (void)notification:(NSNotification
+                // *)notif`.
                 let _: () = msg_send(env, (observer, selector, notification));
             }
             None => {

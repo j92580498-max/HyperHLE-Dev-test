@@ -260,11 +260,12 @@ fn sysctl(
                 return -1;
             }
             if (name0, name1, name2) == (CTL_KERN, KERN_PROC, KERN_PROC_PID) {
-                // 'kern.proc.pid.<pid>' fills a struct kinfo_proc. Overwhelmingly
-                // this is an anti-debugging check reading kp_proc.p_flag for
-                // P_TRACED, so the answer that matters is a zeroed structure:
-                // every flag clear, which says the process is not being traced.
-                // That is also true — tapHLE is not attached as a debugger.
+                // 'kern.proc.pid.<pid>' fills a struct kinfo_proc.
+                // Overwhelmingly this is an anti-debugging check reading
+                // kp_proc.p_flag for P_TRACED, so the answer that matters is a
+                // zeroed structure: every flag clear, which says the process is
+                // not being traced. That is also true — tapHLE is not attached
+                // as a debugger.
                 let length = if oldlenp.is_null() {
                     KINFO_PROC_SIZE
                 } else {

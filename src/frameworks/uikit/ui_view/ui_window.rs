@@ -331,9 +331,10 @@ pub const UIKeyboardAnimationDurationUserInfoKey: &str = "UIKeyboardAnimationDur
 pub const UIKeyboardAnimationCurveUserInfoKey: &str = "UIKeyboardAnimationCurveUserInfoKey";
 
 /// `UIWindowLevel` values. These are `CGFloat`s rather than strings, so unlike
-/// the notification names they have to be materialised into guest memory. tapHLE
-/// does not order windows by level, but an app that sets `windowLevel` reads the
-/// constant to do it, and an unbound one is a null pointer it will dereference.
+/// the notification names they have to be materialised into guest memory.
+/// tapHLE does not order windows by level, but an app that sets `windowLevel`
+/// reads the constant to do it, and an unbound one is a null pointer it will
+/// dereference.
 fn window_level(env: &mut Environment, value: CGFloat) -> ConstVoidPtr {
     env.mem.alloc_and_write(value).cast().cast_const()
 }

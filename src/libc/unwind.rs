@@ -76,8 +76,8 @@ fn _Unwind_SjLj_Unregister(env: &mut Environment, fc: MutPtr<SjLj_Function_Conte
 }
 
 /// Throwing. The context chain is maintained, but walking it requires each
-/// frame's personality routine and language-specific data, which tapHLE does not
-/// interpret.
+/// frame's personality routine and language-specific data, which tapHLE does
+/// not interpret.
 ///
 /// This is deliberately fatal and says so. Returning instead would hand control
 /// back to code that has just been told its exception was handled, with the

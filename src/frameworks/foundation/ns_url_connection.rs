@@ -14,8 +14,8 @@ use std::borrow::Cow;
 
 const NSURLErrorDomain: &str = "NSURLErrorDomain";
 /// `userInfo` key on the errors this domain produces. Nothing here populates it
-/// yet, but apps reference the symbol to read it out of an error, and an unbound
-/// one is a null pointer they will dereference.
+/// yet, but apps reference the symbol to read it out of an error, and an
+/// unbound one is a null pointer they will dereference.
 const NSErrorFailingURLStringKey: &str = "NSErrorFailingURLStringKey";
 
 pub const CONSTANTS: ConstantExports = &[
