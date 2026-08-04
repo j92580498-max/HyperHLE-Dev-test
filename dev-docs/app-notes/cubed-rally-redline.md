@@ -256,21 +256,57 @@ matrix identity, `ACTIVE_TEXTURE = CLIENT_ACTIVE_TEXTURE = GL_TEXTURE0`.
 - **The buffer-mapping path.** `glMapBufferOES` is never called by this app.
 - **`--landscape-native`**, which is on and fixed a *different*, earlier defect.
 
+### The 228–480 index batches are particles, not terrain
+
+Their predicted window bounding boxes, computed from the guest's own vertex
+and index data, are 18x15, 30x9 and 18x14 pixels — and they paint exactly
+that. 396 indices is 66 quads: a puff of dust beside the car, not a chunk of
+world. Nothing is collapsing them.
+
+The consequence is the important part. **The voxel terrain is never submitted
+at all.** A race frame contains a ground ribbon, particles, the car, cloud
+sprites and the HUD, and that is the whole list. One run showed the game's own
+`LOADING` caption still on screen well into a race.
+
+### What the flat ribbon is
+
+1050 indices, 350 triangles, predicted extent 1297x321 pixels, texture
+coordinates running `u ∈ [-10.4, +21.4]` along its length and `v ∈ [-1, +1]`
+across it, sliding as the car drives. That is a road ribbon meant to tile a
+repeating road texture — and the texture bound to it is the sprite atlas.
+
+### Also ruled out, 2026-08-04
+
+- **A missing asset file.** With `open()` now naming the file it failed on,
+  every failure in a full session is a Unity `.resS`/`.resG`/`.res` streaming
+  sidecar or a mono GAC `policy.2.0.*` stub. All are optional probes with
+  fallbacks. Nothing the game needs is missing from the FS.
+- **The texture-environment combiner.** `TEX_ENV_PARAMS` in
+  `src/gles/gles1_on_gl2.rs` forwards `COMBINE_RGB`, `COMBINE_ALPHA`, the
+  `SRC*` and the `OPERAND*` parameters. `GL_COMBINE` is not being dropped.
+- **Vertex colours.** Drawing the whole race with `GL_TEXTURE_2D` forced off
+  renders every object white or grey. The geometry carries no colour of its
+  own; all colour comes from the texture. So the ribbon's appearance depends
+  entirely on where it samples, which is the open question.
+
 ### Next discriminator
 
-Two questions remain, and they are different questions:
+The fault is now boxed in to one thing: **the guest computes `u ∈ [-10, +21]`
+for the road ribbon where it must be computing something inside one tile.**
+Every tapHLE-side explanation that could be tested has been tested and
+eliminated — bound texture, texture contents, mip chain, wrap mode, combiner,
+texture matrix, lighting, vertex colours, camera, projection, modelview.
 
-1. **Is the ground plane meant to use texture 103 at all?** A strip that tiles
-   31 times wants a small tileable road texture, not a sprite atlas. Trace
-   every `glBindTexture` in the frames *before* the one being read back (the
-   array and texture setup for these batches happens in an earlier frame, so a
-   single-frame trace does not show it), and check whether the guest asked for
-   a texture tapHLE never created or silently dropped.
-2. **Why is each terrain chunk only a handful of pixels?** 228–480 indices
-   should not paint 2 pixels. Read that batch's positions through
-   `glGetPointerv` the way the ground plane's UVs were read here, and compare
-   the predicted window bounding box with the measured one. If they agree, the
-   guest is submitting collapsed chunk meshes and the fault is upstream of GL.
+So stop looking at the GL layer and find what feeds that number. The ribbon is
+rebuilt as the car drives, so the UVs come from a `Mesh.uv` assignment in
+`Assembly-CSharp.dll`. Two routes, in order of cost:
+
+1. Decompile `Assembly-CSharp.dll` from the artifact and read the road-builder
+   class. The UV expression will name its inputs directly, and those inputs are
+   what to check against tapHLE.
+2. Failing that, log every `mono_*` marshalling entry point the road builder
+   could pass an array through, and check that a `Vector2[]` written by guest
+   code arrives intact.
 
 Do not resume the "geometry is off-screen" or the pre-2026-08-03
 texture/combiner investigations. Both are closed.
