@@ -2,6 +2,9 @@
 
 ## Unreleased for 0.3.0-alpha.1
 
+- Stop claiming OpenGL ES support for vertex array objects, which tapHLE does
+  not have. Games that believed the claim drew whole scenes with another
+  object's geometry; Cubed Rally Redline's track and terrain were invisible.
 - Say which file a failed `open()` was looking for. The warning previously
   printed only the address the filename happened to sit at, so a game quietly
   missing a level or a save gave no clue what it wanted.
