@@ -19,6 +19,10 @@ const MAP_FILE: i32 = 0x0000;
 const MAP_FIXED: i32 = 0x0010;
 const MAP_ANON: i32 = 0x1000;
 
+const PROT_NONE: i32 = 0x00;
+const PROT_READ: i32 = 0x01;
+const PROT_WRITE: i32 = 0x02;
+
 /// What `mmap` returns on failure: `(void *)-1`, not null.
 fn map_failed() -> MutVoidPtr {
     MutVoidPtr::from_bits(!0)
@@ -195,10 +199,34 @@ fn shm_open(env: &mut Environment, name: ConstPtr<u8>, oflag: i32, _dots: DotDot
     -1
 }
 
+/// tapHLE has no per-page protection: every page of guest memory is readable
+/// and writable for as long as it is mapped. So there is nothing to apply, and
+/// the only question is what to tell the caller.
+///
+/// Reporting failure was the wrong answer. A caller asking to make memory
+/// *more* accessible — `PROT_READ | PROT_WRITE`, which is the common case —
+/// gets exactly what it asked for, because the page already is. Returning -1
+/// then describes tapHLE's own bookkeeping rather than the guest's memory, and
+/// callers act on it: Boehm's collector, inside Mono and therefore inside every
+/// Unity game, prints `Mprotect remapping failed` and calls `abort()`. In Cubed
+/// Rally Redline that ended the app part-way through a session.
+///
+/// A request to make memory *less* accessible is the case tapHLE cannot honour,
+/// and there is nothing better to return for it either. Refusing does not
+/// protect the page; it only kills apps that would have coped. So this
+/// succeeds, and logs what could not be enforced, because a guard page that
+/// never faults can turn a guest bug into confusing behaviour much later.
 fn mprotect(env: &mut Environment, addr: MutVoidPtr, len: GuestUSize, prot: i32) -> i32 {
-    log!("TODO: mprotect({:?}, {}, {}) -> -1", addr, len, prot);
-    set_errno(env, ENOTSUP);
-    -1
+    set_errno(env, 0);
+    if prot == PROT_NONE || prot & !(PROT_READ | PROT_WRITE) != 0 {
+        log_dbg!(
+            "mprotect({:?}, {}, {}): tapHLE has no page protection, reporting success anyway",
+            addr,
+            len,
+            prot
+        );
+    }
+    0 // success
 }
 
 pub const FUNCTIONS: FunctionExports = &[
