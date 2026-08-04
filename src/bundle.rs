@@ -13,7 +13,7 @@
 
 use crate::fs::{BundleData, Fs, GuestPath, GuestPathBuf};
 use crate::image::Image;
-use crate::window::DeviceFamily;
+use crate::window::{DeviceFamily, DeviceOrientation};
 use plist::dictionary::Dictionary;
 use plist::Value;
 use std::io::Cursor;
@@ -139,13 +139,28 @@ impl Bundle {
             .join(self.plist["CFBundleExecutable"].as_string().unwrap())
     }
 
-    pub fn launch_image_path(&self) -> GuestPathBuf {
-        if let Some(base_name) = self.plist.get("UILaunchImageFile") {
-            self.path
-                .join(format!("{}.png", base_name.as_string().unwrap()))
-        } else {
-            self.path.join("Default.png") // not guaranteed to exist!
-        }
+    /// Launch image file names to try, most specific first.
+    ///
+    /// An app that launches in landscape ships its launch image under an
+    /// orientation-qualified name — `Default-Landscape.png`, or
+    /// `Default-LandscapeLeft.png` — because that is what the real launcher
+    /// looks for, and leaves plain `Default.png` portrait. tapHLE only ever
+    /// looked for the unqualified name, so every landscape game opened on a
+    /// portrait image stretched across a landscape window and turned on its
+    /// side.
+    ///
+    /// `orientation_suffixes` are the modifiers to try, most specific first.
+    /// The unqualified name is always the last resort, since it is the only
+    /// one guaranteed to exist — and not even that.
+    pub fn launch_image_paths(&self, orientation_suffixes: &[&str]) -> Vec<GuestPathBuf> {
+        let base_name = match self.plist.get("UILaunchImageFile") {
+            Some(value) => value.as_string().unwrap(),
+            None => "Default",
+        };
+        launch_image_names(base_name, orientation_suffixes)
+            .into_iter()
+            .map(|name| self.path.join(name))
+            .collect()
     }
 
     pub fn status_bar_hidden(&self) -> bool {
@@ -308,5 +323,122 @@ impl Bundle {
                     .collect()
             })
             .unwrap_or_else(|| vec![DeviceFamily::iPhone])
+    }
+}
+
+/// Launch image name modifiers to try for a device orientation, most specific
+/// first.
+///
+/// The modifier in a launch image's file name names the *interface*
+/// orientation, and for landscape that is the opposite of the *device*
+/// orientation: `UIInterfaceOrientationLandscapeLeft` is
+/// `UIDeviceOrientationLandscapeRight`, because the UI has to rotate against
+/// the way the device was turned. [DeviceOrientation] is the device one, so
+/// the two landscape arms below read backwards on purpose.
+///
+/// Getting this backwards does not fail loudly: an app that ships both
+/// `Default-LandscapeLeft.png` and `Default-LandscapeRight.png` — the two are
+/// 180° apart — simply comes up upside down, which is how it was found.
+pub fn launch_image_suffixes(orientation: DeviceOrientation) -> &'static [&'static str] {
+    match orientation {
+        DeviceOrientation::Portrait => &["-Portrait"],
+        DeviceOrientation::PortraitUpsideDown => &["-PortraitUpsideDown", "-Portrait"],
+        DeviceOrientation::LandscapeLeft => &["-LandscapeRight", "-Landscape"],
+        DeviceOrientation::LandscapeRight => &["-LandscapeLeft", "-Landscape"],
+    }
+}
+
+/// Launch image file names for `base_name`, most specific first, ending with
+/// the unqualified name.
+///
+/// Split out from [Bundle::launch_image_paths] because the ordering is the
+/// part worth pinning, and it does not need a bundle on disk to check.
+fn launch_image_names(base_name: &str, orientation_suffixes: &[&str]) -> Vec<String> {
+    orientation_suffixes
+        .iter()
+        .map(|suffix| format!("{base_name}{suffix}.png"))
+        .chain(std::iter::once(format!("{base_name}.png")))
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{launch_image_names, launch_image_suffixes};
+    use crate::window::DeviceOrientation;
+
+    /// The unqualified name must come last. It is the one every app has, so
+    /// putting it anywhere else would mean a landscape app never reaches the
+    /// landscape image it also ships — which is the bug this ordering fixes.
+    #[test]
+    fn the_unqualified_launch_image_is_the_last_resort() {
+        assert_eq!(
+            launch_image_names("Default", &["-LandscapeLeft", "-Landscape"]),
+            [
+                "Default-LandscapeLeft.png",
+                "Default-Landscape.png",
+                "Default.png"
+            ]
+        );
+    }
+
+    /// `UILaunchImageFile` renames the whole family, not just the unqualified
+    /// file, so the modifiers hang off the app's own base name.
+    #[test]
+    fn a_custom_base_name_carries_the_orientation_modifiers() {
+        assert_eq!(
+            launch_image_names("Splash", &["-Landscape"]),
+            ["Splash-Landscape.png", "Splash.png"]
+        );
+    }
+
+    /// An app launching portrait has nothing more specific to ask for, and
+    /// must still get a candidate list rather than an empty one.
+    #[test]
+    fn no_suffixes_still_yields_the_unqualified_name() {
+        assert_eq!(launch_image_names("Default", &[]), ["Default.png"]);
+    }
+
+    /// The landscape modifier names the interface orientation, which is the
+    /// opposite of the device orientation. Baby Monkey asks for
+    /// `UIInterfaceOrientationLandscapeLeft`, which the environment turns into
+    /// a `LandscapeRight` device orientation; it must still get the
+    /// `-LandscapeLeft` image, or it launches upside down.
+    #[test]
+    fn the_landscape_modifier_names_the_interface_not_the_device() {
+        assert_eq!(
+            launch_image_suffixes(DeviceOrientation::LandscapeRight),
+            ["-LandscapeLeft", "-Landscape"]
+        );
+        assert_eq!(
+            launch_image_suffixes(DeviceOrientation::LandscapeLeft),
+            ["-LandscapeRight", "-Landscape"]
+        );
+    }
+
+    /// Portrait is the case where the two orientation kinds agree, so it must
+    /// *not* pick up the inversion the landscape arms need.
+    #[test]
+    fn portrait_is_not_inverted() {
+        assert_eq!(
+            launch_image_suffixes(DeviceOrientation::Portrait),
+            ["-Portrait"]
+        );
+        assert_eq!(
+            launch_image_suffixes(DeviceOrientation::PortraitUpsideDown),
+            ["-PortraitUpsideDown", "-Portrait"]
+        );
+    }
+
+    /// The unqualified `-Landscape` modifier has to stay reachable from either
+    /// landscape orientation: most landscape apps ship only that one, and it is
+    /// what keeps them working when neither hand-specific name exists.
+    #[test]
+    fn plain_landscape_is_reachable_from_both_sides() {
+        for orientation in [
+            DeviceOrientation::LandscapeLeft,
+            DeviceOrientation::LandscapeRight,
+        ] {
+            assert!(launch_image_suffixes(orientation).contains(&"-Landscape"));
+        }
     }
 }
