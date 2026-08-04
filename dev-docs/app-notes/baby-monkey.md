@@ -503,6 +503,11 @@ asserted: the game's neutral holding angle is not something a screenshot can
 establish, and picking a number without a human holding a controller would be
 a guess recorded as a default. Establish it with a playtest.
 
-The Play button at (240, 120) and the monkey button were exercised with real
-foreground input; Start was not separately confirmed to pause, because the
-window was closed mid-run before that check completed.
+All three targets were exercised with real foreground input. Play at
+(240, 120) starts a run, the monkey button jumps, and Start's target at
+(22, 22) — checked separately on 2026-08-04, since it had been left
+unconfirmed — brings up the Paused overlay with Resume / Main Menu / Replay.
+
+Only the *targets* are confirmed this way; a tap is not a controller. Whether
+the pad's A/B/Start buttons actually reach those coordinates needs a playtest
+with hardware, as does the tilt neutral above.
