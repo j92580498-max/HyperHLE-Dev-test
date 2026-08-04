@@ -230,9 +230,38 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 - (bool)renderbufferStorage:(NSUInteger)target
                fromDrawable:(id)drawable { // EAGLDrawable (always CAEAGLayer*)
-    assert!(drawable != nil); // TODO: handle unbinding
-
     assert!(target == gles11::RENDERBUFFER_OES);
+
+    // A nil drawable detaches whatever is currently bound, which is how an app
+    // tears down a rendering surface it intends to replace: Unity unbinds
+    // before recreating its surface, so a game that merely changes resolution
+    // arrives here once per change. Dropping the binding is the whole
+    // observable effect. The renderbuffer's storage is deliberately left alone,
+    // because the caller either allocates over it on the next bind or deletes
+    // the renderbuffer outright, and `presentRenderbuffer:` already treats an
+    // unbound renderbuffer as "nothing to present" rather than an error.
+    if drawable == nil {
+        let window = env.window.as_mut().expect("OpenGL ES is not supported in headless mode");
+        let renderbuffer: GLuint = {
+            let mut gles = super::sync_context(&mut env.framework_state.opengles, &mut env.objc, window, env.current_thread);
+            unsafe {
+                let mut renderbuffer = 0;
+                gles.GetIntegerv(gles11::RENDERBUFFER_BINDING_OES, &mut renderbuffer);
+                renderbuffer as _
+            }
+        };
+        let old_drawable = env
+            .objc
+            .borrow_mut::<EAGLContextHostObject>(this)
+            .renderbuffer_drawable_bindings
+            .borrow_mut()
+            .remove(&renderbuffer);
+        if let Some(old_drawable) = old_drawable {
+            log_dbg!("Unbound drawable {:?} from renderbuffer {:?}", old_drawable, renderbuffer);
+            release(env, old_drawable);
+        }
+        return true;
+    }
 
     let props: id = msg![env; drawable drawableProperties];
 

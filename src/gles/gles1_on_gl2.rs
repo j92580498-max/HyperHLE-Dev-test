@@ -327,6 +327,10 @@ const GET_PARAMS: ParamTable = ParamTable(&[
     // OES_framebuffer_object -> EXT_framebuffer_object
     (gl21::FRAMEBUFFER_BINDING_EXT, ParamType::Int, 1),
     (gl21::RENDERBUFFER_BINDING_EXT, ParamType::Int, 1),
+    // OES_framebuffer_object -> EXT_framebuffer_object. Unity queries this
+    // before allocating render textures; leaving it unset makes its later
+    // framebuffer-size decisions depend on stale guest memory.
+    (0x84e8, ParamType::Int, 1), // MAX_RENDERBUFFER_SIZE[_OES/_EXT]
     // EXT_texture_lod_bias
     (gl21::MAX_TEXTURE_LOD_BIAS_EXT, ParamType::Float, 1),
     // OES_matrix_palette -> ARB_matrix_palette
@@ -2271,5 +2275,12 @@ mod tests {
         assert!(CLIENT_STATE_BUFFER_TARGETS.contains(&gl21::ARRAY_BUFFER));
         assert!(CLIENT_STATE_BUFFER_TARGETS.contains(&gl21::ELEMENT_ARRAY_BUFFER));
         assert!(!CLIENT_STATE_BUFFER_TARGETS.contains(&gl21::VERTEX_ARRAY));
+    }
+
+    #[test]
+    fn framebuffer_extension_reports_its_renderbuffer_limit() {
+        let (type_, count) = GET_PARAMS.get_type_info(0x84e8);
+        assert!(matches!(type_, ParamType::Int));
+        assert_eq!(count, 1);
     }
 }

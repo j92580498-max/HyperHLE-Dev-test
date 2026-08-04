@@ -69,6 +69,71 @@ fn __moddi3(_env: &mut Environment, numerator: i64, denominator: i64) -> i64 {
     divide_or_zero(denominator == 0, || numerator.wrapping_rem(denominator))
 }
 
+// Conversion between 64-bit integers and floating point.
+//
+// VFP converts between a float and a *32-bit* integer in one instruction, but
+// it has no 64-bit form, so every widening or narrowing conversion involving a
+// `long long` becomes a call to one of the eight helpers below. Managed
+// runtimes reach them constantly, because a language whose integer type is
+// 64-bit does this on ordinary arithmetic rather than at some unusual boundary.
+//
+// These take the *base* AAPCS convention — operands and results in the core
+// registers, not VFP — even though surrounding iOS code is AAPCS-VFP. That
+// is not an assumption: at a `___fixdfdi` call site an app moves its double out
+// of a VFP register with `vmov r0, r1, d16` immediately before branching, and
+// reads a `___floatdidf` result straight back out of `r0`/`r1`. tapHLE's
+// `GuestArg`/`GuestRet` for `f32` and `f64` already marshal through the core
+// registers, so declaring the float types here is correct as written.
+//
+// Only the legacy libgcc spellings are exported. The ARM run-time ABI's
+// `__aeabi_l2d`/`__aeabi_d2lz` family is the same set of operations under
+// different names, but the Apple toolchain does not emit those, so nothing
+// would resolve against them.
+
+fn __floatdidf(_env: &mut Environment, a: i64) -> f64 {
+    a as f64
+}
+
+fn __floatdisf(_env: &mut Environment, a: i64) -> f32 {
+    a as f32
+}
+
+fn __floatundidf(_env: &mut Environment, a: u64) -> f64 {
+    a as f64
+}
+
+fn __floatundisf(_env: &mut Environment, a: u64) -> f32 {
+    a as f32
+}
+
+/// Truncates towards zero, which is what C's float-to-integer conversion
+/// requires and what Rust's `as` does.
+///
+/// Out-of-range inputs saturate. C leaves them undefined, and compiler-rt
+/// saturates too, so this matches the real helper for every finite value. The
+/// one divergence is NaN: compiler-rt's range check happens to fall through to
+/// the saturation branch and yields `INT64_MAX`/`INT64_MIN`, where Rust yields
+/// zero. Either way the caller has already lost — a NaN reaching an integer
+/// conversion is a bug in the guest, not a behaviour tapHLE should reproduce
+/// bit-for-bit — and returning a defined value beats trapping.
+fn __fixdfdi(_env: &mut Environment, a: f64) -> i64 {
+    a as i64
+}
+
+fn __fixsfdi(_env: &mut Environment, a: f32) -> i64 {
+    a as i64
+}
+
+/// As [__fixdfdi], and a negative input saturates to zero, matching
+/// compiler-rt.
+fn __fixunsdfdi(_env: &mut Environment, a: f64) -> u64 {
+    a as u64
+}
+
+fn __fixunssfdi(_env: &mut Environment, a: f32) -> u64 {
+    a as u64
+}
+
 // The ARM run-time ABI spellings the compiler emits directly.
 
 fn __aeabi_uidiv(env: &mut Environment, numerator: u32, denominator: u32) -> u32 {
@@ -131,6 +196,14 @@ pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(__umoddi3(_, _)),
     export_c_func!(__divdi3(_, _)),
     export_c_func!(__moddi3(_, _)),
+    export_c_func!(__floatdidf(_)),
+    export_c_func!(__floatdisf(_)),
+    export_c_func!(__floatundidf(_)),
+    export_c_func!(__floatundisf(_)),
+    export_c_func!(__fixdfdi(_)),
+    export_c_func!(__fixsfdi(_)),
+    export_c_func!(__fixunsdfdi(_)),
+    export_c_func!(__fixunssfdi(_)),
     export_c_func!(__aeabi_uidiv(_, _)),
     export_c_func!(__aeabi_idiv(_, _)),
     export_c_func!(__aeabi_uidivmod(_, _)),
@@ -140,3 +213,39 @@ pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(_ZdlPv(_)),
     export_c_func!(_ZdaPv(_)),
 ];
+
+#[cfg(test)]
+mod tests {
+    use crate::abi::{GuestArg, GuestRet};
+
+    /// The conversion helpers are declared with `f32`/`f64` in their signatures
+    /// on the strength of one fact about the guest: it hands these particular
+    /// functions their floating-point operands in the core registers rather
+    /// than in VFP, low word first. Everything else in an iOS binary is
+    /// AAPCS-VFP, so that is the surprising half, and it is the half a future
+    /// change to float marshalling could quietly invert — leaving the helpers
+    /// reading whatever happened to be in `r0`/`r1` and returning numbers the
+    /// guest never looks at. Pin it here, next to the callers that depend on
+    /// it.
+    #[test]
+    fn double_is_marshalled_through_the_core_register_pair() {
+        assert_eq!(<f64 as GuestArg>::REG_COUNT, 2);
+
+        let mut regs = [0u32; 2];
+        <f64 as GuestRet>::to_regs(1.0f64, &mut regs);
+        assert_eq!(regs, [0x0000_0000, 0x3ff0_0000]);
+        assert_eq!(<f64 as GuestArg>::from_regs(&regs), 1.0f64);
+    }
+
+    /// A single-precision result occupies `r0` alone, which is how a
+    /// `___floatdisf` caller reads it.
+    #[test]
+    fn float_is_marshalled_through_one_core_register() {
+        assert_eq!(<f32 as GuestArg>::REG_COUNT, 1);
+
+        let mut regs = [0u32; 1];
+        <f32 as GuestRet>::to_regs(1.0f32, &mut regs);
+        assert_eq!(regs, [0x3f80_0000]);
+        assert_eq!(<f32 as GuestArg>::from_regs(&regs), 1.0f32);
+    }
+}

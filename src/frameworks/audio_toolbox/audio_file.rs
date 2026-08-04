@@ -78,6 +78,11 @@ pub const kAudioFilePropertyDataFormat: AudioFilePropertyID = fourcc(b"dfmt");
 const kAudioFilePropertyAudioDataByteCount: AudioFilePropertyID = fourcc(b"bcnt");
 const kAudioFilePropertyAudioDataPacketCount: AudioFilePropertyID = fourcc(b"pcnt");
 pub const kAudioFilePropertyPacketSizeUpperBound: AudioFilePropertyID = fourcc(b"pkub");
+/// The largest packet actually in the file, as opposed to
+/// [kAudioFilePropertyPacketSizeUpperBound]'s theoretical bound. Apple
+/// distinguishes them because the real maximum may require scanning the whole
+/// file, and a caller sizing one buffer up front would rather not pay for that.
+const kAudioFilePropertyMaximumPacketSize: AudioFilePropertyID = fourcc(b"psze");
 const kAudioFilePropertyMagicCookieData: AudioFilePropertyID = fourcc(b"mgic");
 const kAudioFilePropertyChannelLayout: AudioFilePropertyID = fourcc(b"cmap");
 const kAudioFilePropertyEstimatedDuration: AudioFilePropertyID = fourcc(b"edur");
@@ -240,7 +245,9 @@ pub(super) fn property_size(property_id: AudioFilePropertyID) -> GuestUSize {
         kAudioFilePropertyDataFormat => guest_size_of::<AudioStreamBasicDescription>(),
         kAudioFilePropertyAudioDataByteCount => guest_size_of::<u64>(),
         kAudioFilePropertyAudioDataPacketCount => guest_size_of::<u64>(),
-        kAudioFilePropertyPacketSizeUpperBound => guest_size_of::<u32>(),
+        kAudioFilePropertyPacketSizeUpperBound | kAudioFilePropertyMaximumPacketSize => {
+            guest_size_of::<u32>()
+        }
         kAudioFilePropertyEstimatedDuration => guest_size_of::<f64>(),
         kAudioFilePropertyPacketTableInfo => guest_size_of::<AudioFilePacketTableInfo>(),
         kAudioFilePropertyPacketToFrame | kAudioFilePropertyFrameToPacket => {
@@ -333,7 +340,12 @@ pub fn AudioFileGetProperty(
             let packet_count: u64 = host_object.audio_file.packet_count();
             env.mem.write(out_property_data.cast(), packet_count);
         }
-        kAudioFilePropertyPacketSizeUpperBound => {
+        // The bound and the true maximum are answered together because every
+        // format tapHLE decodes has a fixed packet size, which makes the bound
+        // exact rather than merely safe. That equality is a property of the
+        // decoders, not of the API: a variable-packet format would need a real
+        // scan here and would be wrong to answer from the upper bound.
+        kAudioFilePropertyPacketSizeUpperBound | kAudioFilePropertyMaximumPacketSize => {
             let packet_size_upper_bound: u32 = host_object.audio_file.packet_size_upper_bound();
             env.mem
                 .write(out_property_data.cast(), packet_size_upper_bound);
