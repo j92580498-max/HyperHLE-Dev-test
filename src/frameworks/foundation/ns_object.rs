@@ -237,9 +237,10 @@ pub const CLASSES: ClassExports = objc_classes! {
 
     // When the value is a boxed scalar (NSNumber/NSValue) but the target
     // accessor takes a plain scalar (e.g. -[... setVolume:(double)]), KVC
-    // unwraps the box and passes the scalar by value. `kvc_set_unwrapped_scalar`
-    // consults the setter's type encoding and handles that; an object-typed
-    // setter falls through to receive the boxed value unchanged.
+    // unwraps the box and passes the scalar by value.
+    // `kvc_set_unwrapped_scalar` consults the setter's type encoding and
+    // handles that; an object-typed setter falls through to receive the boxed
+    // value unchanged.
     let value_is_boxed_scalar = if value == nil {
         false
     } else {
@@ -599,22 +600,24 @@ forUndefinedKey:(id)key { // NSString*
 
 /// Key-Value Coding helper: if `setter` takes a plain scalar argument, unwrap
 /// the boxed scalar `value` (an `NSNumber`/`NSValue`) to that type and invoke
-/// the setter, returning `true`. Returns `false` when the setter takes an object
-/// (or a type we do not unwrap yet), so the caller passes the boxed value
-/// through unchanged.
+/// the setter, returning `true`. Returns `false` when the setter takes an
+/// object (or a type we do not unwrap yet), so the caller passes the boxed
+/// value through unchanged.
 ///
 /// The argument type comes from the setter's Objective-C method type encoding,
 /// which is authoritative for the wire type: e.g. `float` and `double` occupy a
-/// different number of argument registers, so choosing the wrong one would place
-/// the value incorrectly even when the `NSNumber`'s own `objCType` differs.
+/// different number of argument registers, so choosing the wrong one would
+/// place the value incorrectly even when the `NSNumber`'s own `objCType`
+/// differs.
 fn kvc_set_unwrapped_scalar(env: &mut Environment, this: id, setter: SEL, value: id) -> bool {
     let Some(arg_type) = kvc_setter_arg_type(env, this, setter) else {
         return false;
     };
 
-    // See `impl GuestArg` in abi.rs: scalar arguments (including `f32`/`f64`) are
-    // passed in the core argument registers, so unwrapping to the matching Rust
-    // type places the value the same way the guest compiler emitted the call.
+    // See `impl GuestArg` in abi.rs: scalar arguments (including `f32`/`f64`)
+    // are passed in the core argument registers, so unwrapping to the matching
+    // Rust type places the value the same way the guest compiler emitted the
+    // call.
     match arg_type {
         b'f' => {
             let v: f32 = msg![env; value floatValue];
@@ -657,8 +660,8 @@ fn kvc_setter_arg_type(env: &Environment, this: id, setter: SEL) -> Option<u8> {
     let signature = env.mem.cstr_at_utf8(signature).ok()?;
     // A method type encoding is <return><self@><cmd:><arg…> with a numeric byte
     // offset after each type. Dropping the digits leaves the ordered type
-    // tokens; a unary setter's value argument is the fourth token (return, self,
-    // _cmd, value).
+    // tokens; a unary setter's value argument is the fourth token (return,
+    // self, _cmd, value).
     let tokens: Vec<u8> = signature.bytes().filter(|b| !b.is_ascii_digit()).collect();
     let mut i = 3;
     // Skip any type qualifiers (const, in, out, …) that may precede the type.
@@ -790,13 +793,13 @@ fn NSDeallocateObject(env: &mut Environment, object: id) {
 ///
 /// Zones were a way to place related allocations near each other, and have been
 /// vestigial since well before this era: on iPhone OS every zone is the one
-/// malloc heap. tapHLE has no zones at all, and its `allocWithZone:` ignores the
-/// argument, so a zone here is a token an app passes back rather than something
-/// it can act on.
+/// malloc heap. tapHLE has no zones at all, and its `allocWithZone:` ignores
+/// the argument, so a zone here is a token an app passes back rather than
+/// something it can act on.
 ///
 /// The token is null, which is what Foundation itself accepts everywhere a zone
-/// is taken and what `+alloc` already passes. Handing back a fabricated non-null
-/// pointer would invite an app to dereference it.
+/// is taken and what `+alloc` already passes. Handing back a fabricated
+/// non-null pointer would invite an app to dereference it.
 fn NSDefaultMallocZone(_env: &mut Environment) -> MutVoidPtr {
     Ptr::null()
 }

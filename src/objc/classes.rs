@@ -1248,10 +1248,10 @@ mod tests {
 
 /// `objc_getClass` — the class with this name, or nil.
 ///
-/// Apple's runtime answers nil for a name it does not know (after consulting the
-/// class handler, which nothing here installs), and apps rely on that: it is how
-/// they probe for a class from a newer OS. Aborting instead turned a successful
-/// negative answer into a dead app.
+/// Apple's runtime answers nil for a name it does not know (after consulting
+/// the class handler, which nothing here installs), and apps rely on that: it
+/// is how they probe for a class from a newer OS. Aborting instead turned a
+/// successful negative answer into a dead app.
 ///
 /// The name is still logged, because "app asked for a class tapHLE does not
 /// implement" is exactly the signal that says what to implement next — and if
@@ -1260,10 +1260,10 @@ mod tests {
 /// `objc_allocateClassPair` — create a class and its metaclass at run time.
 ///
 /// Frameworks that generate delegates or proxies build their classes this way,
-/// so the app has no compiled class for the runtime to find and the pair must be
-/// made on demand. The result is deliberately *not* in the class registry yet:
-/// `objc_registerClassPair` publishes it, and between the two calls the caller
-/// adds methods and ivars.
+/// so the app has no compiled class for the runtime to find and the pair must
+/// be made on demand. The result is deliberately *not* in the class registry
+/// yet: `objc_registerClassPair` publishes it, and between the two calls the
+/// caller adds methods and ivars.
 ///
 /// The metaclass links exactly as a compiled one does — a class's isa is its
 /// metaclass, and a metaclass's superclass is the superclass's metaclass — so
@@ -1348,10 +1348,10 @@ pub(super) fn objc_registerClassPair(env: &mut Environment, class: Class) {
     env.objc.classes.insert(name, class);
 }
 
-/// `objc_disposeClassPair` — discard a class that was allocated but is no longer
-/// wanted. Only the registry entry is removed: the class object itself is
-/// static-lifetime, and anything still holding an instance of it would be left
-/// with a dangling isa if it were freed.
+/// `objc_disposeClassPair` — discard a class that was allocated but is no
+/// longer wanted. Only the registry entry is removed: the class object itself
+/// is static-lifetime, and anything still holding an instance of it would be
+/// left with a dangling isa if it were freed.
 pub(super) fn objc_disposeClassPair(env: &mut Environment, class: Class) {
     if class == nil {
         return;
@@ -1380,9 +1380,9 @@ pub(super) fn objc_getClass(env: &mut Environment, name: ConstPtr<u8>) -> id {
 /// the runtime does not know is reported as nil instead of being an error.
 ///
 /// That difference is the entire reason apps call it: it is how you ask whether
-/// an optional class exists before using it, which is exactly what code guarding
-/// a newer-OS feature does. Treating an unknown name as fatal here would break
-/// the check it was written to perform.
+/// an optional class exists before using it, which is exactly what code
+/// guarding a newer-OS feature does. Treating an unknown name as fatal here
+/// would break the check it was written to perform.
 pub(super) fn objc_lookUpClass(env: &mut Environment, name: ConstPtr<u8>) -> id {
     let Ok(name_str) = env.mem.cstr_at_utf8(name) else {
         return nil;

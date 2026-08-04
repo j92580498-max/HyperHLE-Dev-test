@@ -68,13 +68,13 @@ fn realloc(env: &mut Environment, ptr: MutVoidPtr, size: GuestUSize) -> MutVoidP
 }
 
 /// `reallocf` is a BSD extension: `realloc`, except that it frees the original
-/// block if the reallocation fails, so the caller cannot leak it by dropping the
-/// old pointer on the error path.
+/// block if the reallocation fails, so the caller cannot leak it by dropping
+/// the old pointer on the error path.
 ///
 /// tapHLE's allocator does not report failure — `realloc` either succeeds or
-/// aborts — so the freeing branch is unreachable today. It is written out anyway
-/// rather than aliased straight to `realloc`, because the difference is the
-/// entire reason the function exists.
+/// aborts — so the freeing branch is unreachable today. It is written out
+/// anyway rather than aliased straight to `realloc`, because the difference is
+/// the entire reason the function exists.
 fn reallocf(env: &mut Environment, ptr: MutVoidPtr, size: GuestUSize) -> MutVoidPtr {
     let new_ptr = realloc(env, ptr, size);
     if new_ptr.is_null() && !ptr.is_null() {

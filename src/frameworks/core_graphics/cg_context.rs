@@ -703,9 +703,10 @@ fn CGContextStrokePath(env: &mut Environment, context: CGContextRef) {
 
 /// The text pen position.
 ///
-/// **It does not advance past glyphs that were drawn.** `CGContextShowGlyphsAtPoint`
-/// sets it to where the text started, and tapHLE's glyph rasteriser does not
-/// report how far it got, so the width of what was drawn is not known here.
+/// **It does not advance past glyphs that were drawn.**
+/// `CGContextShowGlyphsAtPoint` sets it to where the text started, and tapHLE's
+/// glyph rasteriser does not report how far it got, so the width of what was
+/// drawn is not known here.
 ///
 /// The consequence is specific and worth stating: a caller that draws a run,
 /// reads the position, and draws the next run from it will overdraw the first —

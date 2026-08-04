@@ -124,8 +124,8 @@ impl HostObject for NSLocaleHostObject {}
 ///
 /// Identifiers look like `language[_Script][_REGION]` and use either `_` or `-`
 /// as the separator: `en`, `en_US`, `en-US`, `zh_Hans_CN`. The region is the
-/// two-letter component that is not the language, which is what distinguishes it
-/// from a script subtag like `Hans`.
+/// two-letter component that is not the language, which is what distinguishes
+/// it from a script subtag like `Hans`.
 fn parse_locale_identifier(identifier: &str) -> (String, Option<String>) {
     let mut parts = identifier.split(['_', '-']).filter(|part| !part.is_empty());
     let language = parts.next().unwrap_or("en").to_lowercase();
@@ -222,8 +222,8 @@ pub const CLASSES: ClassExports = objc_classes! {
 
     // Identifiers are `language[_Script][_REGION]`, with either separator, and
     // the language alone is valid: "en", "en_US", "en-US", "zh_Hans_CN" are all
-    // real. Insisting on exactly two lowercase letters rejected most of them and
-    // killed seventeen apps in a 1501-app survey over a locale name.
+    // real. Insisting on exactly two lowercase letters rejected most of them
+    // and killed seventeen apps in a 1501-app survey over a locale name.
     let (language, region) = parse_locale_identifier(&str);
 
     let language = ns_string::from_rust_string(env, language);

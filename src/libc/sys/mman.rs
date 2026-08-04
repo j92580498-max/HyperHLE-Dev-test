@@ -101,9 +101,10 @@ fn mmap(
 
     // A mapping that cannot be satisfied is an ordinary runtime outcome, not a
     // programming error: mmap is specified to return MAP_FAILED and set errno,
-    // and callers are written to check for it. Aborting instead killed apps that
-    // would have coped — asking for a specific address is a hint that tapHLE's
-    // address space often cannot honour, because its layout is not the device's.
+    // and callers are written to check for it. Aborting instead killed apps
+    // that would have coped — asking for a specific address is a hint that
+    // tapHLE's address space often cannot honour, because its layout is not the
+    // device's.
     let allocate = |env: &mut Environment| -> Option<MutVoidPtr> {
         if addr.is_null() {
             return env.mem.vm_alloc(None, len).ok();

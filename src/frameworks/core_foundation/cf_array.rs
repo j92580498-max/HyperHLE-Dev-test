@@ -96,9 +96,10 @@ fn CFArrayGetFirstIndexOfValue(
         let idx: NSUInteger = i.try_into().unwrap();
         let curr: id = msg![env; array objectAtIndex:idx];
         // CF's default equal callback compares by pointer identity, then by the
-        // value's equality. NSObject's isEqual: is pointer identity and CF-typed
-        // subclasses (NSString, NSNumber, ...) override it, so this mirrors both
-        // the CF semantics and the sibling `NSArray indexOfObject:`.
+        // value's equality. NSObject's isEqual: is pointer identity and
+        // CF-typed subclasses (NSString, NSNumber, ...) override it, so this
+        // mirrors both the CF semantics and the sibling `NSArray
+        // indexOfObject:`.
         let equal: bool = msg![env; value isEqual:curr];
         if equal {
             return i;

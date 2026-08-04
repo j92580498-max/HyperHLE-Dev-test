@@ -318,8 +318,8 @@ fn url_scheme_component(url: &str) -> Option<&str> {
     valid.then_some(scheme)
 }
 
-/// Host: for a `scheme://host[:port][/...]` URL, the host part of the authority,
-/// with any `user@` prefix and `:port` suffix removed.
+/// Host: for a `scheme://host[:port][/...]` URL, the host part of the
+/// authority, with any `user@` prefix and `:port` suffix removed.
 fn url_host_component(url: &str) -> Option<&str> {
     let after_scheme = url.split_once("://")?.1;
     let authority = after_scheme

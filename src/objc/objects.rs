@@ -370,8 +370,8 @@ impl super::ObjC {
         };
         let Some(refcount) = entry.refcount.as_mut() else {
             // Immortal objects have no count to report. Apple's runtime answers
-            // with a saturated value for these rather than treating the question
-            // as an error, and so does this.
+            // with a saturated value for these rather than treating the
+            // question as an error, and so does this.
             return NonZeroU32::new(u32::MAX).unwrap();
         };
         *refcount
@@ -416,8 +416,8 @@ impl super::ObjC {
         };
         let Some(refcount) = entry.refcount.as_mut() else {
             // The counterpart of the retain case above: releasing an immortal
-            // object is legal and does nothing. Returning false is what makes it
-            // a no-op — it says the object must not be deallocated, which is
+            // object is legal and does nothing. Returning false is what makes
+            // it a no-op — it says the object must not be deallocated, which is
             // precisely what "immortal" means.
             return false;
         };

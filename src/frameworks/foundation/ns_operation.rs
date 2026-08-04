@@ -120,7 +120,8 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (())waitUntilFinished {
-    // Operations are currently run synchronously, so there is nothing to wait for.
+    // Operations are currently run synchronously, so there is nothing to wait
+    // for.
 }
 
 - (())dealloc {

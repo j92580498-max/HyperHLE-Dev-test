@@ -384,17 +384,17 @@ fn objc_msgSend_inner(
 
     let orig_class = super2.unwrap_or_else(|| ObjC::read_isa(receiver, &env.mem));
     if orig_class == nil {
-        // A nil isa on a non-nil receiver means a freed object is being messaged,
-        // typically after an over-release.
+        // A nil isa on a non-nil receiver means a freed object is being
+        // messaged, typically after an over-release.
         //
         // On Apple's runtime this is undefined behaviour that very often does
-        // nothing visible: the memory has not been reused yet, or the object was
-        // a constant string or other immortal whose release did nothing in the
-        // first place. So apps ship with this bug and work, and killing them
-        // here reports a real defect at the least useful possible moment — far
-        // from the over-release that caused it, with nothing on the stack that
-        // identifies the culprit. It was the second largest tapHLE-side crash in
-        // a survey of 1501 apps.
+        // nothing visible: the memory has not been reused yet, or the object
+        // was a constant string or other immortal whose release did nothing in
+        // the first place. So apps ship with this bug and work, and killing
+        // them here reports a real defect at the least useful possible moment —
+        // far from the over-release that caused it, with nothing on the stack
+        // that identifies the culprit. It was the second largest tapHLE-side
+        // crash in a survey of 1501 apps.
         //
         // Treat it as a message to nil, which is what the guest's own code is
         // written to tolerate. The warning is not rate-limited, because how
@@ -516,20 +516,21 @@ Type mismatch when sending message {} to {:?}!
                                 // type checking whatsoever — objc_msgSend moves
                                 // registers and the callee interprets them — so
                                 // a mismatch is something the real runtime
-                                // permits and apps genuinely rely on, whether by
-                                // type punning or by declaring a method with a
-                                // slightly different signature than the one
+                                // permits and apps genuinely rely on, whether
+                                // by type punning or by declaring a method with
+                                // a slightly different signature than the one
                                 // tapHLE implements. Fourteen apps in a survey
                                 // of 1501 died here.
                                 //
-                                // It is still worth saying. A mismatch means the
-                                // arguments are being interpreted differently
-                                // than the caller intended, and if something
-                                // misbehaves shortly afterwards this is the
-                                // first thing to suspect. `tolerate_type_mismatch`
-                                // now selects silence rather than survival: the
-                                // call sites that pass it know the mismatch is
-                                // expected and would only produce noise.
+                                // It is still worth saying. A mismatch means
+                                // the arguments are being interpreted
+                                // differently than the caller intended, and if
+                                // something misbehaves shortly afterwards this
+                                // is the first thing to suspect.
+                                // `tolerate_type_mismatch` now selects silence
+                                // rather than survival: the call sites that
+                                // pass it know the mismatch is expected and
+                                // would only produce noise.
                                 if !tolerate_type_mismatch {
                                     log!("Warning: {}", msg);
                                 }

@@ -10,10 +10,10 @@
 //!
 //! This models the containment — which controllers there are and which one is
 //! selected — and shows the selected controller's view. It does not draw a tab
-//! bar, so there is nothing to tap: an app that relies on the bar to change tabs
-//! will stay on the first one. That is a real limitation and it is deliberate.
-//! The alternative is that none of these apps start at all, and the tab bar is
-//! rarely where the interesting behaviour lives.
+//! bar, so there is nothing to tap: an app that relies on the bar to change
+//! tabs will stay on the first one. That is a real limitation and it is
+//! deliberate. The alternative is that none of these apps start at all, and the
+//! tab bar is rarely where the interesting behaviour lives.
 
 use super::UIViewControllerHostObject;
 use crate::frameworks::foundation::{ns_string, NSInteger, NSUInteger};

@@ -20,9 +20,9 @@ pub const CLASSES: ClassExports = objc_classes! {
 //
 // A web view in a nib is just a UIView as far as tapHLE is concerned: there is
 // no web engine behind it, so none of the keys a real UIWebView decodes
-// (scaling, data detectors, delegate) would change anything. Decoding the UIView
-// half and stopping there gives a correctly sized, correctly placed, blank view
-// — which is what this class does when constructed in code too.
+// (scaling, data detectors, delegate) would change anything. Decoding the
+// UIView half and stopping there gives a correctly sized, correctly placed,
+// blank view — which is what this class does when constructed in code too.
 //
 // The point is that it no longer aborts. A nib with a web view in it usually
 // also holds the screen the app actually wants, and refusing to unarchive the
