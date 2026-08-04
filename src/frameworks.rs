@@ -24,18 +24,22 @@
 pub mod audio_toolbox;
 pub mod avfoundation;
 pub mod carbon_core;
+pub mod cfnetwork;
 pub mod core_animation;
 pub mod core_audio_types;
 pub mod core_foundation;
 pub mod core_graphics;
 pub mod core_location;
 pub mod core_motion;
+pub mod core_telephony;
 pub mod foundation;
 pub mod game_kit;
+pub mod iad;
 pub mod media_player;
 pub mod message_ui;
 pub mod openal;
 pub mod opengles;
+pub mod security;
 pub mod store_kit;
 pub mod system_configuration;
 pub mod uikit;
@@ -50,6 +54,7 @@ pub struct State {
     media_player: media_player::State,
     openal: openal::State,
     opengles: opengles::State,
+    pub security: security::State,
     uikit: uikit::State,
 }
 

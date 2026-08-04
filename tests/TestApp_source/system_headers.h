@@ -48,6 +48,7 @@ static inline NSRange NSMakeRange(NSUInteger loc, NSUInteger len) {
   Class isa;
 }
 + (Class)class;
++ (Class)superclass;
 + (instancetype)alloc;
 + (instancetype)new;
 + (BOOL)respondsToSelector:(SEL)selector;
@@ -60,8 +61,10 @@ static inline NSRange NSMakeRange(NSUInteger loc, NSUInteger len) {
 - (void *)methodForSelector:(SEL)selector;
 - (id)performSelector:(SEL)selector;
 - (BOOL)respondsToSelector:(SEL)selector;
-// NSKeyValueCoding. NSString is not declared yet, so the key is typed as id.
+// NSKeyValueCoding. NSString and NSArray are not declared yet, so the key and
+// the key list are typed as id.
 - (id)valueForKey:(id)key;
+- (id)dictionaryWithValuesForKeys:(id)keys;
 - (void)setValue:(id)value forKey:(id)key;
 - (void)setNilValueForKey:(id)key;
 @end
@@ -72,7 +75,39 @@ static inline NSRange NSMakeRange(NSUInteger loc, NSUInteger len) {
 - (void)drain;
 @end
 
-@class NSArray;
+@interface NSAssertionHandler : NSObject
++ (instancetype)currentHandler;
+@end
+
+@interface NSException : NSObject
++ (instancetype)exceptionWithName:(id)name
+                            reason:(id)reason
+                          userInfo:(id)userInfo;
++ (void)raise:(id)name format:(id)format, ...;
+- (instancetype)initWithName:(id)name reason:(id)reason userInfo:(id)userInfo;
+- (id)name;
+- (id)reason;
+- (id)userInfo;
+- (void)raise;
+@end
+
+@interface NSMachPort : NSObject
++ (instancetype)port;
+@end
+
+@interface NSRunLoop : NSObject
++ (instancetype)currentRunLoop;
+- (void)addPort:(NSMachPort *)port forMode:(id)mode;
+- (BOOL)runMode:(id)mode beforeDate:(id)limitDate;
+@end
+
+// CoreTelephony
+
+@interface CTTelephonyNetworkInfo : NSObject
+- (id)subscriberCellularProvider;
+@end
+
+@class NSArray, NSEnumerator;
 
 @interface NSOperation : NSObject
 - (void)start;
@@ -105,12 +140,14 @@ static inline NSRange NSMakeRange(NSUInteger loc, NSUInteger len) {
 + (instancetype)arrayWithObjects:(ObjectType)firstObj, ...;
 - (NSUInteger)count;
 - (ObjectType)objectAtIndex:(NSUInteger)index;
+- (NSEnumerator *)objectEnumerator;
 - (BOOL)isEqualToArray:(NSArray *)otherArray;
 @end
 
 @interface NSMutableArray<ObjectType> : NSArray<ObjectType>
 - (void)addObject:(ObjectType)anObject;
 - (void)removeObject:(ObjectType)anObject;
+- (void)removeObjectsInArray:(NSArray<ObjectType> *)otherArray;
 - (void)removeObjectAtIndex:(NSUInteger)index;
 - (void)removeAllObjects;
 @end
@@ -120,8 +157,15 @@ static inline NSRange NSMakeRange(NSUInteger loc, NSUInteger len) {
                               forKeys:(NSArray<KeyType> *)keys;
 - (NSUInteger)count;
 - (ObjectType)objectForKey:(KeyType)aKey;
+- (NSEnumerator *)keyEnumerator;
+- (NSArray<KeyType> *)allKeys;
+- (NSArray<ObjectType> *)allValues;
 - (BOOL)isEqualToDictionary:(NSDictionary *)otherDictionary;
 - (NSArray<KeyType> *)keysSortedByValueUsingSelector:(SEL)comparator;
+@end
+
+@interface NSEnumerator<ObjectType> : NSObject
+- (ObjectType)nextObject;
 @end
 
 @interface NSSet<ObjectType> : NSObject
@@ -147,6 +191,9 @@ typedef enum {
   NSCaseInsensitiveSearch = 1,
 } NSStringCompareOptions;
 
+typedef NSUInteger NSStringEncoding;
+enum { NSASCIIStringEncoding = 1, NSUTF8StringEncoding = 4 };
+
 @interface NSString : NSObject
 + (instancetype)stringWithFormat:(NSString *)format, ...;
 + (instancetype)stringWithUTF8String:(const char *)string;
@@ -160,12 +207,19 @@ typedef enum {
                                              range:(NSRange)range;
 - (BOOL)isEqualToString:(NSString *)other;
 - (NSInteger)compare:(NSString *)other;
+- (NSString *)stringByAddingPercentEscapesUsingEncoding:(NSStringEncoding)encoding;
 @end
 @interface NSMutableString : NSString
 - (void)deleteCharactersInRange:(NSRange)range;
+- (NSUInteger)replaceOccurrencesOfString:(NSString *)target
+                              withString:(NSString *)replacement
+                                 options:(NSStringCompareOptions)options
+                                   range:(NSRange)range;
 @end
 
 @interface NSValue : NSObject
++ (instancetype)valueWithNonretainedObject:(id)object;
+- (id)nonretainedObjectValue;
 @end
 
 @interface NSNumber : NSValue
@@ -175,6 +229,15 @@ typedef enum {
 - (float)floatValue;
 - (int)intValue;
 - (BOOL)boolValue;
+@end
+
+@interface NSMutableDictionary<KeyType, ObjectType> : NSDictionary<KeyType, ObjectType>
++ (instancetype)dictionaryWithCapacity:(NSUInteger)capacity;
+- (void)setObject:(ObjectType)object forKey:(KeyType)key;
+@end
+
+@interface NSNull : NSObject
++ (instancetype)null;
 @end
 
 NSString *NSStringFromClass(Class);
@@ -205,6 +268,8 @@ typedef double NSTimeInterval;
 
 @interface NSData : NSObject
 + (id)dataWithContentsOfURL:(NSURL *)url;
++ (id)dataWithBytes:(const void *)bytes length:(NSUInteger)length;
+- (id)description;
 @end
 
 @interface NSCoder : NSObject

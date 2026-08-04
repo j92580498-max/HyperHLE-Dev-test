@@ -57,7 +57,43 @@ A coding agent submits through tapHLEdb's token-authenticated endpoint:
 POST https://taphle.ephun.net/compatibility/api/report
 ```
 
-It is documented in `API.md` in the tapHLEdb repository. The agent token lives
+It is documented in `API.md` in the tapHLEdb repository. **Do not discover the
+schema by probing the live endpoint** — a probe that succeeds is a published
+report, and one session's guesswork left six junk reports for the maintainer to
+reject. The accepted shape, confirmed against the deployment:
+
+```json
+{
+  "app_id": 26,
+  "version": {"name": "2.5.1", "bundle_version": "2.5.1", "minimum_os_version": "3.0"},
+  "report": {
+    "rating": 3,
+    "supersedes": 53,
+    "extra": {
+      "source_type": "agent",
+      "source_name": "Claude Code (Opus 5)",
+      "taphle_version": "09dbc970",
+      "cpu": "...",
+      "gpu": "...",
+      "frontier": "..."
+    }
+  }
+}
+```
+
+`app_id` and `version` may instead be an `app` object and a `version` object to
+create new ones; look the app up first with `GET /api/apps` so an existing entry
+is reused rather than duplicated. `source_type`, `source_name` and
+`taphle_version` are the required `extra` fields. `cpu`, `gpu`, `frontier` and
+`supersedes` are optional. **`os` and `booted` are not accepted keys** and cause
+a flat `report was rejected (check rating, extra fields and screenshot)`, which
+names no field — so does any other unknown key. `frontier` tolerates at least
+500 characters.
+
+Send it with `curl`; Python's `urllib` default user agent is refused by the
+front-end proxy with HTTP 403 code 1010.
+
+The agent token lives
 at `~/.taphledb-token` and nowhere else: read it inline as
 `$(cat ~/.taphledb-token)` at the moment of use, never echo it, and never copy
 it into this repository, a commit message, an app note, or any command whose
@@ -68,6 +104,40 @@ them.
 Crossing a star threshold does two things, not one: the reusable fix graduates
 to `trunk` *and* the report goes to the database. Do only the first and a real
 result stays invisible; do only the second and the claim cannot be reproduced.
+
+### Threshold-publication closeout
+
+Do not call a new rating complete until all four conditions hold:
+
+1. An artifact whose identity was read with `tapHLE --info` has reproduced the
+   milestone on a committed implementation revision.
+2. `POST /api/report` has accepted the report for that exact revision. A
+   `pending_moderation` response is successful submission; it is not a reason
+   to wait for approval before continuing.
+3. The compatibility checkpoint has been merged into `trunk` without removing
+   the tested revision, and `trunk` has been pushed to `origin`.
+4. `git merge-base --is-ancestor <tested-commit> origin/trunk` exits zero after
+   the push.
+
+A pushed `compat/<app-slug>` branch is a checkpoint, not threshold completion.
+If canonical provenance or the submission token is missing, record that exact
+blocker and keep threshold publication open; do not silently leave the report
+or the `trunk` promotion undone.
+
+**Never guess an app's identity — read it from `tapHLE --info` before you compose the report.** This is a hard rule, not a preference; see `AGENTS.md`. The bundle
+identifier is the field the endpoint matches on, so guessing it silently
+creates a duplicate app row that a moderator then has to reject, and the
+report cannot be edited afterwards — only superseded. Real identifiers are
+routinely not what the app's name suggests: two apps on the 2026-07-26 target
+list turned out to be plain `Minecrafted` and `com.eeenmachine.` (with a
+trailing dot). Copy the identifier and version out of `--info` output; never
+infer them from the app name, the Archive filename, or the developer.
+
+The `frontier` string has a length limit, and exceeding it is rejected with a
+flat `{"error":"invalid_submission"}` that names no field — so a submission that
+fails while the rating and identity are plainly fine is very likely this. Keep
+it to a few sentences: the full account belongs in the app note, which has no
+limit and is version-controlled next to the code that moves it.
 
 Submit when the rating changes, in either direction — a regression is a result.
 Do not submit a rerun that reproduces a rating already recorded for the same
@@ -107,9 +177,11 @@ stored status keeps the difference.
 
 The scale is adapted from the [touchHLE app database](https://appdb.touchhle.org/),
 whose database content is published under the Creative Commons Attribution 4.0
-license. Results from touchHLE or HyperHLE are useful testing leads, but they do
-not become tapHLE ratings until the exact app file is hash-checked and run with
-a committed tapHLE build on Windows.
+license. Results from touchHLE or HyperHLE are useful testing leads — and, since
+tapHLE is a fork, its lowest-rated apps are the highest-yield places to look for
+work. But a lead does not become a tapHLE rating until the exact app file has
+been identified with `tapHLE --info` and run with a committed tapHLE build on
+Windows.
 
 ## Project testing policy
 
@@ -158,57 +230,48 @@ because a later commit works better. Append a report. If an old report needs a
 correction, append a report with `supersedes` and explain it; the validator can
 compare a branch with a Git baseline to prevent removal or mutation.
 
-## Exact Archive.org verification protocol
+## Identify the artifact you actually tested
 
-Follow these steps in order. Agents must use the Archive.org item URL supplied
-by the maintainer or reporter. Do not search for, guess, or “grope around” for
-an item when no exact URL was supplied.
+**What matters is that the report names the app it was earned on.** That comes
+from the bundle metadata, read from the file that was run — never from a
+filename, an Archive.org page title, or memory. Read it with `tapHLE --info` and
+record the bundle identifier, bundle version, optional short version, and
+minimum OS version. This has not changed and is not negotiable: guessing an
+app's identity is how a report ends up attached to the wrong app, and a wrong
+report is worse than no report.
 
-1. Confirm that the URL has exactly the canonical form
-   `https://archive.org/details/<identifier>`. Record both the identifier and
-   that URL without redirects, query strings, fragments, or alternate hosts.
-2. Re-check the app's current market availability under the project policy
-   above. Record the date and a narrow factual result; do not present the
-   result as a legal conclusion.
-3. Fetch only `https://archive.org/metadata/<identifier>` to verify that each
-   exact IPA filename exists as an original file and to capture its published
-   MD5 and SHA-1. Never select a file merely because its name looks similar.
-4. Only after step 3 succeeds, an agent may download the exact
-   maintainer-designated original to an external cache outside the repository.
-   Do not extract it or open it as an IPA while it is downloading or before the
-   hash gate in step 5 passes.
-5. Keep the IPA outside Git. Match the local file's MD5 and SHA-1 to the item
-   metadata and record a locally calculated SHA-256. The record always retains
-   the metadata's exact `ipa_filename`; a Windows-safe local cache name is only
-   a path alias. A similarly named or same-sized file is not equivalent.
-6. Read `Payload/*.app/Info.plist` from the hash-matched IPA and verify the
-   bundle identifier, bundle version, optional short version, and minimum OS
-   version. Cross-check the same local file with `tapHLE --info` when a built
-   executable is available.
-7. Only after those checks may `archive_org.verification.state` be
-   `content-hash-verified`, and only a content-hash-verified file may support a
-   compatibility report.
+Where the file came from is provenance, not verification. Record the source so
+someone else can obtain the same artifact — for an Archive.org item, the
+canonical `https://archive.org/details/<identifier>` URL and the exact original
+filename; for a local copy, enough to identify it. Agents must use an item URL
+supplied by the maintainer or reporter, and must not search for, guess, or
+"grope around" for an item when no exact URL was supplied.
 
-The dependency-free helper performs steps 1, 3, 5, and 6 against a record. It
-uses only Python's `urllib`, `zipfile`, `plistlib`, `hashlib`, and related
-standard-library modules. Network access occurs only for this explicit
-command; it never searches Archive.org and never downloads the IPA. The exact
-original download authorized in step 4 must already be complete:
+A locally computed SHA-256 is still worth recording, because it lets a later
+run confirm it is testing the same bytes as an earlier one. That is a genuinely
+useful comparison and the reason to keep the field.
 
-```powershell
-python .\dev-scripts\compatibility.py verify-archive ricky `
-  --bundle-version 2.1 `
-  --ipa 'C:\private\Ricky (v2.1) [Cracked].ipa' `
-  --taphle-exe .\target\release\tapHLE.exe
-```
+### Why the download hash gate is gone
 
-If the local Windows-safe filename differs, add
-`--archive-filename 'the exact Archive.org filename.ipa'`. This maps the local
-path to the canonical filename; it does not rename the database artifact. Hash
-matching is still mandatory. A failed check means agents must not inspect,
-execute, or use that local copy, even for a provisional diagnosis. Find the
-exact canonical copy through the maintainer rather than treating the mismatch
-as “close enough.” Re-run verification before each report-worthy clean run.
+The protocol used to require matching a freshly downloaded file's MD5 and SHA-1
+against the same Archive.org item's published metadata before the file could be
+opened, and marked records `content-hash-verified` on that basis.
+
+That check never established what it appeared to. It compares a file against
+the hashes published by the same host that just served it, moments earlier, so
+it confirms the download did not corrupt in flight and nothing more. It cannot
+detect a wrong or tampered upload, because the metadata would be wrong in the
+same way — and if the item were wrong there is no independent copy to validate
+against. It also cost real time on every session for a guarantee no report
+depended on.
+
+It made more sense when the database stored Archive.org links as the canonical
+artifact reference. It no longer does. Identity now comes from the bundle
+metadata of the file that was actually run, which is the thing a report needs.
+
+Do not reintroduce the gate, and do not treat a missing or mismatched published
+hash as a reason to refuse to test a file. Do re-read identity with
+`tapHLE --info` before composing any report.
 
 For a manual `tapHLE --info` cross-check, use:
 
@@ -227,7 +290,7 @@ a commit referenced by a compatibility report.
 
 Merge or otherwise promote the branch only after:
 
-1. an Archive content-hash-verified artifact produces a reproducible
+1. an artifact identified with `tapHLE --info` produces a reproducible
    compatibility milestone on a committed tapHLE revision;
 2. the exact achieved state and remaining blocker are appended to the
    database; and
@@ -257,16 +320,14 @@ Run the offline commands from the repository root:
 ```powershell
 python .\dev-scripts\compatibility.py list
 python .\dev-scripts\compatibility.py show ricky
-python .\dev-scripts\compatibility.py render
 python .\dev-scripts\compatibility.py check
 python .\dev-scripts\compatibility.py check --baseline-ref origin/trunk
 ```
 
 `check` validates exact identities, canonical URLs, hashes, report ordering,
-the generated Markdown, and that every report's tapHLE commit exists and is an
-ancestor of `HEAD`, without accessing the network. With `--baseline-ref`, it
-also proves that existing reports are an unchanged prefix of the new report
-list.
+and that every report's tapHLE commit exists and is an ancestor of `HEAD`,
+without accessing the network. With `--baseline-ref`, it also proves that
+existing reports are an unchanged prefix of the new report list.
 
 Never commit an IPA, extracted app, game asset, decryption key, save data,
 personal path, or raw tapHLE log. Summarize only the minimum diagnostic facts

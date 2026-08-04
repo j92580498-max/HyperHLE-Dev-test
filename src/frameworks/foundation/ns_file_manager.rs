@@ -5,9 +5,11 @@
  */
 //! `NSFileManager` etc.
 
-use super::{ns_array, ns_string, NSUInteger};
+use super::{ns_array, ns_string, NSInteger, NSUInteger};
 use crate::dyld::{export_c_func, ConstantExports, FunctionExports, HostConstant};
-use crate::frameworks::foundation::ns_error::{NSCocoaErrorDomain, NSFileReadNoSuchFileError};
+use crate::frameworks::foundation::ns_error::{
+    NSCocoaErrorDomain, NSFileReadNoSuchFileError, NSFileWriteUnknownError,
+};
 use crate::frameworks::foundation::ns_string::get_static_str;
 use crate::fs::{FsError, GuestPath, GuestPathBuf};
 use crate::mem::{ConstPtr, MutPtr, Ptr};
@@ -21,6 +23,7 @@ const NSApplicationDirectory: NSSearchPathDirectory = 1;
 const NSLibraryDirectory: NSSearchPathDirectory = 5;
 const NSDocumentDirectory: NSSearchPathDirectory = 9;
 const NSCachesDirectory: NSSearchPathDirectory = 13;
+const NSApplicationSupportDirectory: NSSearchPathDirectory = 14;
 
 type NSSearchPathDomainMask = NSUInteger;
 const NSUserDomainMask: NSSearchPathDomainMask = 1;
@@ -28,6 +31,8 @@ const NSUserDomainMask: NSSearchPathDomainMask = 1;
 pub const NSFileModificationDate: &str = "NSFileModificationDate";
 pub const NSFilePosixPermissions: &str = "NSFilePosixPermissions";
 pub const NSFileSize: &str = "NSFileSize";
+const NSFileOwnerAccountName: &str = "NSFileOwnerAccountName";
+const NSFileGroupOwnerAccountName: &str = "NSFileGroupOwnerAccountName";
 const NSFileSystemFreeSize: &str = "NSFileSystemFreeSize";
 const NSFileSystemSize: &str = "NSFileSystemSize";
 pub const NSFileType: &str = "NSFileType";
@@ -44,6 +49,14 @@ pub const CONSTANTS: ConstantExports = &[
         HostConstant::NSString(NSFilePosixPermissions),
     ),
     ("_NSFileSize", HostConstant::NSString(NSFileSize)),
+    (
+        "_NSFileOwnerAccountName",
+        HostConstant::NSString(NSFileOwnerAccountName),
+    ),
+    (
+        "_NSFileGroupOwnerAccountName",
+        HostConstant::NSString(NSFileGroupOwnerAccountName),
+    ),
     (
         "_NSFileSystemFreeSize",
         HostConstant::NSString(NSFileSystemFreeSize),
@@ -69,9 +82,23 @@ fn NSSearchPathForDirectoriesInDomains(
     domain_mask: NSSearchPathDomainMask,
     expand_tilde: bool,
 ) -> id {
-    // TODO: other cases not implemented
-    assert!(domain_mask == NSUserDomainMask);
     assert!(expand_tilde);
+
+    // An iPhone OS app is confined to its sandbox, so the user domain is the
+    // only one with directories it can use. A caller asking for another domain
+    // gets an empty array, which is the documented answer for "no such
+    // directory exists" and what a sandboxed app already has to handle. It is
+    // also common for a caller to pass NSAllDomainsMask and simply take the
+    // first entry, so the user domain is still served when it is included.
+    if domain_mask & NSUserDomainMask == 0 {
+        log_dbg!(
+            "NSSearchPathForDirectoriesInDomains({}, {:#x}) excludes the user domain, returning an empty array",
+            directory,
+            domain_mask
+        );
+        let empty = ns_array::from_vec(env, Vec::new());
+        return autorelease(env, empty);
+    }
 
     let dir = match directory {
         NSApplicationDirectory => {
@@ -84,6 +111,13 @@ fn NSSearchPathForDirectoriesInDomains(
         NSDocumentDirectory => env.fs.home_directory().join("Documents"),
         NSLibraryDirectory => env.fs.home_directory().join("Library"),
         NSCachesDirectory => env.fs.home_directory().join("Library/Caches"),
+        // Under Library, like the rest of an app's private storage. The
+        // directory is not created here; NSSearchPathForDirectoriesInDomains
+        // reports the path whether or not it exists, and every caller either
+        // creates it or writes through NSFileManager, which does.
+        NSApplicationSupportDirectory => {
+            env.fs.home_directory().join("Library/Application Support")
+        }
         _ => todo!("NSSearchPathDirectory {}", directory),
     };
     let dir = ns_string::from_rust_string(env, String::from(dir));
@@ -120,6 +154,22 @@ struct NSDirectoryEnumeratorHostObject {
     iterator: std::vec::IntoIter<GuestPathBuf>,
 }
 impl HostObject for NSDirectoryEnumeratorHostObject {}
+
+/// Fill in an `NSError**` out-parameter, if the caller supplied one.
+///
+/// Always the Cocoa domain: every caller here is a filesystem operation, and
+/// tapHLE's guest filesystem does not surface an errno that would justify
+/// anything finer.
+fn write_error(env: &mut Environment, out_error: MutPtr<id>, code: NSInteger) {
+    if out_error.is_null() {
+        return;
+    }
+    let domain = get_static_str(env, NSCocoaErrorDomain);
+    let error: id = msg_class![env; NSError alloc];
+    let error: id = msg![env; error initWithDomain:domain code:code userInfo:nil];
+    let error = autorelease(env, error);
+    env.mem.write(out_error, error);
+}
 
 pub const CLASSES: ClassExports = objc_classes! {
 
@@ -377,12 +427,16 @@ pub const CLASSES: ClassExports = objc_classes! {
     let data = match env.fs.read(GuestPath::new(src.as_ref())) {
         Ok(d) => d,
         Err(_) => {
-            assert!(error.is_null()); // TODO
+            // The failure is reported through the out-parameter rather than
+            // asserted away. An app that passes an NSError** is asking to be
+            // told what went wrong, and a copy that fails is ordinary — the
+            // source may simply not be there yet.
+            write_error(env, error, NSFileReadNoSuchFileError);
             return false;
         }
     };
     if env.fs.write(GuestPath::new(dst.as_ref()), &data).is_err() {
-        assert!(error.is_null()); // TODO
+        write_error(env, error, NSFileWriteUnknownError);
         return false;
     }
     true
@@ -408,9 +462,37 @@ pub const CLASSES: ClassExports = objc_classes! {
     file_attributes_common(env, guest_path)
 }
 
+// Setting attributes. tapHLE's guest filesystem models file contents, not
+// POSIX permissions, ownership or the extended attributes apps set here (the
+// usual one being a do-not-back-up flag). Reporting success is what lets an app
+// carry on: it set an attribute that has no observable effect in this sandbox,
+// which is different from the operation failing. The request is logged once so
+// the gap is not silent.
+- (bool)setAttributes:(id)attributes // NSDictionary *
+         ofItemAtPath:(id)path // NSString *
+                error:(MutPtr<id>)error { // NSError **
+    let _ = attributes;
+    log_once!("TODO: NSFileManager setAttributes:ofItemAtPath:error: is accepted but no attribute is stored");
+    log_dbg!(
+        "[(NSFileManager *){:?} setAttributes:... ofItemAtPath:{} error:{:?}]",
+        this,
+        ns_string::to_rust_string(env, path),
+        error
+    );
+    if !error.is_null() {
+        env.mem.write(error, nil);
+    }
+    true
+}
+
 - (id)attributesOfItemAtPath:(id)path // NSString *
                        error:(MutPtr<id>)error { // NSError **
-    assert!(error.is_null()); // TODO
+    // A caller asking for an error is normal; there is no error detail worth
+    // inventing, so clear it rather than aborting on the assertion this used
+    // to make.
+    if !error.is_null() {
+        env.mem.write(error, nil);
+    }
 
     // TODO: other attributes
     log_once!("Warning: NSFileManager attributesOfItemAtPath:error: returns only NSFileType, NSFileModificationDate and NSFileSize attributes!");

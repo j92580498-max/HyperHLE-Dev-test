@@ -14,16 +14,20 @@ use crate::frameworks::foundation::ns_objc_runtime::NSStringFromClass;
 use crate::frameworks::foundation::ns_string::{from_rust_string, get_static_str, to_rust_string};
 use crate::frameworks::foundation::NSInteger;
 use crate::frameworks::uikit::ui_application::{
-    UIInterfaceOrientation, UIInterfaceOrientationPortrait,
+    UIInterfaceOrientation, UIInterfaceOrientationLandscapeLeft,
+    UIInterfaceOrientationLandscapeRight, UIInterfaceOrientationPortrait,
+    UIInterfaceOrientationPortraitUpsideDown,
 };
 use crate::frameworks::uikit::ui_view::set_view_controller;
 use crate::objc::{
     id, msg, msg_class, nil, objc_classes, release, retain, todo_objc_setter, Class, ClassExports,
     HostObject, NSZonePtr,
 };
+use crate::window::DeviceOrientation;
 use crate::Environment;
 
 pub mod ui_navigation_controller;
+pub mod ui_tab_bar_controller;
 
 #[derive(Default)]
 struct UIViewControllerHostObject {
@@ -44,8 +48,43 @@ struct UIViewControllerHostObject {
     /// The full-screen view controller presented by this controller. Retained.
     /// `UIViewController*`
     modal_view_controller: id,
+    /// `UINavigationItem*`, retained. Created on first use, as UIKit's is: a
+    /// controller that is never pushed onto a navigation stack should not pay
+    /// for one.
+    navigation_item: id,
+    /// Whether `viewDidLoad` has already been sent for the current view.
+    /// UIKit sends it exactly once each time the view is loaded, whichever
+    /// route loaded it; see [send_view_did_load_if_needed].
+    view_did_load_sent: bool,
 }
 impl HostObject for UIViewControllerHostObject {}
+
+/// Send `viewDidLoad` to `controller` if its view is loaded and it has not
+/// been sent already.
+///
+/// A view controller's view has two routes into existence, and `viewDidLoad`
+/// belongs to both. The programmatic route is `-loadView`, driven lazily by
+/// `-view`. The other route is unarchiving from a nib that already carries the
+/// controller's view, where `-initWithCoder:` connects the view directly and
+/// `-loadView` never runs. Sending `viewDidLoad` only from the first route
+/// leaves nib-instantiated controllers without it, which silently skips
+/// whatever setup the app put there — a real app used it to compute the
+/// screen-to-engine coordinate mapping for touches, so every tap landed at the
+/// origin.
+///
+/// The caller is responsible for choosing the moment: for the nib route this
+/// must be after outlet connection and `awakeFromNib`, so the handler sees a
+/// fully connected controller.
+pub fn send_view_did_load_if_needed(env: &mut Environment, controller: id) {
+    let host_object = env
+        .objc
+        .borrow_mut::<UIViewControllerHostObject>(controller);
+    if host_object.view_did_load_sent || host_object.view == nil {
+        return;
+    }
+    host_object.view_did_load_sent = true;
+    () = msg![env; controller viewDidLoad];
+}
 
 type UIModalTransitionStyle = NSInteger;
 
@@ -90,7 +129,10 @@ pub const CLASSES: ClassExports = objc_classes! {
         bundle,
         parent_view_controller: _,
         modal_view_controller,
+        navigation_item,
+        view_did_load_sent: _,
     } = env.objc.borrow(this);
+    release(env, navigation_item);
 
     if modal_view_controller != nil {
         let modal_view = env
@@ -142,13 +184,21 @@ pub const CLASSES: ClassExports = objc_classes! {
         let _: id = msg![env; nib instantiateWithOwner:this options:nil];
 
         let view = env.objc.borrow::<UIViewControllerHostObject>(this).view;
-        // Having nil view at this point probably mean that
-        // out nib's parsing is wrong.
-        // Also we assume here the case of a "detached nib file"
-        // TODO: support "integrated nib file"
-        assert!(view != nil);
-
-        return;
+        if view == nil {
+            // The nib did not set the view outlet. That means tapHLE's nib
+            // parsing missed it, the nib is an "integrated" one this does not
+            // support yet, or the nib could not be loaded at all — and none of
+            // those is a reason to end the app. Falling through to the plain
+            // -loadView below gives the controller an empty view of the right
+            // size, so its screen is blank instead of absent and everything
+            // around it keeps working.
+            log!(
+                "Warning: the nib for {:?} did not set a view; using an empty one",
+                this
+            );
+        } else {
+            return;
+        }
     };
 
     // As a last resort, use plain UIVIew for the root view
@@ -166,6 +216,11 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 - (())setView:(id)new_view { // UIView*
     let host_obj = env.objc.borrow_mut::<UIViewControllerHostObject>(this);
+    if new_view == nil {
+        // The view was unloaded. UIKit sends viewDidLoad again the next time
+        // it is loaded, so arm it again rather than suppressing it forever.
+        host_obj.view_did_load_sent = false;
+    }
     let old_view = std::mem::replace(&mut host_obj.view, new_view);
     if old_view != nil {
         set_view_controller(env, old_view, nil);
@@ -179,19 +234,45 @@ pub const CLASSES: ClassExports = objc_classes! {
 - (id)view {
     let view = env.objc.borrow_mut::<UIViewControllerHostObject>(this).view;
     if view == nil {
+        // Loading the view is what viewDidLoad reports, so it is sent here and
+        // only here. A controller whose view the app assigned with -setView:
+        // never loaded one, and must not be told that it did: Tap Tap Revenge
+        // 2 builds its OpenGL view by hand, hands it over, and implements
+        // viewDidLoad as a teardown — sending it there destroyed the game view
+        // immediately after it was created.
         () = msg![env; this loadView];
-        let view = env.objc.borrow_mut::<UIViewControllerHostObject>(this).view;
-        () = msg![env; this viewDidLoad];
-        view
-    } else {
-        view
+        send_view_did_load_if_needed(env, this);
     }
+    env.objc.borrow_mut::<UIViewControllerHostObject>(this).view
+}
+
+- (id)navigationItem {
+    let existing = env.objc.borrow::<UIViewControllerHostObject>(this).navigation_item;
+    if existing != nil {
+        return existing;
+    }
+    let item: id = msg_class![env; UINavigationItem alloc];
+    let item: id = msg![env; item init];
+    env.objc.borrow_mut::<UIViewControllerHostObject>(this).navigation_item = item;
+    item
 }
 
 - (id)parentViewController {
     env.objc
         .borrow::<UIViewControllerHostObject>(this)
         .parent_view_controller
+}
+
+- (UIInterfaceOrientation)interfaceOrientation {
+    // We model a single screen, so a controller's interface orientation is the
+    // window's current orientation (the same value as
+    // -[UIApplication statusBarOrientation]).
+    match env.window().current_rotation() {
+        DeviceOrientation::Portrait => UIInterfaceOrientationPortrait,
+        DeviceOrientation::PortraitUpsideDown => UIInterfaceOrientationPortraitUpsideDown,
+        DeviceOrientation::LandscapeLeft => UIInterfaceOrientationLandscapeLeft,
+        DeviceOrientation::LandscapeRight => UIInterfaceOrientationLandscapeRight,
+    }
 }
 
 - (id)navigationController {

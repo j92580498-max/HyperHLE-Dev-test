@@ -134,7 +134,7 @@ impl OpenAL<'_> {
         al_sys::alEnable(capability)
     }
 
-    pub unsafe fn GetBufferi(&self, buffer: ALuint, param: ALenum, value: *const ALint) {
+    pub unsafe fn GetBufferi(&self, buffer: ALuint, param: ALenum, value: *mut ALint) {
         al_sys::alGetBufferi(buffer, param, value)
     }
 

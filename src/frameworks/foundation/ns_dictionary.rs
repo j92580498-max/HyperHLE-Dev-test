@@ -401,6 +401,12 @@ fn all_keys_common(env: &mut Environment, this: id) -> id {
     autorelease(env, res)
 }
 
+/// Return an enumerator over a dictionary's keys from its common host storage.
+fn key_enumerator_common(env: &mut Environment, this: id) -> id {
+    let keys = all_keys_common(env, this);
+    msg![env; keys objectEnumerator]
+}
+
 pub const CLASSES: ClassExports = objc_classes! {
 
 (env, this, _cmd);
@@ -415,10 +421,23 @@ pub const CLASSES: ClassExports = objc_classes! {
 @implementation NSDictionary: NSObject
 
 + (id)allocWithZone:(NSZonePtr)zone {
-    // NSDictionary might be subclassed by something which needs allocWithZone:
-    // to have the normal behaviour. Unimplemented: call superclass alloc then.
-    assert!(this == env.objc.get_known_class("NSDictionary", &mut env.mem));
-    msg_class![env; _tapHLE_NSDictionary allocWithZone:zone]
+    let ns_dictionary = env.objc.get_known_class("NSDictionary", &mut env.mem);
+    if this == ns_dictionary {
+        return msg_class![env; _tapHLE_NSDictionary allocWithZone:zone];
+    }
+
+    // The NSObject implementation of +alloc sends allocWithZone: to the
+    // original receiver. On iPhone OS this must preserve the concrete class
+    // selected by an inherited NSDictionary factory such as
+    // +dictionaryWithCapacity:. Give NSMutableDictionary its mutable backing
+    // object, and let other subclasses use the common dictionary storage.
+    let ns_mutable_dictionary = env.objc.get_known_class("NSMutableDictionary", &mut env.mem);
+    if this == ns_mutable_dictionary {
+        return msg_class![env; _tapHLE_NSMutableDictionary allocWithZone:zone];
+    }
+
+    env.objc
+        .alloc_object(this, Box::<DictionaryHostObject>::default(), &mut env.mem)
 }
 
 + (id)dictionary {
@@ -483,6 +502,13 @@ pub const CLASSES: ClassExports = objc_classes! {
 // These probably comes from some category related to plists.
 - (id)initWithContentsOfFile:(id)path { // NSString*
     release(env, this);
+    // A nil path has nothing to read, so the documented nil return is the
+    // answer. Without this the path went straight into to_rust_string(), which
+    // borrows the object table and aborted the emulator on a nil object.
+    if path == nil {
+        log!("Warning: -[NSDictionary initWithContentsOfFile:nil], returning nil");
+        return nil;
+    }
     let path = ns_string::to_rust_string(env, path);
     deserialize_plist_from_file(
         env,
@@ -521,6 +547,21 @@ pub const CLASSES: ClassExports = objc_classes! {
     // TODO: strip '@' and call super
     assert!(!key_str.starts_with('@'));
     msg![env; this objectForKey:key]
+}
+
+// NSDictionary subclasses provide keyEnumerator, so the superclass can build
+// an array for subclasses that do not have tapHLE's DictionaryHostObject.
+- (id)allKeys {
+    let keys: id = msg_class![env; NSMutableArray new];
+    let enumerator: id = msg![env; this keyEnumerator];
+    loop {
+        let key: id = msg![env; enumerator nextObject];
+        if key == nil {
+            break;
+        }
+        let (): () = msg![env; keys addObject:key];
+    }
+    autorelease(env, keys)
 }
 
 - (id)keysSortedByValueUsingSelector:(SEL)comparator {
@@ -628,10 +669,13 @@ pub const CLASSES: ClassExports = objc_classes! {
 @implementation NSMutableDictionary: NSDictionary
 
 + (id)allocWithZone:(NSZonePtr)zone {
-    // NSDictionary might be subclassed by something which needs allocWithZone:
-    // to have the normal behaviour. Unimplemented: call superclass alloc then.
-    assert!(this == env.objc.get_known_class("NSMutableDictionary", &mut env.mem));
-    msg_class![env; _tapHLE_NSMutableDictionary allocWithZone:zone]
+    let ns_mutable_dictionary = env.objc.get_known_class("NSMutableDictionary", &mut env.mem);
+    if this == ns_mutable_dictionary {
+        msg_class![env; _tapHLE_NSMutableDictionary allocWithZone:zone]
+    } else {
+        env.objc
+            .alloc_object(this, Box::<DictionaryHostObject>::default(), &mut env.mem)
+    }
 }
 
 + (id)dictionaryWithCapacity:(NSUInteger)capacity {
@@ -643,6 +687,13 @@ pub const CLASSES: ClassExports = objc_classes! {
 // These probably comes from some category related to plists.
 - (id)initWithContentsOfFile:(id)path { // NSString*
     release(env, this);
+    // A nil path has nothing to read, so the documented nil return is the
+    // answer. Without this the path went straight into to_rust_string(), which
+    // borrows the object table and aborted the emulator on a nil object.
+    if path == nil {
+        log!("Warning: -[NSDictionary initWithContentsOfFile:nil], returning nil");
+        return nil;
+    }
     let path = ns_string::to_rust_string(env, path);
     let tmp = deserialize_plist_from_file(
         env,
@@ -694,7 +745,11 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (id)init {
-    *env.objc.borrow_mut(this) = <DictionaryHostObject as Default>::default();
+    // A guest subclass may have allocated this instance itself rather than
+    // through +alloc, in which case it has no host storage yet.
+    if !env.objc.ensure_host_object::<DictionaryHostObject>(this) {
+        *env.objc.borrow_mut(this) = <DictionaryHostObject as Default>::default();
+    }
     this
 }
 
@@ -727,6 +782,21 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 - (id)allKeys {
     all_keys_common(env, this)
+}
+
+- (id)allValues {
+    let host_obj: DictionaryHostObject = std::mem::take(env.objc.borrow_mut(this));
+    let values: Vec<id> = host_obj.map.values().flatten().map(|&(_key, value)| value).collect();
+    *env.objc.borrow_mut(this) = host_obj;
+    for &value in &values {
+        retain(env, value);
+    }
+    let values = ns_array::from_vec(env, values);
+    autorelease(env, values)
+}
+
+- (id)keyEnumerator {
+    key_enumerator_common(env, this)
 }
 
 // NSFastEnumeration implementation
@@ -800,7 +870,11 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (id)init {
-    *env.objc.borrow_mut(this) = <DictionaryHostObject as Default>::default();
+    // See the note on the immutable class's init: a guest subclass such as
+    // JSONKit's JKDictionary allocates its own instances.
+    if !env.objc.ensure_host_object::<DictionaryHostObject>(this) {
+        *env.objc.borrow_mut(this) = <DictionaryHostObject as Default>::default();
+    }
     this
 }
 
@@ -838,6 +912,10 @@ pub const CLASSES: ClassExports = objc_classes! {
     let res = host_obj.lookup(env, key);
     *env.objc.borrow_mut(this) = host_obj;
     res
+}
+
+- (id)keyEnumerator {
+    key_enumerator_common(env, this)
 }
 
 // NSFastEnumeration implementation
@@ -888,10 +966,18 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 - (())setObject:(id)object
          forKey:(id)key {
-    // TODO: raise NSInvalidArgumentException
-    assert_ne!(object, nil);
-    // TODO: raise NSInvalidArgumentException
-    assert_ne!(key, nil);
+    // Foundation raises NSInvalidArgumentException for a nil object or key.
+    // tapHLE cannot raise, and aborting is a strictly worse answer than the
+    // exception would have been: an app with a @try around this survives on
+    // device, and one without it fails at a place it chose. Log and ignore the
+    // call, which leaves the dictionary in the state the exception would have.
+    if object == nil || key == nil {
+        log!(
+            "Warning: [(NSMutableDictionary *){:?} setObject:{:?} forKey:{:?}] with a nil argument, which Foundation would reject; ignoring it",
+            this, object, key
+        );
+        return;
+    }
     let mut host_obj: DictionaryHostObject = std::mem::take(env.objc.borrow_mut(this));
     host_obj.insert(env, key, object, /* copy_key: */ true);
     *env.objc.borrow_mut(this) = host_obj;
@@ -922,6 +1008,33 @@ pub const CLASSES: ClassExports = objc_classes! {
         () = msg![env; this setObject:(*v) forKey:(*k)];
     }
     *env.objc.borrow_mut(other) = host_obj;
+}
+
+// Documented as removing every entry and then adding the other dictionary's
+// entries. The source's entries are copied out before anything is removed, so
+// that passing the receiver itself does not empty it.
+- (())setDictionary:(id)other { // NSDictionary *
+    let entries: Vec<(id, id)> = if other == nil {
+        Vec::new()
+    } else {
+        let host_obj: DictionaryHostObject = std::mem::take(env.objc.borrow_mut(other));
+        let entries = host_obj.map.values().flatten().copied().collect();
+        *env.objc.borrow_mut(other) = host_obj;
+        entries
+    };
+    // Retain across the clear: the receiver may be the only owner of these.
+    for &(k, v) in &entries {
+        retain(env, k);
+        retain(env, v);
+    }
+    () = msg![env; this removeAllObjects];
+    for &(k, v) in &entries {
+        () = msg![env; this setObject:v forKey:k];
+    }
+    for &(k, v) in &entries {
+        release(env, k);
+        release(env, v);
+    }
 }
 
 - (id)description {

@@ -20,6 +20,7 @@ pub mod ui_window;
 use core::panic;
 
 use super::ui_graphics::{UIGraphicsPopContext, UIGraphicsPushContext};
+use crate::abi::CallFromHost;
 use crate::frameworks::core_animation::ca_animation::{
     kCAFillModeBackwards, CAMediaTimingFillMode,
 };
@@ -38,8 +39,8 @@ use crate::frameworks::foundation::ns_string::{from_rust_string, get_static_str,
 use crate::frameworks::foundation::{ns_array, NSInteger, NSTimeInterval, NSUInteger};
 use crate::mem::{ConstVoidPtr, GuestUSize};
 use crate::objc::{
-    autorelease, id, msg, msg_class, msg_send, nil, objc_classes, release, retain,
-    todo_objc_setter, Class, ClassExports, HostObject, NSZonePtr, ObjC, SEL,
+    autorelease, block_invoke_function, id, msg, msg_class, msg_send, nil, objc_classes, release,
+    retain, todo_objc_setter, Class, ClassExports, HostObject, NSZonePtr, ObjC, SEL,
 };
 use crate::Environment;
 
@@ -73,7 +74,9 @@ pub struct State {
     pub animation_block_count: usize,
 }
 
-pub(super) struct UIViewHostObject {
+/// Public so that a UIView subclass living in another framework (for example
+/// iAd's ADBannerView) can embed it as its superclass host object.
+pub struct UIViewHostObject {
     /// CALayer or subclass.
     layer: id,
     /// Subviews in back-to-front order. These are strong references.
@@ -86,6 +89,15 @@ pub(super) struct UIViewHostObject {
     clears_context_before_drawing: bool,
     user_interaction_enabled: bool,
     multiple_touch_enabled: bool,
+    /// `UIViewAutoresizing`. Stored and reported back, but not acted on: tapHLE
+    /// does not resize subviews when a superview's bounds change. Round-tripping
+    /// it still matters, because layout code reads the mask back to decide what
+    /// to do — and now that views actually receive a layout pass, that happens.
+    autoresizing_mask: NSUInteger,
+    /// Likewise stored and reported back rather than acted on.
+    autoresizes_subviews: bool,
+    /// Set by `-setNeedsLayout`, cleared when the layout actually happens.
+    needs_layout: bool,
 }
 impl HostObject for UIViewHostObject {}
 impl Default for UIViewHostObject {
@@ -101,6 +113,11 @@ impl Default for UIViewHostObject {
             clears_context_before_drawing: true,
             user_interaction_enabled: true,
             multiple_touch_enabled: false,
+            // UIViewAutoresizingNone.
+            autoresizing_mask: 0,
+            // UIKit's default is YES.
+            autoresizes_subviews: true,
+            needs_layout: false,
         }
     }
 }
@@ -117,6 +134,13 @@ struct UIViewAnimationDelegateHostObject {
     finished_animation_count: u32,
 }
 impl HostObject for UIViewAnimationDelegateHostObject {}
+
+#[derive(Default)]
+struct UIViewBlockCompletionHostObject {
+    /// The completion block, retained. `void (^)(BOOL finished)`.
+    completion: id,
+}
+impl HostObject for UIViewBlockCompletionHostObject {}
 
 pub fn set_view_controller(env: &mut Environment, view: id, controller: id) {
     let host_obj = env.objc.borrow_mut::<UIViewHostObject>(view);
@@ -142,6 +166,72 @@ fn init_common(env: &mut Environment, this: id) -> id {
     env.framework_state.uikit.ui_view.views.push(this);
 
     this
+}
+
+/// Flag a newly mounted view for layout.
+///
+/// UIKit lays out every view in a window on the next turn of the run loop, and
+/// the emphasis is on *next turn*: the layout does not happen inside
+/// `-addSubview:`. tapHLE only ever laid out at launch and for a window's root
+/// view, so a view added later never received `-layoutSubviews` at all — which
+/// matters because the standard `EAGLView` creates its renderbuffer there, and
+/// without it presents every frame into no drawable.
+///
+/// Doing it **synchronously** here, which is what this did first, breaks apps
+/// outright: JellyCar 2 faulted during startup because its layout ran while the
+/// view hierarchy was still being built, a moment the app never expects. Merely
+/// flagging it, and letting `handle_pending_layout` service it on the next run
+/// loop turn, is both what UIKit does and what both apps survive.
+///
+/// A view not yet in a window is flagged anyway; `handle_pending_layout` skips
+/// it until it is mounted, so it is laid out once it has a real size rather
+/// than at the wrong one.
+pub(super) fn mark_needs_layout_on_mount(env: &mut Environment, view: id) {
+    env.objc.borrow_mut::<UIViewHostObject>(view).needs_layout = true;
+
+    // During launch, leave it at the flag. The app is still assembling its view
+    // hierarchy and running its layout code now is what killed JellyCar 2.
+    if !env.framework_state.uikit.ui_application.finished_launching {
+        return;
+    }
+
+    // Afterwards, lay out immediately if the view is already in a window.
+    // Waiting for the next run loop turn is closer to UIKit, but it costs a
+    // frame — and for an EAGLView that frame is presented into no drawable,
+    // which is how Tap Tap Revenge 2 lost its background: the first frames of
+    // its game screen were drawn before the layout that creates the surface.
+    let window: id = msg![env; view window];
+    if window == nil {
+        return;
+    }
+    env.objc.borrow_mut::<UIViewHostObject>(view).needs_layout = false;
+    () = msg![env; view layoutSubviews];
+}
+
+/// For use by `NSRunLoop`: perform the layout that `-setNeedsLayout` deferred.
+///
+/// UIKit coalesces every request made during a turn of the run loop into one
+/// layout pass at the end of it, which is the whole reason `-setNeedsLayout` is
+/// separate from `-layoutSubviews`. Doing it here rather than at the call site
+/// is what makes it safe for a view to ask for layout from inside its own
+/// layout, and it means N requests cost one pass rather than N.
+///
+/// A view not in a window is left flagged rather than laid out, so it gets its
+/// pass when it is eventually mounted instead of being laid out at the wrong
+/// size and never revisited.
+pub fn handle_pending_layout(env: &mut Environment) {
+    let views = env.framework_state.uikit.ui_view.views.clone();
+    for view in views {
+        if !env.objc.borrow::<UIViewHostObject>(view).needs_layout {
+            continue;
+        }
+        let window: id = msg![env; view window];
+        if window == nil {
+            continue;
+        }
+        env.objc.borrow_mut::<UIViewHostObject>(view).needs_layout = false;
+        () = msg![env; view layoutSubviews];
+    }
 }
 
 pub const CLASSES: ClassExports = objc_classes! {
@@ -207,6 +297,36 @@ pub const CLASSES: ClassExports = objc_classes! {
     () = msg_class![env; CATransaction setValue:value forKey:(get_static_str(env, tapHLE_kCATransactionAnimationRepeatCount))];
 }
 
++ (())setAnimationBeginsFromCurrentState:(bool)from_current_state {
+    // This chooses whether an animation that interrupts another starts from the
+    // interrupted one's presented values or from the model values. tapHLE does
+    // not model an in-flight animation's presented state, so both answers are
+    // the same here and there is nothing to record. The view still reaches the
+    // right final state either way; only the path it takes could differ.
+    log_dbg!("TODO: ignoring [UIView setAnimationBeginsFromCurrentState:{}]", from_current_state);
+}
+
++ (())setAnimationTransition:(NSInteger)transition
+                     forView:(id)view
+                       cache:(bool)cache {
+    // Flip and curl transitions. Ignoring the transition leaves the view
+    // hierarchy in its correct final state, just without the effect.
+    log_dbg!(
+        "TODO: ignoring [UIView setAnimationTransition:{} forView:{:?} cache:{}]",
+        transition, view, cache
+    );
+}
+
++ (bool)areAnimationsEnabled {
+    let disabled: bool = msg_class![env; CATransaction disableActions];
+    !disabled
+}
+
++ (())setAnimationsEnabled:(bool)enabled {
+    log_dbg!("[UIView setAnimationsEnabled:{}]", enabled);
+    () = msg_class![env; CATransaction setDisableActions:(!enabled)];
+}
+
 + (())setAnimationDelegate:(id)delegate {
     log_dbg!("[UIView setAnimationDelegate:{:?}]", delegate);
     retain(env, delegate);
@@ -225,6 +345,107 @@ pub const CLASSES: ClassExports = objc_classes! {
     log_dbg!("[UIView setAnimationDidStopSelector:{:?} ({})]", selector, selector_str);
     let selector_nsstring = from_rust_string(env, selector_str.to_string());
     () = msg_class![env; CATransaction setValue:selector_nsstring forKey:(get_static_str(env, tapHLE_kCATransactionAnimationDidStopSelector))];
+}
+
+// iOS 4's block-based animation API. It is defined in terms of the older
+// begin/commit API, which already owns the transaction, delegate and timing
+// machinery; the only new part is running the two blocks at the right moments.
+//
+// The completion block must not run until the animation has actually stopped —
+// apps use it to remove a view that has just faded out — so it is delivered
+// through the same animation-delegate path as setAnimationDidStopSelector:.
+// When the animations block schedules nothing there is no animation to wait
+// for and no delegate callback will ever arrive, so completion is called
+// directly, which is also what UIKit does.
++ (())animateWithDuration:(NSTimeInterval)duration
+               animations:(id)animations // block
+               completion:(id)completion { // block, may be nil
+    () = msg_class![env; UIView beginAnimations:nil context:(ConstVoidPtr::null())];
+    () = msg_class![env; UIView setAnimationDuration:duration];
+
+    if animations != nil {
+        let invoke = block_invoke_function(env, animations);
+        () = invoke.call_from_host(env, (animations,));
+    }
+
+    let scheduled_any = !ca_transaction::ThreadLocalState::get_current_transaction(env)
+        .unwrap()
+        .get_animations()
+        .is_empty();
+
+    let block_delegate = if completion != nil && scheduled_any {
+        let block_delegate: id = msg_class![env; _tapHLE_UIView_BlockCompletion new];
+        () = msg![env; block_delegate setCompletionBlock:completion];
+        () = msg_class![env; UIView setAnimationDelegate:block_delegate];
+        let selector = env
+            .objc
+            .lookup_selector("tapHLE_animationDidStop:finished:context:")
+            .unwrap();
+        () = msg_class![env; UIView setAnimationDidStopSelector:selector];
+        block_delegate
+    } else {
+        nil
+    };
+
+    () = msg_class![env; UIView commitAnimations];
+
+    if block_delegate != nil {
+        // setAnimationDelegate: took its own reference.
+        release(env, block_delegate);
+    } else if completion != nil {
+        let invoke = block_invoke_function(env, completion);
+        () = invoke.call_from_host(env, (completion, true));
+    }
+}
+
++ (())animateWithDuration:(NSTimeInterval)duration
+               animations:(id)animations { // block
+    () = msg_class![env; UIView animateWithDuration:duration animations:animations completion:nil];
+}
+
++ (())animateWithDuration:(NSTimeInterval)duration
+                    delay:(NSTimeInterval)delay
+                  options:(NSUInteger)_options
+               animations:(id)animations // block
+               completion:(id)completion { // block, may be nil
+    // TODO: UIViewAnimationOptions (curve, autoreverse, repeat, allow user
+    // interaction). Delay is honoured because the older API already supports it.
+    () = msg_class![env; UIView beginAnimations:nil context:(ConstVoidPtr::null())];
+    () = msg_class![env; UIView setAnimationDuration:duration];
+    () = msg_class![env; UIView setAnimationDelay:delay];
+
+    if animations != nil {
+        let invoke = block_invoke_function(env, animations);
+        () = invoke.call_from_host(env, (animations,));
+    }
+
+    let scheduled_any = !ca_transaction::ThreadLocalState::get_current_transaction(env)
+        .unwrap()
+        .get_animations()
+        .is_empty();
+
+    let block_delegate = if completion != nil && scheduled_any {
+        let block_delegate: id = msg_class![env; _tapHLE_UIView_BlockCompletion new];
+        () = msg![env; block_delegate setCompletionBlock:completion];
+        () = msg_class![env; UIView setAnimationDelegate:block_delegate];
+        let selector = env
+            .objc
+            .lookup_selector("tapHLE_animationDidStop:finished:context:")
+            .unwrap();
+        () = msg_class![env; UIView setAnimationDidStopSelector:selector];
+        block_delegate
+    } else {
+        nil
+    };
+
+    () = msg_class![env; UIView commitAnimations];
+
+    if block_delegate != nil {
+        release(env, block_delegate);
+    } else if completion != nil {
+        let invoke = block_invoke_function(env, completion);
+        () = invoke.call_from_host(env, (completion, true));
+    }
 }
 
 + (())beginAnimations:(id)animation_id // NSString*
@@ -492,6 +713,15 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (())addSubview:(id)view {
+    if crate::log::debug_enabled_for(module_path!()) {
+        let name = |o: id| -> String {
+            if o == nil { "nil".to_string() } else {
+                let c = ObjC::read_isa(o, &env.mem);
+                env.objc.get_class_name(c).to_string()
+            }
+        };
+        log_dbg!("MOUNT [{} {:?} addSubview:{} {:?}]", name(this), this, name(view), view);
+    }
     log_dbg!("[(UIView*){:?} addSubview:{:?}] => ()", this, view);
 
     if view == nil {
@@ -511,6 +741,7 @@ pub const CLASSES: ClassExports = objc_classes! {
         this_obj.subviews.push(view);
         let this_layer = this_obj.layer;
         () = msg![env; this_layer addSublayer:subview_layer];
+        mark_needs_layout_on_mount(env, view);
     }
 }
 
@@ -533,6 +764,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 
     assert!(index >= 0);
     () = msg![env; this_layer insertSublayer:subview_layer atIndex:(index as u32)];
+    mark_needs_layout_on_mount(env, view);
 }
 
 - (())insertSubview:(id)view belowSubview:(id)sibling {
@@ -555,6 +787,7 @@ pub const CLASSES: ClassExports = objc_classes! {
     subviews.insert(idx, view);
 
     () = msg![env; this_layer insertSublayer:subview_layer below:sibling_layer];
+    mark_needs_layout_on_mount(env, view);
 }
 
 - (())bringSubviewToFront:(id)subview {
@@ -638,6 +871,9 @@ pub const CLASSES: ClassExports = objc_classes! {
         clears_context_before_drawing: _,
         user_interaction_enabled: _,
         multiple_touch_enabled: _,
+        autoresizing_mask: _,
+        autoresizes_subviews: _,
+        needs_layout: _,
     } = std::mem::take(env.objc.borrow_mut(this));
 
     release(env, layer);
@@ -669,8 +905,16 @@ pub const CLASSES: ClassExports = objc_classes! {
     msg![env; layer setHidden:hidden]
 }
 
+// UIKit's clipsToBounds is the view-level name for the layer's masksToBounds,
+// so forward rather than storing a second copy. The compositor does not clip
+// yet; see the TODO in the composition module.
+- (bool)clipsToBounds {
+    let layer = env.objc.borrow::<UIViewHostObject>(this).layer;
+    msg![env; layer masksToBounds]
+}
 - (())setClipsToBounds:(bool)clips {
-    todo_objc_setter!(this, clips);
+    let layer = env.objc.borrow::<UIViewHostObject>(this).layer;
+    msg![env; layer setMasksToBounds:clips]
 }
 
 - (bool)isOpaque {
@@ -859,57 +1103,78 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 // Co-ordinate space conversion
+//
+// A nil counterpart means the window's co-ordinate space. It does not require
+// the receiver to be in a window: CALayer's conversion already resolves a nil
+// layer to the top of the receiver's layer hierarchy, which is the window's
+// layer whenever there is a window, and the highest ancestor otherwise. Passing
+// the nil straight down therefore gives the same answer for a view in a window
+// and a defined one for a view that is not in one yet, which is what UIKit does
+// and what a nib-loaded view laying itself out before it is mounted needs.
 
 - (CGPoint)convertPoint:(CGPoint)point
                fromView:(id)other { // UIView*
-    if other == nil {
-        let window: id = msg![env; this window];
-        assert!(window != nil);
-        return msg![env; this convertPoint:point fromView:window]
-    }
     let this_layer = env.objc.borrow::<UIViewHostObject>(this).layer;
-    let other_layer = env.objc.borrow::<UIViewHostObject>(other).layer;
+    let other_layer = view_layer_or_nil(env, other);
     msg![env; this_layer convertPoint:point fromLayer:other_layer]
 }
 - (CGPoint)convertPoint:(CGPoint)point
                  toView:(id)other { // UIView*
-    if other == nil {
-        let window: id = msg![env; this window];
-        assert!(window != nil);
-        return msg![env; this convertPoint:point toView:window]
-    }
     let this_layer = env.objc.borrow::<UIViewHostObject>(this).layer;
-    let other_layer = env.objc.borrow::<UIViewHostObject>(other).layer;
+    let other_layer = view_layer_or_nil(env, other);
     msg![env; this_layer convertPoint:point toLayer:other_layer]
 }
 - (CGRect)convertRect:(CGRect)rect
              fromView:(id)other { // UIView*
-    if other == nil {
-        let window: id = msg![env; this window];
-        assert!(window != nil);
-        return msg![env; this convertRect:rect fromView:window]
-    }
     let this_layer = env.objc.borrow::<UIViewHostObject>(this).layer;
-    let other_layer = env.objc.borrow::<UIViewHostObject>(other).layer;
+    let other_layer = view_layer_or_nil(env, other);
     msg![env; this_layer convertRect:rect fromLayer:other_layer]
 }
 - (CGRect)convertRect:(CGRect)rect
                toView:(id)other { // UIView*
-    if other == nil {
-        let window: id = msg![env; this window];
-        assert!(window != nil);
-        return msg![env; this convertRect:rect toView:window]
-    }
     let this_layer = env.objc.borrow::<UIViewHostObject>(this).layer;
-    let other_layer = env.objc.borrow::<UIViewHostObject>(other).layer;
+    let other_layer = view_layer_or_nil(env, other);
     msg![env; this_layer convertRect:rect toLayer:other_layer]
 }
 
+// Stored and reported back, but not acted on: tapHLE does not resize subviews
+// when a superview's bounds change. That is a real gap and a view relying on it
+// will be laid out wrongly — but silently discarding the value was worse, since
+// a view that reads its own mask back got a different answer than it set, and
+// UIKit code branches on that.
 - (())setAutoresizingMask:(NSUInteger)mask {
-    todo_objc_setter!(this, mask);
+    log_dbg!("TODO: [(UIView*){:?} setAutoresizingMask:{}] is stored but not applied", this, mask);
+    env.objc.borrow_mut::<UIViewHostObject>(this).autoresizing_mask = mask;
+}
+// Deferred, as UIKit defers it: the layout happens on the next turn of the run
+// loop, not inside this call.
+//
+// That distinction is not pedantry here. Laying out synchronously would recurse
+// without bound the moment any view calls -setNeedsLayout from inside its own
+// -layoutSubviews, which is ordinary, correct UIKit code — a control that
+// resizes itself in response to its content does exactly that.
+- (())setNeedsLayout {
+    env.objc.borrow_mut::<UIViewHostObject>(this).needs_layout = true;
+}
+
+// The escape hatch from the deferral: lay out now, whether or not anything
+// asked for it. UIKit walks up to the top of the hierarchy first; tapHLE lays
+// out this view and its subtree, which is what callers use it for (measure a
+// view before reading its frame).
+- (())layoutIfNeeded {
+    env.objc.borrow_mut::<UIViewHostObject>(this).needs_layout = false;
+    () = msg![env; this layoutSubviews];
+}
+
+- (NSUInteger)autoresizingMask {
+    env.objc.borrow::<UIViewHostObject>(this).autoresizing_mask
 }
 - (())setAutoresizesSubviews:(bool)enabled {
-    todo_objc_setter!(this, enabled);
+    log_dbg!("TODO: [(UIView*){:?} setAutoresizesSubviews:{}] is stored but not applied", this, enabled);
+    env.objc.borrow_mut::<UIViewHostObject>(this).autoresizes_subviews = enabled;
+}
+- (bool)autoresizesSubviews {
+    env.objc.borrow::<UIViewHostObject>(this).autoresizes_subviews
 }
 
 - (CGSize)sizeThatFits:(CGSize)size {
@@ -925,6 +1190,50 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 - (CGFloat)contentScaleFactor {
     1.0 // TODO
+}
+
+@end
+
+// Adapts the block-based animation API's completion block to the older
+// delegate-and-selector callback, so both routes share one implementation of
+// "when has the animation actually stopped?".
+@implementation _tapHLE_UIView_BlockCompletion: NSObject
+
++ (id)allocWithZone:(NSZonePtr)_zone {
+    let host_object = Box::<UIViewBlockCompletionHostObject>::default();
+    env.objc.alloc_object(this, host_object, &mut env.mem)
+}
+
+- (())setCompletionBlock:(id)block {
+    // The caller's completion block is normally a *stack* block literal, valid
+    // only while +animateWithDuration:... is on the stack. This object outlives
+    // that call — the completion runs when the animation stops, from the run
+    // loop — so the block must be copied to the heap, not merely retained.
+    // Retaining a stack block leaves its invoke pointer pointing into a dead
+    // frame, which shows up as a branch to a null PC much later.
+    let block: id = if block == nil { nil } else { msg![env; block copy] };
+    let host_object = env.objc.borrow_mut::<UIViewBlockCompletionHostObject>(this);
+    let old = std::mem::replace(&mut host_object.completion, block);
+    release(env, old);
+}
+
+// The old delegate callback passes `finished` boxed in an NSNumber, which is
+// UIKit's documented signature for it.
+- (())tapHLE_animationDidStop:(id)_animation_id // NSString*
+                     finished:(id)finished // NSNumber*
+                      context:(ConstVoidPtr)_context {
+    let finished: bool = if finished == nil { true } else { msg![env; finished boolValue] };
+    let completion = env.objc.borrow::<UIViewBlockCompletionHostObject>(this).completion;
+    if completion != nil {
+        let invoke = block_invoke_function(env, completion);
+        () = invoke.call_from_host(env, (completion, finished));
+    }
+}
+
+- (())dealloc {
+    let completion = env.objc.borrow::<UIViewBlockCompletionHostObject>(this).completion;
+    release(env, completion);
+    env.objc.dealloc_object(this, &mut env.mem)
 }
 
 @end
@@ -1021,3 +1330,16 @@ pub const CLASSES: ClassExports = objc_classes! {
 @end
 
 };
+
+/// The layer backing `view`, or `nil` for a nil view.
+///
+/// The co-ordinate conversion methods accept a nil counterpart to mean the
+/// window's co-ordinate space, and `CALayer`'s conversion spells that same case
+/// as a nil layer, so the nil passes straight through.
+fn view_layer_or_nil(env: &Environment, view: id) -> id {
+    if view == nil {
+        nil
+    } else {
+        env.objc.borrow::<UIViewHostObject>(view).layer
+    }
+}

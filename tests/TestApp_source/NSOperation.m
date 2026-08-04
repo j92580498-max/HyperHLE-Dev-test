@@ -53,6 +53,22 @@ int test_NSOperation(void) {
   if (operation_value != 2 || ![invocation isFinished])
     return -4;
 
+  // initWithInvocation: retains and executes an NSInvocation with arbitrary
+  // arguments, instead of reducing it to the one-object convenience form.
+  operation_value = 0;
+  NSMethodSignature *signature =
+      [NSMethodSignature signatureWithObjCTypes:"v12@0:4@8"];
+  NSInvocation *message = [NSInvocation invocationWithMethodSignature:signature];
+  [message setTarget:target];
+  [message setSelector:@selector(record:)];
+  id argument = target;
+  [message setArgument:&argument atIndex:2];
+  NSInvocationOperation *from_invocation =
+      [[NSInvocationOperation alloc] initWithInvocation:message];
+  [queue addOperation:from_invocation];
+  if (operation_value != 2 || ![from_invocation isFinished])
+    return -8;
+
   TestOperation *cancelled = [TestOperation new];
   [cancelled cancel];
   [queue addOperation:cancelled];
@@ -61,6 +77,7 @@ int test_NSOperation(void) {
     return -5;
 
   [cancelled release];
+  [from_invocation release];
   [invocation release];
   [target release];
   [queue release];

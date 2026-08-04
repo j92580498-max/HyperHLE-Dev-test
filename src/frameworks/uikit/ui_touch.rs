@@ -10,8 +10,8 @@ use crate::frameworks::core_graphics::{CGPoint, CGRect};
 use crate::frameworks::foundation::{NSInteger, NSTimeInterval, NSUInteger};
 use crate::mem::MutVoidPtr;
 use crate::objc::{
-    autorelease, id, msg, msg_class, nil, objc_classes, release, retain, ClassExports, HostObject,
-    NSZonePtr,
+    autorelease, id, msg, msg_class, nil, objc_classes, release, retain, Class, ClassExports,
+    HostObject, NSZonePtr,
 };
 use crate::window::{Coords, Event, FingerId};
 use crate::Environment;
@@ -259,9 +259,20 @@ fn handle_touches_down(env: &mut Environment, map: HashMap<FingerId, Coords>) {
                 None
             }
         }) else {
+            // Say what the candidates were. "No window contains this point" is
+            // ambiguous between "there are no windows" and "the windows are the
+            // wrong size or in the wrong place", and those are different bugs —
+            // the first is a nib or startup problem, the second a geometry one.
+            let windows = env.framework_state.uikit.ui_view.ui_window.windows.clone();
+            let mut frames = Vec::with_capacity(windows.len());
+            for window in windows {
+                let frame: CGRect = msg![env; window frame];
+                frames.push(format!("{window:?} frame {frame:?}"));
+            }
             log!(
-                "Couldn't find a window for touch at {:?}, discarding",
+                "Couldn't find a window for touch at {:?}, discarding. Windows: {:?}",
                 location,
+                frames,
             );
             continue;
         };
@@ -276,8 +287,12 @@ fn handle_touches_down(env: &mut Environment, map: HashMap<FingerId, Coords>) {
             continue;
         } else {
             log_dbg!(
-                "Found view {:?} with frame {:?} for touch at {:?} in window {:?}",
+                "Found view {:?} ({}) with frame {:?} for touch at {:?} in window {:?}",
                 view,
+                {
+                    let c: Class = msg![env; view class];
+                    env.objc.get_class_name(c).to_string()
+                },
                 {
                     let f: CGRect = msg![env; view frame];
                     f

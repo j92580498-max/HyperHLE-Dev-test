@@ -246,14 +246,34 @@ impl Bundle {
         // (or a comma separated list of strings).
         // UISupportedInterfaceOrientations (iOS 3.2) is an array of strings and
         // takes precedence.
+        // The newer key is documented as an array, and mostly is, but shipped
+        // Info.plists disagree: Paddle Pong writes a bare string under it, the
+        // older key's spelling with the newer key's name, and Glass Tower 2
+        // writes a dictionary of "Item 0", "Item 1" entries, which is what an
+        // array edited in the wrong pane of Xcode's plist editor becomes.
+        //
+        // A string is read the way the older key is read. Anything else that is
+        // not an array of strings is reported and treated as absent, which
+        // falls through to the older key and then to the portrait default -
+        // the same place a device ends up when it cannot read this key either.
         self.plist
             .get("UISupportedInterfaceOrientations")
-            .map(|v| {
-                v.as_array()
-                    .unwrap()
-                    .iter()
-                    .map(|o| o.as_string().unwrap())
-                    .collect()
+            .and_then(|v| match v.as_array() {
+                Some(array) => {
+                    let orientations: Vec<&str> =
+                        array.iter().filter_map(|o| o.as_string()).collect();
+                    if orientations.is_empty() {
+                        log!("UISupportedInterfaceOrientations names no orientations, ignoring");
+                    }
+                    (!orientations.is_empty()).then_some(orientations)
+                }
+                None => match v.as_string() {
+                    Some(s) => Some(s.split(',').collect()),
+                    None => {
+                        log!("UISupportedInterfaceOrientations is not a list of strings, ignoring");
+                        None
+                    }
+                },
             })
             .unwrap_or_else(|| {
                 if let Some(v) = self

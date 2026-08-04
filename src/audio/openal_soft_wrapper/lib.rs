@@ -131,6 +131,12 @@ pub mod al_defines {
     pub const AL_BUFFERS_QUEUED: ALenum = 0x1015;
     pub const AL_BUFFERS_PROCESSED: ALenum = 0x1016;
 
+    pub const AL_SAMPLE_OFFSET: ALenum = 0x1025;
+
+    pub const AL_BITS: ALenum = 0x2002;
+    pub const AL_CHANNELS: ALenum = 0x2003;
+    pub const AL_SIZE: ALenum = 0x2004;
+
     pub const AL_FORMAT_MONO8: ALenum = 0x1100;
     pub const AL_FORMAT_MONO16: ALenum = 0x1101;
     pub const AL_FORMAT_STEREO8: ALenum = 0x1102;
@@ -150,7 +156,7 @@ extern "C" {
 
     pub fn alEnable(capability: ALenum);
 
-    pub fn alGetBufferi(buffer: ALuint, param: ALenum, value: *const ALint);
+    pub fn alGetBufferi(buffer: ALuint, param: ALenum, value: *mut ALint);
 
     pub fn alListenerf(param: ALenum, value: ALfloat);
     pub fn alListener3f(param: ALenum, value1: ALfloat, value2: ALfloat, value3: ALfloat);

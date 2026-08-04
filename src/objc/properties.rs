@@ -15,6 +15,7 @@
 //! See also: [crate::frameworks::foundation::ns_object].
 
 use super::{id, msg, nil, release, retain, Class, ClassHostObject, ObjC, SEL};
+use crate::dyld::{export_c_func, FunctionExports};
 use crate::mem::{
     guest_size_of, ConstPtr, ConstVoidPtr, GuestISize, GuestUSize, Mem, MutPtr, MutVoidPtr, Ptr,
     SafeRead,
@@ -32,6 +33,34 @@ pub(super) struct ivar_list_t {
 }
 unsafe impl SafeRead for ivar_list_t {}
 
+/// The layout of a declared-property list in an app binary. Same shape as the
+/// ivar and method lists.
+#[repr(C, packed)]
+pub(super) struct property_list_t {
+    entsize: GuestUSize,
+    count: GuestUSize,
+    // entries follow the struct
+}
+unsafe impl SafeRead for property_list_t {}
+
+/// The layout of a property in an app binary.
+///
+/// This *is* `objc_property_t`'s referent: the runtime's opaque property handle
+/// is a pointer straight into this table, and `property_getName` and
+/// `property_getAttributes` just read these two fields. So tapHLE hands out the
+/// binary's own pointers rather than synthesising anything, and both accessors
+/// return exactly the strings the compiler emitted.
+#[repr(C, packed)]
+pub struct objc_property {
+    pub(super) name: ConstPtr<u8>,
+    pub(super) attributes: ConstPtr<u8>,
+}
+unsafe impl SafeRead for objc_property {}
+
+/// An opaque type that represents an Objective-C declared property.
+#[allow(non_camel_case_types)]
+pub(super) type objc_property_t = ConstPtr<objc_property>;
+
 /// The layout of a property in an app binary.
 ///
 /// The name, field names and field layout are based on what Ghidra outputs.
@@ -46,6 +75,28 @@ struct ivar_t {
 unsafe impl SafeRead for ivar_t {}
 
 impl ClassHostObject {
+    pub(super) fn add_properties_from_bin(
+        &mut self,
+        property_list_ptr: ConstPtr<property_list_t>,
+        mem: &Mem,
+    ) {
+        let property_list_t { entsize, count } = mem.read(property_list_ptr);
+        assert!(entsize >= guest_size_of::<objc_property>());
+
+        let properties_base_ptr: objc_property_t = (property_list_ptr + 1).cast();
+
+        for i in 0..count {
+            let property_ptr: objc_property_t =
+                Ptr::from_bits(properties_base_ptr.to_bits() + i * entsize);
+            let objc_property { name, .. } = mem.read(property_ptr);
+            // Declaration order is kept: -class_copyPropertyList reports it,
+            // and a linear scan over a handful of properties is not worth a
+            // second index.
+            let name = mem.cstr_at_utf8(name).unwrap().to_string();
+            self.properties.push((name, property_ptr));
+        }
+    }
+
     pub(super) fn add_ivars_from_bin(&mut self, ivar_list_ptr: ConstPtr<ivar_list_t>, mem: &Mem) {
         let ivar_list_t { entsize, count } = mem.read(ivar_list_ptr);
         assert!(entsize >= guest_size_of::<ivar_t>());
@@ -69,6 +120,71 @@ impl ClassHostObject {
     }
 }
 
+/// `Ivar`, the runtime's opaque handle for an instance variable.
+///
+/// The real runtime hands back a pointer to the class's `ivar_t` descriptor.
+/// tapHLE parses those into a [ClassHostObject]'s map and does not keep the
+/// descriptor's address, so what is returned here is the address of the ivar
+/// *within the object*. Callers use the result as a found/not-found flag, which
+/// this serves exactly; it is not usable with `ivar_getOffset` and friends, and
+/// none of those exist to receive it.
+type Ivar = MutVoidPtr;
+
+/// Read an instance variable by name, the reflective way.
+///
+/// Compiled ivar access goes through the offset globals instead, so this is
+/// reached only by code doing genuine runtime reflection — key-value coding
+/// fallbacks and the like.
+///
+/// The value is read as one guest word. That is what the real function does
+/// too: its `void **` out-parameter cannot express anything wider, so Apple
+/// documents it as being for object-typed and pointer-sized ivars.
+fn object_getInstanceVariable(
+    env: &mut Environment,
+    object: id,
+    name: ConstPtr<u8>,
+    out_value: MutPtr<MutVoidPtr>,
+) -> Ivar {
+    let name = env.mem.cstr_at_utf8(name).unwrap().to_string();
+    let Some(ivar_ptr) = env.objc.object_lookup_ivar(&env.mem, object, &name) else {
+        if !out_value.is_null() {
+            env.mem.write(out_value, Ptr::null());
+        }
+        return Ptr::null();
+    };
+    if !out_value.is_null() {
+        let value: MutVoidPtr = env.mem.read(ivar_ptr.cast());
+        env.mem.write(out_value, value);
+    }
+    ivar_ptr.cast()
+}
+
+/// The setter half. Provided alongside the getter rather than speculatively:
+/// the two are one API, and code that reflects over an ivar to read it is the
+/// same code that reflects over it to write it back.
+///
+/// Note that this stores the pointer as given. The real runtime does the same —
+/// it performs no retain, unlike `objc_setProperty` — so an object stored here
+/// is not owned by the receiver.
+fn object_setInstanceVariable(
+    env: &mut Environment,
+    object: id,
+    name: ConstPtr<u8>,
+    value: MutVoidPtr,
+) -> Ivar {
+    let name = env.mem.cstr_at_utf8(name).unwrap().to_string();
+    let Some(ivar_ptr) = env.objc.object_lookup_ivar(&env.mem, object, &name) else {
+        return Ptr::null();
+    };
+    env.mem.write(ivar_ptr.cast(), value);
+    ivar_ptr.cast()
+}
+
+pub(super) const FUNCTIONS: FunctionExports = &[
+    export_c_func!(object_getInstanceVariable(_, _, _)),
+    export_c_func!(object_setInstanceVariable(_, _, _)),
+];
+
 impl ObjC {
     /// Checks if the object's class has an ivar in its class chain with the
     /// provided name and returns the pointer to the object's ivar, if any,
@@ -79,6 +195,13 @@ impl ObjC {
         obj: id,
         name: &String,
     ) -> Option<MutPtr<GuestUSize>> {
+        // nil has no ivars, and in particular has no isa to read. Every caller
+        // reaching here from the runtime's reflective entry points can be
+        // handed a nil object by ordinary guest code, so this is the specified
+        // answer rather than a guard against a bug.
+        if obj == nil {
+            return None;
+        }
         let mut class = ObjC::read_isa(obj, mem);
         loop {
             let &ClassHostObject {
@@ -147,6 +270,49 @@ pub(super) fn objc_getProperty(
 /// Undocumented function (see link above) apparently used by auto-generated
 /// methods for properties to set an ivar and handle reference counting, copying
 /// and locking.
+/// The specialised entry points clang emits instead of `objc_setProperty` when
+/// the atomicity and copy behaviour are known at compile time. Each is that
+/// function with those two arguments already decided.
+pub(super) fn objc_setProperty_nonatomic(
+    env: &mut Environment,
+    this: id,
+    _cmd: SEL,
+    offset: GuestISize,
+    value: id,
+) {
+    objc_setProperty(env, this, _cmd, offset, value, false, 0)
+}
+
+pub(super) fn objc_setProperty_atomic(
+    env: &mut Environment,
+    this: id,
+    _cmd: SEL,
+    offset: GuestISize,
+    value: id,
+) {
+    objc_setProperty(env, this, _cmd, offset, value, true, 0)
+}
+
+pub(super) fn objc_setProperty_nonatomic_copy(
+    env: &mut Environment,
+    this: id,
+    _cmd: SEL,
+    offset: GuestISize,
+    value: id,
+) {
+    objc_setProperty(env, this, _cmd, offset, value, false, 1)
+}
+
+pub(super) fn objc_setProperty_atomic_copy(
+    env: &mut Environment,
+    this: id,
+    _cmd: SEL,
+    offset: GuestISize,
+    value: id,
+) {
+    objc_setProperty(env, this, _cmd, offset, value, true, 1)
+}
+
 pub(super) fn objc_setProperty(
     env: &mut Environment,
     this: id,

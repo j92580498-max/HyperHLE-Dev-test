@@ -10,7 +10,7 @@ use crate::dyld::{export_c_func, ConstantExports, FunctionExports, HostConstant}
 use crate::frameworks::core_graphics::{CGPoint, CGRect, CGSize};
 use crate::frameworks::foundation::ns_string::{from_rust_string, get_static_str};
 use crate::frameworks::foundation::{ns_array, ns_string, NSInteger, NSUInteger};
-use crate::mem::MutPtr;
+use crate::mem::{ConstVoidPtr, MutPtr};
 use crate::objc::{
     autorelease, id, msg, msg_class, nil, objc_classes, release, retain, todo_objc_setter,
     ClassExports, HostObject, NSZonePtr,
@@ -23,6 +23,11 @@ pub struct State {
     /// [UIApplication sharedApplication]
     shared_application: Option<id>,
     pub(super) status_bar_hidden: bool,
+    /// Set once the launch-time layout pass has run. Before that the view
+    /// hierarchy is still being built and running guest layout code is unsafe;
+    /// see `ui_view::mark_needs_layout_on_mount`.
+    pub(super) finished_launching: bool,
+    pub(super) network_activity_indicator_visible: bool,
 }
 
 struct UIApplicationHostObject {
@@ -164,6 +169,17 @@ pub const CLASSES: ClassExports = objc_classes! {
 - (())setStatusBarStyle:(UIStatusBarStyle)style {
     todo_objc_setter!(this, style);
 }
+
+// The network activity spinner lives in the status bar, which tapHLE does not
+// draw, so there is nothing to show. The value is still stored, because an app
+// that switches it on and off around requests may read it back to decide
+// whether a request is already in flight.
+- (bool)isNetworkActivityIndicatorVisible {
+    env.framework_state.uikit.ui_application.network_activity_indicator_visible
+}
+- (())setNetworkActivityIndicatorVisible:(bool)visible {
+    env.framework_state.uikit.ui_application.network_activity_indicator_visible = visible;
+}
 - (())setStatusBarStyle:(UIStatusBarStyle)style
                animated:(bool)_animated {
     // TODO: animation
@@ -180,7 +196,8 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (CGRect)statusBarFrame {
-    let (width, height) = env.window().device_family().portrait_size();
+    // Landscape-native mode reports a landscape-shaped screen.
+    let (width, height) = env.window().size_unrotated_unscaled();
     status_bar_frame(
         width as f32,
         height as f32,
@@ -378,20 +395,25 @@ pub(super) fn UIApplicationMain(
                 .borrow_mut::<UIApplicationHostObject>(ui_application)
                 .delegate_is_retained = true;
             retain(env, delegate);
+        } else if delegate_class_name == nil {
+            // UIApplicationMain accepts a nil delegate class, and a nib that
+            // sets no delegate is not an error either: an app that builds its
+            // window in main() and never implements the delegate protocol is
+            // unusual but legal, and UIKit simply leaves the delegate nil.
+            // Messages to it are then messages to nil, which is exactly what
+            // such an app expects.
+            log!("No application delegate class was named and the nib set none; running without a delegate");
+        } else if msg![env; delegate_class_name isEqual:principal_class_name] {
+            // If same non-nil class name is used for both principal and
+            // delegate, it means that app is using itself as a delegate
+            let _: () = msg![env; ui_application setDelegate:ui_application];
         } else {
-            assert!(delegate_class_name != nil);
-            if msg![env; delegate_class_name isEqual:principal_class_name] {
-                // If same non-nil class name is used for both principal and
-                // delegate, it means that app is using itself as a delegate
-                let _: () = msg![env; ui_application setDelegate:ui_application];
-            } else {
-                // We have to construct the delegate.
-                let name = ns_string::to_rust_string(env, delegate_class_name);
-                let class = env.objc.get_known_class(&name, &mut env.mem);
-                let delegate: id = msg![env; class new];
-                let _: () = msg![env; ui_application setDelegate:delegate];
-                assert!(delegate != nil);
-            }
+            // We have to construct the delegate.
+            let name = ns_string::to_rust_string(env, delegate_class_name);
+            let class = env.objc.get_known_class(&name, &mut env.mem);
+            let delegate: id = msg![env; class new];
+            let _: () = msg![env; ui_application setDelegate:delegate];
+            assert!(delegate != nil);
         };
         // We can't hang on to the delegate, the guest app may change it at any
         // time.
@@ -435,6 +457,9 @@ pub(super) fn UIApplicationMain(
     for view in views {
         () = msg![env; view layoutSubviews];
     }
+    // From here on, a view added to a window can be laid out as soon as it is
+    // mounted: the hierarchy the app builds during launch is complete.
+    env.framework_state.uikit.ui_application.finished_launching = true;
 
     // Send applicationDidBecomeActive now that the application is ready to
     // become active.
@@ -533,15 +558,50 @@ const UIApplicationWillEnterForegroundNotification: &str =
     "UIApplicationWillEnterForegroundNotification";
 const UIApplicationWillResignActiveNotification: &str = "UIApplicationWillResignActiveNotification";
 const UIApplicationWillTerminateNotification: &str = "UIApplicationWillTerminateNotification";
-/// Other app notifications
+/// Status bar notifications, and the `userInfo` keys they carry
+const UIApplicationWillChangeStatusBarOrientationNotification: &str =
+    "UIApplicationWillChangeStatusBarOrientationNotification";
+const UIApplicationDidChangeStatusBarOrientationNotification: &str =
+    "UIApplicationDidChangeStatusBarOrientationNotification";
+const UIApplicationWillChangeStatusBarFrameNotification: &str =
+    "UIApplicationWillChangeStatusBarFrameNotification";
+const UIApplicationDidChangeStatusBarFrameNotification: &str =
+    "UIApplicationDidChangeStatusBarFrameNotification";
+const UIApplicationStatusBarOrientationUserInfoKey: &str =
+    "UIApplicationStatusBarOrientationUserInfoKey";
+const UIApplicationStatusBarFrameUserInfoKey: &str = "UIApplicationStatusBarFrameUserInfoKey";
+/// Launch option keys. tapHLE always passes an empty launch options dictionary,
+/// so looking any of these up yields nil, which is the same answer the real
+/// thing gives for an ordinary launch from the home screen. They still have to
+/// exist: an app that reads its launch options dereferences the key without
+/// checking it, so leaving one unbound is a null pointer waiting to be read.
+const UIApplicationLaunchOptionsURLKey: &str = "UIApplicationLaunchOptionsURLKey";
+const UIApplicationLaunchOptionsSourceApplicationKey: &str =
+    "UIApplicationLaunchOptionsSourceApplicationKey";
 const UIApplicationLaunchOptionsRemoteNotificationKey: &str =
     "UIApplicationLaunchOptionsRemoteNotificationKey";
+const UIApplicationLaunchOptionsLocalNotificationKey: &str =
+    "UIApplicationLaunchOptionsLocalNotificationKey";
+const UIApplicationLaunchOptionsAnnotationKey: &str = "UIApplicationLaunchOptionsAnnotationKey";
+/// Other app notifications
 const UIApplicationDidReceiveMemoryWarningNotification: &str =
     "UIApplicationDidReceiveMemoryWarningNotification";
+
+/// `UIBackgroundTaskIdentifier`, the value meaning "no task". tapHLE has no
+/// background execution, so `beginBackgroundTask...` has nothing to hand back,
+/// but apps compare their stored identifier against this constant.
+fn UIBackgroundTaskInvalid(env: &mut Environment) -> ConstVoidPtr {
+    let invalid: NSUInteger = 0;
+    env.mem.alloc_and_write(invalid).cast().cast_const()
+}
 
 /// `UIApplicationLaunchOptionsKey` and `NSNotificationName` values.
 /// (Both types are strings)
 pub const CONSTANTS: ConstantExports = &[
+    (
+        "_UIBackgroundTaskInvalid",
+        HostConstant::Custom(UIBackgroundTaskInvalid),
+    ),
     (
         "_UIApplicationDidFinishLaunchingNotification",
         HostConstant::NSString(UIApplicationDidFinishLaunchingNotification),
@@ -571,8 +631,48 @@ pub const CONSTANTS: ConstantExports = &[
         HostConstant::NSString(UIApplicationDidReceiveMemoryWarningNotification),
     ),
     (
+        "_UIApplicationWillChangeStatusBarOrientationNotification",
+        HostConstant::NSString(UIApplicationWillChangeStatusBarOrientationNotification),
+    ),
+    (
+        "_UIApplicationDidChangeStatusBarOrientationNotification",
+        HostConstant::NSString(UIApplicationDidChangeStatusBarOrientationNotification),
+    ),
+    (
+        "_UIApplicationWillChangeStatusBarFrameNotification",
+        HostConstant::NSString(UIApplicationWillChangeStatusBarFrameNotification),
+    ),
+    (
+        "_UIApplicationDidChangeStatusBarFrameNotification",
+        HostConstant::NSString(UIApplicationDidChangeStatusBarFrameNotification),
+    ),
+    (
+        "_UIApplicationStatusBarOrientationUserInfoKey",
+        HostConstant::NSString(UIApplicationStatusBarOrientationUserInfoKey),
+    ),
+    (
+        "_UIApplicationStatusBarFrameUserInfoKey",
+        HostConstant::NSString(UIApplicationStatusBarFrameUserInfoKey),
+    ),
+    (
+        "_UIApplicationLaunchOptionsURLKey",
+        HostConstant::NSString(UIApplicationLaunchOptionsURLKey),
+    ),
+    (
+        "_UIApplicationLaunchOptionsSourceApplicationKey",
+        HostConstant::NSString(UIApplicationLaunchOptionsSourceApplicationKey),
+    ),
+    (
         "_UIApplicationLaunchOptionsRemoteNotificationKey",
         HostConstant::NSString(UIApplicationLaunchOptionsRemoteNotificationKey),
+    ),
+    (
+        "_UIApplicationLaunchOptionsLocalNotificationKey",
+        HostConstant::NSString(UIApplicationLaunchOptionsLocalNotificationKey),
+    ),
+    (
+        "_UIApplicationLaunchOptionsAnnotationKey",
+        HostConstant::NSString(UIApplicationLaunchOptionsAnnotationKey),
     ),
 ];
 

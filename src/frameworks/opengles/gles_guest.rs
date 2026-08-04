@@ -424,6 +424,28 @@ fn glPointSize(env: &mut Environment, size: GLfloat) {
 fn glPointSizex(env: &mut Environment, size: GLfixed) {
     with_ctx_and_mem(env, |gles, _mem| unsafe { gles.PointSizex(size) })
 }
+/// `GL_OES_point_size_array`: a per-point size array for point sprites.
+///
+/// Accepted and ignored. Desktop GL 2.1's fixed-function pipeline has no
+/// equivalent, so tapHLE does not model the array: `glEnableClientState`
+/// already reports `GL_POINT_SIZE_ARRAY_OES` as `GL_INVALID_ENUM`, leaving the
+/// array disabled, and every point is therefore drawn at the current
+/// `glPointSize`. Ignoring the pointer keeps that story consistent.
+///
+/// The visible consequence is that a particle system using per-point sizes
+/// draws uniformly sized particles. Emulating it properly needs a shader path.
+/// TODO: implement alongside GL_POINT_SIZE_ARRAY_OES in the ARRAYS table.
+fn glPointSizePointerOES(
+    _env: &mut Environment,
+    _type: GLenum,
+    _stride: GLsizei,
+    _pointer: ConstVoidPtr,
+) {
+    log_once!(
+        "glPointSizePointerOES() is ignored: point sprites are drawn at the uniform \
+         current glPointSize"
+    );
+}
 fn glPointParameterf(env: &mut Environment, pname: GLenum, param: GLfloat) {
     with_ctx_and_mem(env, |gles, _mem| unsafe {
         gles.PointParameterf(pname, param)
@@ -983,6 +1005,24 @@ fn glTexParameterx(env: &mut Environment, target: GLenum, pname: GLenum, param: 
         gles.TexParameterx(target, pname, param)
     })
 }
+fn glGetTexParameteriv(
+    env: &mut Environment,
+    target: GLenum,
+    pname: GLenum,
+    params: MutPtr<GLint>,
+) {
+    with_ctx_and_mem(env, |gles, mem| unsafe {
+        // TEXTURE_CROP_RECT_OES is the only one of these that is four values
+        // wide; everything else is one.
+        let count = if pname == gles11::TEXTURE_CROP_RECT_OES {
+            4
+        } else {
+            1
+        };
+        let params = mem.ptr_at_mut(params, count);
+        gles.GetTexParameteriv(target, pname, params)
+    })
+}
 fn glTexParameteriv(env: &mut Environment, target: GLenum, pname: GLenum, params: ConstPtr<GLint>) {
     // See above.
     if pname == gles11::TEXTURE_CROP_RECT_OES {
@@ -1087,9 +1127,17 @@ fn glTexSubImage2D(
     pixels: ConstVoidPtr,
 ) {
     with_ctx_and_mem(env, |gles, mem| unsafe {
-        let pixel_count: GuestUSize = width.checked_mul(height).unwrap().try_into().unwrap();
-        let size = image_size_estimate(pixel_count, format, type_);
-        let pixels = mem.ptr_at(pixels.cast::<u8>(), size).cast::<GLvoid>();
+        // As in glTexImage2D: a null pointer is passed straight through (it
+        // means "read from the bound pixel-unpack buffer", or nothing for a
+        // zero-sized update), rather than dereferenced. This also avoids a
+        // null-page check on a legitimate 0x0 sub-image update.
+        let pixels = if pixels.is_null() {
+            std::ptr::null()
+        } else {
+            let pixel_count: GuestUSize = width.checked_mul(height).unwrap().try_into().unwrap();
+            let size = image_size_estimate(pixel_count, format, type_);
+            mem.ptr_at(pixels.cast::<u8>(), size).cast::<GLvoid>()
+        };
         gles.TexSubImage2D(
             target, level, xoffset, yoffset, width, height, format, type_, pixels,
         )
@@ -1663,11 +1711,8 @@ fn glCompileShader(env: &mut Environment, shader: GLuint) {
             let mut buf = [0u8; 1024];
             let mut len: GLsizei = 0;
             gles.GetShaderInfoLog(shader, 1024, &mut len, buf.as_mut_ptr() as *mut _);
-            let s = std::str::from_utf8(std::slice::from_raw_parts(
-                buf.as_ptr() as *const u8,
-                len as usize,
-            ))
-            .unwrap_or("?");
+            let s = std::str::from_utf8(std::slice::from_raw_parts(buf.as_ptr(), len as usize))
+                .unwrap_or("?");
             log!("Shader {} compile failed: {}", shader, s);
         }
     });
@@ -1691,11 +1736,8 @@ fn glLinkProgram(env: &mut Environment, program: GLuint) {
             let mut buf = [0u8; 1024];
             let mut len: GLsizei = 0;
             gles.GetProgramInfoLog(program, 1024, &mut len, buf.as_mut_ptr() as *mut _);
-            let s = std::str::from_utf8(std::slice::from_raw_parts(
-                buf.as_ptr() as *const u8,
-                len as usize,
-            ))
-            .unwrap_or("?");
+            let s = std::str::from_utf8(std::slice::from_raw_parts(buf.as_ptr(), len as usize))
+                .unwrap_or("?");
             log!("Program {} link failed: {}", program, s);
         }
     });
@@ -1939,7 +1981,7 @@ fn glUniform4f(
 }
 fn glUniform1iv(env: &mut Environment, location: GLint, count: GLsizei, value: ConstPtr<GLint>) {
     with_ctx_and_mem(env, |gles, mem| unsafe {
-        let n = (count as usize).max(0);
+        let n = count as usize;
         let ptr = mem.ptr_at(value, n.try_into().unwrap_or(0));
         gles.Uniform1iv(location, count, ptr);
     });
@@ -2124,6 +2166,7 @@ pub const FUNCTIONS: FunctionExports = &[
     // Points
     export_c_func!(glPointSize(_)),
     export_c_func!(glPointSizex(_)),
+    export_c_func!(glPointSizePointerOES(_, _, _)),
     export_c_func!(glPointParameterf(_, _)),
     export_c_func!(glPointParameterx(_, _)),
     export_c_func!(glPointParameterfv(_, _)),
@@ -2204,6 +2247,7 @@ pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(glTexParameterf(_, _, _)),
     export_c_func!(glTexParameterx(_, _, _)),
     export_c_func!(glTexParameteriv(_, _, _)),
+    export_c_func!(glGetTexParameteriv(_, _, _)),
     export_c_func!(glTexParameterfv(_, _, _)),
     export_c_func!(glTexParameterxv(_, _, _)),
     export_c_func!(glTexImage2D(_, _, _, _, _, _, _, _, _)),

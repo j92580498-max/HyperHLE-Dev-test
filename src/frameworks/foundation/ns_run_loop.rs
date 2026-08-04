@@ -12,6 +12,7 @@ use super::{ns_string, ns_timer, NSTimeInterval};
 use crate::dyld::{ConstantExports, HostConstant};
 use crate::environment::ThreadId;
 use crate::frameworks::audio_toolbox::audio_queue::{handle_audio_queue, AudioQueueRef};
+use crate::frameworks::audio_toolbox::audio_services::handle_system_sound_completions;
 use crate::frameworks::audio_toolbox::audio_unit::{render_audio_unit, AudioUnit};
 use crate::frameworks::core_animation::ca_transaction;
 use crate::frameworks::core_foundation::cf_run_loop::{
@@ -111,12 +112,41 @@ pub const CLASSES: ClassExports = objc_classes! {
         ns_string::to_rust_string(env, mode),
     );
 
+    // Scheduling a timer that is already on this run loop is not an error: an
+    // app that adds the same timer for the default mode and again for the
+    // common modes is asking for one timer in two modes, and one that re-adds a
+    // timer it never invalidated is repeating a request already granted. Either
+    // way the device keeps a single registration, so the second call is
+    // finished here - before the retain, which would otherwise leave the timer
+    // over-retained and permanently alive.
+    if env
+        .objc
+        .borrow::<NSRunLoopHostObject>(this)
+        .timers
+        .contains(&timer)
+    {
+        log_dbg!("Timer {:?} is already on run loop {:?}, ignoring", timer, this);
+        return;
+    }
+
+    // A timer already scheduled on a different run loop keeps that
+    // registration; adding it here as well would fire it twice.
+    if !ns_timer::set_run_loop(env, timer, this) {
+        log_dbg!("Timer {:?} is already on another run loop, ignoring", timer);
+        return;
+    }
+
     retain(env, timer);
 
     let host_object = env.objc.borrow_mut::<NSRunLoopHostObject>(this);
-    assert!(!host_object.timers.contains(&timer)); // TODO: what do we do here?
     host_object.timers.push(timer);
-    ns_timer::set_run_loop(env, timer, this);
+}
+
+// NSMachPort delivery is not implemented. Older networking libraries may
+// still register a port for an optional request, so accept that registration
+// without making a run-loop delivery guarantee.
+- (())addPort:(id)_port // NSPort*
+      forMode:(NSRunLoopMode)_mode {
 }
 
 - (())run {
@@ -126,6 +156,15 @@ pub const CLASSES: ClassExports = objc_classes! {
 - (())runUntilDate:(id)date {
     let time_limit: NSTimeInterval = msg![env; date timeIntervalSince1970];
     run_run_loop(env, this, /* single_iteration: */ false, Some(time_limit));
+}
+
+- (bool)runMode:(NSRunLoopMode)_mode
+    beforeDate:(id)_limit_date {
+    // The current run-loop implementation has no generic input-source model,
+    // but it can advance timers and queued selectors once. With no registered
+    // input source to dispatch, Foundation reports NO to the caller.
+    run_run_loop(env, this, /* single_iteration: */ true, None);
+    false
 }
 
 // TODO: other run methods
@@ -330,9 +369,7 @@ pub(super) fn cancel_all_perform_requests_for_target(
         .selector_objects = new_selector_objects;
 }
 
-/// Run the run loop for just a single iteration. This is a special mode just
-/// for the app picker, since we don't have `runMode:beforeDate:` yet.
-/// (TODO: implement those to replace this.)
+/// Run the run loop for just a single iteration.
 pub fn run_run_loop_single_iteration(env: &mut Environment, run_loop: id) {
     run_run_loop(env, run_loop, /* single_iteration: */ true, None)
 }
@@ -386,6 +423,10 @@ pub fn run_run_loop(
             let next_due = uikit::handle_events(env);
             limit_sleep_time(&mut sleep_until, next_due);
 
+            // Before compositing, not after: a view that asked for layout this
+            // turn must be laid out before the frame that shows it is drawn.
+            crate::frameworks::uikit::ui_view::handle_pending_layout(env);
+
             let next_due = core_animation::recomposite_if_necessary(env, false);
             limit_sleep_time(&mut sleep_until, next_due);
         }
@@ -428,6 +469,10 @@ pub fn run_run_loop(
             render_audio_unit(env, audio_unit);
         }
 
+        // System sounds are not registered with a particular run loop in
+        // tapHLE, so this polls all of them for the ones that have finished.
+        handle_system_sound_completions(env);
+
         loop {
             let selector_objects = &mut env
                 .objc
@@ -451,11 +496,37 @@ pub fn run_run_loop(
                     } = selector_objects.remove(index).unwrap();
                     log_dbg!("Running object selector request {target:?} {:?} {argument:?} on run loop {run_loop:?}", selector.as_str(env.mem.as_mut()));
 
-                    if selector.as_str(&env.mem).ends_with(':') {
-                        () = msg_send(env, (target, selector, argument));
-                    } else {
-                        assert!(argument.is_null());
-                        () = msg_send(env, (target, selector));
+                    // `performSelector:withObject:afterDelay:` supplies at most
+                    // one object, but the selector it names may take a
+                    // different number of arguments. Foundation builds an
+                    // NSInvocation sized from the target's method signature and
+                    // sets only the argument it was given, so the rest arrive
+                    // as nil. Matching that matters: dispatching with too few
+                    // arguments leaves the remaining registers holding whatever
+                    // the last call left there, and the callee cannot tell that
+                    // from a real object — a nil check on it passes, and the
+                    // guest then messages a stale pointer.
+                    let parameters = selector.as_str(&env.mem).matches(':').count();
+                    match parameters {
+                        0 => {
+                            // No slot for the object, so discard it.
+                            () = msg_send(env, (target, selector));
+                        }
+                        1 => () = msg_send(env, (target, selector, argument)),
+                        2 => () = msg_send(env, (target, selector, argument, nil)),
+                        3 => () = msg_send(env, (target, selector, argument, nil, nil)),
+                        4 => () = msg_send(env, (target, selector, argument, nil, nil, nil)),
+                        _ => {
+                            // Beyond this the argument list would have to be
+                            // built dynamically. Dispatching anyway would leave
+                            // the extra arguments holding stale registers, so
+                            // say so rather than corrupt the call.
+                            log!(
+                                "TODO: performSelector: on {:?} takes {} arguments, which is more than can be filled in; not dispatching it",
+                                selector.as_str(&env.mem),
+                                parameters,
+                            );
+                        }
                     }
 
                     release(env, target);

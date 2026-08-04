@@ -46,29 +46,124 @@ show one boundary at a time, and record the coordinate/timing recipe. Automated
 screenshots and clicks support what a person can observe; they do not replace a
 human playtest for menu, input, gameplay, orientation, or audio claims.
 
+### Antigravity CLI interactive-desktop harness
+
+This harness is for **Google Antigravity CLI (AGY) only**. Codex and other
+agent surfaces must not use `agy-visible-taphle.ps1`; they should use their own
+visible-window launch, inspection, input, and shutdown facilities instead.
+
+AGY's ordinary Windows commands run on a background desktop. Direct execution,
+`Start-Process`, and `cmd /c start` can initialize tapHLE's SDL, OpenGL, and
+audio paths while leaving its window invisible to the logged-in user. AGY must
+use the repository harness for all GUI-sensitive operations.
+
+Run exactly one step at a time and stop on any nonzero exit:
+
+```powershell
+# Build once.
+cargo build --release
+
+# Launch the picker, or append -AppPath with the exact verified IPA path.
+powershell -NoProfile -ExecutionPolicy Bypass -File `
+    .\dev-scripts\agy-visible-taphle.ps1 -Action Launch
+
+# Require a live PID and nonzero top-level window handle.
+powershell -NoProfile -ExecutionPolicy Bypass -File `
+    .\dev-scripts\agy-visible-taphle.ps1 -Action Status
+
+# Capture and inspect the starting screen.
+powershell -NoProfile -ExecutionPolicy Bypass -File `
+    .\dev-scripts\agy-visible-taphle.ps1 -Action Capture
+
+# Focus and click one client coordinate.
+powershell -NoProfile -ExecutionPolicy Bypass -File `
+    .\dev-scripts\agy-visible-taphle.ps1 -Action Focus
+powershell -NoProfile -ExecutionPolicy Bypass -File `
+    .\dev-scripts\agy-visible-taphle.ps1 -Action Click -X 384 -Y 512
+
+# Capture and inspect the resulting screen before recording the click-map step.
+powershell -NoProfile -ExecutionPolicy Bypass -File `
+    .\dev-scripts\agy-visible-taphle.ps1 -Action Capture
+
+# Close only the broker-launched process.
+powershell -NoProfile -ExecutionPolicy Bypass -File `
+    .\dev-scripts\agy-visible-taphle.ps1 -Action Close
+```
+
+For a direct launch, use a literal path and never guess an Archive filename:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File `
+    .\dev-scripts\agy-visible-taphle.ps1 -Action Launch `
+    -AppPath '.\tapHLE_apps\<exact verified filename>.ipa'
+```
+
+The harness creates per-user Scheduled Tasks with `Interactive` logon type.
+The launch task keeps tapHLE on the logged-in desktop and configures tapHLE's
+internal frame capture. The short-lived input task focuses, clicks, or posts
+`WM_CLOSE` on that same desktop. State and logs live outside the checkout under
+`%LOCALAPPDATA%\tapHLE\agy-visible`.
+
+A click-map step is proven only when `Status` returns a nonzero window handle,
+the pre-click frame visibly identifies the expected starting screen, `Click`
+succeeds, and the post-click frame visibly identifies the resulting screen.
+Audio, a zero command exit, or a running background task is not visual proof.
+Use `-Action Uninstall` only to intentionally remove the scheduled tasks.
+
 ## Freeze the artifact identity first
 
-For an Archive-backed target, follow `compatibility/README.md` exactly. Use the
-item URL supplied by the maintainer; never search for a substitute.
+Read the app's identity from `tapHLE --info` — bundle identifier, bundle
+version, short version, minimum OS version — and record it in the app note.
+**A filename is not identity**, and neither is a download page title or your
+recollection of which app you launched. Do this once per artifact, and re-read it
+before composing any report.
 
-At intake and again before a report-worthy clean run, use the full
-`compatibility.py verify-archive` protocol. Before every intervening runtime
-experiment, at minimum recalculate the local SHA-256:
+For an Archive-backed target, use the item URL supplied by the maintainer; never
+search for a substitute. Record where the file came from so someone else can
+obtain it, and record a locally computed SHA-256 so a later run can confirm it is
+testing the same bytes:
 
 ```powershell
 Get-FileHash -Algorithm SHA256 -LiteralPath '<exact local IPA>'
 ```
 
-The local SHA-256 must match the value calculated during full verification and
-recorded in the compatibility database for that exact filename. Archive
-metadata supplies the MD5/SHA-1 checks used by the full protocol; do not imply
-that it publishes the repository's SHA-256. If any hash does not match, stop
-using that local copy. Confirm the embedded bundle identifier/version and
-`tapHLE --info` output once per artifact and record the result in the app note.
-A copied filename is not identity.
+That comparison — this run against an earlier run — is the one worth making.
+Matching a fresh download against the same host's published MD5/SHA-1 is not
+required and no longer gates anything; see "Why the download hash gate is gone"
+in `compatibility/README.md`. A missing or mismatched published hash is not a
+reason to refuse to test a file.
 
 Do not duplicate IPAs between run directories. Keep them outside Git and pass
 their absolute path to tapHLE.
+
+## Check the binary is decrypted before blaming the emulator
+
+An App Store binary ships FairPlay-encrypted. A dump obtained without
+decryption still has `LC_ENCRYPTION_INFO` with `cryptid = 1`, and its `__TEXT`
+is ciphertext. tapHLE will load such a slice happily and then execute garbage.
+
+The signature is distinctive and easy to misread as an emulator bug: the last
+line logged is `Loading <arch> slice for "<app>"`, and then the process dies or
+hangs with **no Rust panic**, no register dump, and nothing on stderr even with
+`RUST_BACKTRACE=1`. There is no missing selector to chase, because no guest code
+has meaningfully run.
+
+Check `cryptid` before investigating any load-time failure of that shape. From
+the IPA, without extracting anything to disk:
+
+```python
+import zipfile, struct
+d = zipfile.ZipFile(ipa).read(exe_member)
+# walk the fat header if magic is 0xcafebabe, then per slice walk the load
+# commands and look for LC_ENCRYPTION_INFO (0x21) / _64 (0x2C); the cryptid is
+# the u32 at offset 16 in that command.
+```
+
+`cryptid = 1` means the artifact cannot be tested, whatever the emulator does.
+That is a fact about the file, not a compatibility result: record it as the
+reason the app is untestable and move on, rather than filing it as an emulator
+limitation. Two apps in one session (JungleZuma, Max Adventure Free) were
+misdiagnosed as a shared Mach-O loader bug before this was checked.
 
 ## Follow an evidence ladder
 
@@ -153,9 +248,16 @@ only crash later when generated code loads through the unresolved slot.
 Rust and Cargo may retain absolute paths to an old worktree in `target` build
 metadata. If a diagnostic build unexpectedly names a deleted sibling checkout,
 do not recreate that sibling. Confirm the current repository and target path,
-then invalidate only the affected cached build scope or use the already proven
-release profile. Never treat a failure caused by stale build metadata or a
-missing optional debug dependency as an app compatibility result.
+then invalidate only the affected cached build scope. Never treat a failure
+caused by stale build metadata or a missing optional debug dependency as an app
+compatibility result. Prefer fixing such a reference at its source over working
+around it: a build script that locates files through `env!("CARGO_MANIFEST_DIR")`
+bakes the compiling worktree's absolute path into the build-script binary, which
+cargo can reuse from a since-deleted worktree; reading `CARGO_MANIFEST_DIR` at
+run time (`std::env::var`) is stale-proof because cargo sets it fresh per
+invocation. The native wrapper crates (`dynarmic`, `openal`) build their C/C++
+via CMake and need `cmake` on `PATH`; a from-scratch debug build of those crates
+will fail without it.
 
 When the fault is an assertion at an HLE graphics boundary, recover the exact
 guest API call and enum before relaxing it. Some old apps make invalid GL calls
@@ -290,7 +392,23 @@ part of the compatibility test.
 
 Reuse a proven input recipe. Change one step at the frontier rather than
 inventing a new route on every launch. A successful click path is evidence and
-belongs in the app note.
+belongs in the app note as a **click map**: the ordered list of taps that
+navigates the app from launch to its current frontier. Record one for every app
+that needs more than a launch to reach its milestone, and keep it current as the
+frontier advances. A good click map lets the next agent (or a re-verification
+run) reproduce the milestone mechanically instead of re-discovering the route,
+and it makes a "did this regress?" check objective.
+
+Each click-map step records: the screen it starts on, the client-area tap
+coordinate, and the screen it leads to. Client coordinates are only meaningful
+against a stated **window size and orientation**, because tapHLE maps a client
+tap into app space through the viewport and rotation — a landscape-native
+1024×768 window, a portrait 768×1024 window, and a scaled window all map the same
+client point differently. So the header of a click map states the exact launch
+options (e.g. `--landscape-native`), the resulting window size, and the menu-load
+wait before the first tap. Prefer coordinates that hit the centre of a generous
+target so small layout differences do not miss. When a tap is timing-sensitive,
+note the wait after it.
 
 ### Capture the rendered frame when desktop capture is black
 
@@ -498,7 +616,15 @@ limitation. Never silently repair or classify an ambiguous file as evidence.
   context lines; do not repeatedly reread or paste the full file.
 - Prefer junctions/hard links over copied runtime support trees.
 - Remove only the exact temporary extraction/run directories created for the
-  completed experiment. Never use a broad wildcard or an unresolved path.
+  completed experiment. Never use a broad wildcard or an unresolved path. The
+  practice that makes this automatic: the harness that creates a directory
+  captures its path in a variable and is the only thing that deletes it, by that
+  variable. Enumerating the temporary directory by a `taphle-*` pattern is the
+  mistake this rule exists to prevent — that directory is shared by every
+  session and every app, so a matching name is not evidence that the directory
+  is yours, and a force delete there does not go to the Recycle Bin. If you are
+  not certain a directory is yours, leave it: stale temporary data costs
+  nothing, and it may be another investigation's only remaining evidence.
 - Keep the small sanitized conclusion, not gigabytes of intermediate data.
 
 ## Choose and bound the fix
@@ -530,10 +656,12 @@ A dirty-worktree run is a useful experiment but never database evidence.
 
 1. Commit the focused implementation on `compat/<app-slug>`.
 2. Build and run the relevant tests from that exact commit.
-3. Re-verify the IPA hash and replay the milestone on Windows.
+3. Re-verify the IPA hash and replay the milestone on the claimed host. For an
+   iOS-host result, use a physical device rather than only the simulator.
 4. If the milestone is reproducible, append a compatibility report referencing
    the tested implementation commit.
-5. Commit the generated compatibility view separately when practical.
+5. Submit the verified result to the live compatibility database when
+   publication is authorized.
 6. When publishing is authorized, push unfinished checkpoints to the
    compatibility branch so another agent can resume them. Merge a stable,
    documented milestone to `trunk` even when known limitations remain.
@@ -541,6 +669,21 @@ A dirty-worktree run is a useful experiment but never database evidence.
 Keep implementation, agent-policy documentation, and compatibility reports in
 separable commits. This makes incomplete app experiments easy to continue or
 revert without losing durable process improvements.
+
+### Include a screenshot when you have one
+
+A screenshot of the milestone is welcome in a report and makes the rating much
+easier for a human to confirm or overturn — a picture of the running game
+settles "in game" faster than any amount of prose about it. Prefer the OS-level
+screenshot of tapHLE's window over tapHLE's own frame capture, for the reason
+in "A frame capture is not necessarily the screen".
+
+It is **not required**. Some milestones are not visual at all, desktop capture
+sometimes returns a black client area, and a report is perfectly valid without
+one. Never hold back or delay a verified result because a screenshot could not
+be obtained, and never describe a screen you did not actually look at in order
+to have something to say — an accurate report with no image beats an
+illustrated guess. Say what you observed and how you observed it.
 
 ## Continuation-note template
 
@@ -553,7 +696,8 @@ more than one focused turn. Keep it sanitized and concise:
 - Branch and last pushed commit:
 - Canonical artifact URL, filename, SHA-256, bundle ID/version:
 - Highest clean committed milestone:
-- Proven input recipe:
+- Click map (launch options, window size/orientation, menu-load wait, then the
+  ordered `screen -> client (x,y) -> resulting screen` taps):
 - Proven facts:
 - Rejected hypotheses:
 - Current uncommitted diagnostics or code:
@@ -562,6 +706,170 @@ more than one focused turn. Keep it sanitized and concise:
 - Next discriminator or implementation step:
 ```
 
+The click map is the reproducible route from launch to the frontier; see "Reuse
+a proven input recipe" above for what each step records and why the window
+size/orientation header is required.
+
 Do not put app code, decompiled listings, assets, screenshots, raw logs, keys,
 or personal paths in the note. Exact public provenance, hashes, symbol names,
 addresses, API shapes, and summarized behavior are sufficient for continuity.
+
+## A liveness check is not a regression check
+
+Two three-star apps were broken during a single session and neither was caught
+by the routine sweep. Both misses were the same mistake in different clothes.
+
+**SPY mouse HD** stayed up for roughly forty seconds and then aborted. A sweep
+that launches an app, waits twenty seconds and confirms the process is alive saw
+a healthy splash screen and reported success. The app never reached a level
+again.
+
+**JellyCar 2** was not in the sweep at all. It had been rated three stars weeks
+earlier, so it was assumed to still work — and it had been dead for a dozen
+commits before anyone launched it.
+
+So:
+
+1. **Check every app that carries a rating**, not a convenient subset. An app
+   absent from the sweep is an app whose rating is a claim about the past.
+2. **Drive each one to the milestone it is rated for.** Three stars means a
+   gameplay loop, so the check has to reach gameplay. Confirming the process is
+   alive confirms only that it has not crashed *yet*.
+3. **Wait long enough.** Give an app at least as long as its recorded startup
+   time plus a margin. Failures that arrive at forty seconds are invisible to a
+   twenty-second check.
+4. **Compare frames by hash, not by eye or by file size.** Two captures of a
+   static screen are byte-identical; two captures of a running game are not.
+   That single check distinguishes "playing" from "frozen on a plausible
+   screenshot", and it is the check that has caught the most.
+
+`dev-scripts/regression-sweep.ps1` does 1, 3 and 4. It sweeps whatever is in
+the app collection directory, so there is no list for an app to fall out of,
+and it takes per-app launch options from `tapHLE_default_options.txt` by bundle
+identifier rather than carrying its own copy of them. It exits non-zero if any
+app failed to start or died.
+
+Run it before merging anything that touches a shared path, and after. Writing
+the check by hand instead is how it shrank to eight apps and a twenty-second
+wait the last time.
+
+It does **not** do 2. Nothing in it leaves the title screen, so it reports
+`STATIC` for an app that is merely waiting for input and for one that is
+wedged, and cannot tell them apart. Reaching a rated milestone still means
+following that app's click map by hand.
+
+Treat `STATIC` as a prompt to look, not as a verdict. Some title screens change
+very slowly - Warlords HD's takes about fifteen seconds - so the sweep samples
+several frames before calling anything still, and even then Flight Control HD
+has read `MOVING` on one run and `STATIC` on the next. That is why `STATIC`
+does not fail the run. A genuine freeze is confirmed by driving the app, not by
+this number.
+
+**Run it on a machine nobody is using.** Every app appears on the real desktop
+and accepts real input, for around half an hour. JellyCar 2 was recorded as
+`MOVING` on one run because the maintainer picked it up and played it, when its
+title screen does not move on its own. The sweep now checks how long the
+machine has been idle and marks any such result `MOVING?`, but it can only
+report the doubt, not remove it: a run taken while the desktop was in use
+cannot establish that anything still animates.
+
+### Bisect rather than guess when a regression appears
+
+An app that used to work and now does not has a first bad commit, and finding it
+is cheap next to reasoning about which change "looks risky". JellyCar 2 was
+pinned in three builds — working at its rated commit, working at the parent of
+the suspect merge, dead at the merge — which named the cause with no argument
+about it.
+
+The rated commit is recorded in every app note precisely so this is possible.
+Use it.
+
+### The fix for a regression is rarely "revert" or "keep"
+
+The layout-on-mount change that broke JellyCar 2 was also what got Tap Tap
+Revenge 2 into gameplay, so both reverting and keeping it cost a three-star
+result. Two narrower attempts failed — dropping the recursion into subviews, and
+restricting it to `CAEAGLLayer`-backed views — and their failure is what showed
+the problem was *when* the layout ran rather than *which views* it touched.
+
+The answer was a condition neither app suggested on its own: lay out on mount
+only once launching has finished. When two apps disagree, look for the
+distinction that explains both, and treat a narrowing that fails as evidence
+about the shape of the bug rather than a dead end.
+
+## A frame capture is not necessarily the screen
+
+tapHLE has two capture sites and they answer different questions.
+
+`capture_renderbuffer` logs **"Captured submitted EAGL renderbuffer"**. It runs
+inside `-[EAGLContext presentRenderbuffer:]` *before* the fast/slow branch, so it
+records what the app drew into its own buffer — before host rotation, before
+composition, before the virtual cursor. Its doc comment says exactly this.
+
+`capture_composited_frame` logs **"Captured presented Core Animation frame"**.
+That one is the screen.
+
+The trap: when an app has no visible window, `recomposite_if_necessary` returns
+early and `find_fullscreen_eagl_layer` returns nil, so nothing is presented at
+all — and the *renderbuffer* capture still produces a perfect-looking image. The
+Jim & Frank Mysteries HD was rated two stars on that basis for a whole session.
+Its window comes from its main nib and was being deallocated, so the screen held
+a frozen splash while every capture showed a full main menu.
+
+Two consequences worth remembering:
+
+1. **Check which line the log emitted.** `grep Captured` costs nothing and tells
+   you which of the two you are holding.
+2. **For anything surprising, take an OS-level screenshot.** `PrintWindow` with
+   `PW_RENDERFULLCONTENT` on the tapHLE window is outside tapHLE's GL code
+   entirely, so it cannot be fooled by any of this. Sampling the pixel histogram
+   is enough — a frozen splash, a grey fill and a live game are obvious apart by
+   distinct-colour count alone.
+
+A corollary: a rotated capture proves nothing about orientation, because the
+renderbuffer capture is taken before host rotation. Neither does an unchanged
+capture after passing `--landscape-native`, which only affects `present_frame`.
+
+## An opaque guest MemoryError is usually a name you already have
+
+`Error during CPU execution: MemoryError` is what tapHLE reports for *any* bad
+guest access, so it names nothing by itself. Two cheap steps turn it into a
+symbol, and the second is nearly free.
+
+### 1. Disassemble the faulting PC
+
+`dev-scripts/disasm-guest-fault.py <app.ipa> <pc>` takes the PC straight from
+tapHLE's register dump and prints the instructions around it, resolving the
+guest address through the Mach-O segments and handling fat binaries and Thumb.
+
+JellyCar 1 faulted at `0x30190`:
+
+```text
+0x0003018e  ldr   r3, [r3]        <- r3 = *(a global)
+0x00030190  vldr  d7, [r3]        <== FAULT
+```
+
+with `R3 = 0` in the dump. So a global pointer was null and the code loaded a
+double through it.
+
+### 2. Cross-reference the address against the non-lazy symbol warnings
+
+This is the step to try **first**, because it needs no tools at all. tapHLE
+already logs, for every symbol it could not bind:
+
+```text
+Warning: unhandled non-lazy symbol "_kCFAbsoluteTimeIntervalSince1970" at 0x433e8
+```
+
+That address is the same one the faulting instruction loads from. The warning had
+been in the log the whole time, filtered out as noise because these warnings are
+common and usually harmless.
+
+**They are only harmless while the guest does not dereference them.** An unbound
+`__nl_symbol_ptr` slot is a null pointer sitting in `__DATA` waiting for someone
+to read it, and the guest reads it without checking. So treat each warning as a
+latent null dereference, and when a `MemoryError` appears, grep the log for the
+address the fault touched before doing anything else.
+
+Exporting that one constant took JellyCar 1 from crashing during startup to its
+full main menu and into level loading.

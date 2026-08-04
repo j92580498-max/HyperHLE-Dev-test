@@ -3,8 +3,9 @@
 See also `building.md`.
 
 For selected-game work, begin with `app-debugging-playbook.md` and any existing
-`app-notes/<app-slug>.md`. They define the hash gate, evidence ladder, bounded
-instrumentation, isolated Windows run protocol, and continuation handoff.
+`app-notes/<app-slug>.md`. They define artifact identity, the evidence ladder,
+bounded instrumentation, the isolated Windows run protocol, and the continuation
+handoff.
 
 ## Logging
 

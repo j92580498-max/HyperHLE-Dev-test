@@ -36,6 +36,9 @@ pub(super) enum NSValueHostObject {
     CGPoint(CGPoint),
     CGSize(CGSize),
     CGRect(CGRect),
+    // NSValue deliberately does not retain this object. This mirrors
+    // +valueWithNonretainedObject:, which is used for weak-style references.
+    NonretainedObject(id),
 }
 impl HostObject for NSValueHostObject {}
 
@@ -155,6 +158,12 @@ pub const CLASSES: ClassExports = objc_classes! {
     msg_class![env; NSNumber numberWithUnsignedInt:(ptr.to_bits())]
 }
 
++ (id)valueWithNonretainedObject:(id)object {
+    let host_object = Box::new(NSValueHostObject::NonretainedObject(object));
+    let new = env.objc.alloc_object(this, host_object, &mut env.mem);
+    autorelease(env, new)
+}
+
 + (id)valueWithCGPoint:(CGPoint)value {
     let host_object = Box::new(NSValueHostObject::CGPoint(value));
     let new = env.objc.alloc_object(this, host_object, &mut env.mem);
@@ -194,6 +203,14 @@ pub const CLASSES: ClassExports = objc_classes! {
     match host_object {
         NSValueHostObject::CGRect(cg_rect) => *cg_rect,
         _ => unimplemented!()
+    }
+}
+
+- (id)nonretainedObjectValue {
+    let host_object = env.objc.borrow::<NSValueHostObject>(this);
+    match host_object {
+        NSValueHostObject::NonretainedObject(object) => *object,
+        _ => unimplemented!(),
     }
 }
 
@@ -266,6 +283,14 @@ pub const CLASSES: ClassExports = objc_classes! {
 
     let new: id = msg![env; this alloc];
     let new: id = msg![env; new initWithLong:value];
+    autorelease(env, new)
+}
+
++ (id)numberWithUnsignedLong:(u32)value {
+    // `unsigned long` is 32-bit on the guest ABI, so this is the same storage
+    // as `unsigned int`.
+    let new: id = msg![env; this alloc];
+    let new: id = msg![env; new initWithUnsignedInt:value];
     autorelease(env, new)
 }
 
@@ -576,6 +601,99 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 // TODO: accessors etc
+
+@end
+
+@implementation NSDecimalNumber: NSNumber
+
+// Backed by a `double`, not by a decimal.
+//
+// The whole point of NSDecimalNumber is that 0.1 + 0.2 is exactly 0.3, which a
+// binary float cannot give. This does not implement that, and an app doing
+// currency arithmetic across many operations will accumulate the error
+// NSDecimalNumber exists to prevent.
+//
+// What it does give is the rest of the class's behaviour — parsing, comparison,
+// and every NSNumber accessor — over the eighteen or so significant digits a
+// double carries, which covers reading a number out of a string and comparing
+// it. That is what apps of this era actually use it for, and it beats aborting
+// on the class being unimplemented.
+//
+// Implementing real decimal arithmetic means implementing NSDecimal, its
+// 38-digit mantissa and the whole NSDecimalNumberBehaviors rounding protocol.
+// Worth doing if an app is ever found that needs it; nothing has yet.
+
++ (id)decimalNumberWithString:(id)string { // NSString*
+    let new: id = msg![env; this alloc];
+    let new: id = msg![env; new initWithString:string];
+    autorelease(env, new)
+}
+
++ (id)zero {
+    let new: id = msg![env; this alloc];
+    let new: id = msg![env; new initWithDouble:0.0];
+    autorelease(env, new)
+}
+
++ (id)one {
+    let new: id = msg![env; this alloc];
+    let new: id = msg![env; new initWithDouble:1.0];
+    autorelease(env, new)
+}
+
++ (id)notANumber {
+    let new: id = msg![env; this alloc];
+    let new: id = msg![env; new initWithDouble:(f64::NAN)];
+    autorelease(env, new)
+}
+
+// A string this cannot parse gives NaN, which is what Apple's does — it does
+// not return nil and does not raise.
+- (id)initWithString:(id)string { // NSString*
+    let value = if string == nil {
+        f64::NAN
+    } else {
+        let text = super::ns_string::to_rust_string(env, string);
+        text.trim().parse::<f64>().unwrap_or(f64::NAN)
+    };
+    msg![env; this initWithDouble:value]
+}
+
+- (id)decimalNumberByAdding:(id)other { // NSDecimalNumber*
+    let a: f64 = msg![env; this doubleValue];
+    let b: f64 = msg![env; other doubleValue];
+    let class: Class = msg![env; this class];
+    let new: id = msg![env; class alloc];
+    let new: id = msg![env; new initWithDouble:(a + b)];
+    autorelease(env, new)
+}
+
+- (id)decimalNumberBySubtracting:(id)other { // NSDecimalNumber*
+    let a: f64 = msg![env; this doubleValue];
+    let b: f64 = msg![env; other doubleValue];
+    let class: Class = msg![env; this class];
+    let new: id = msg![env; class alloc];
+    let new: id = msg![env; new initWithDouble:(a - b)];
+    autorelease(env, new)
+}
+
+- (id)decimalNumberByMultiplyingBy:(id)other { // NSDecimalNumber*
+    let a: f64 = msg![env; this doubleValue];
+    let b: f64 = msg![env; other doubleValue];
+    let class: Class = msg![env; this class];
+    let new: id = msg![env; class alloc];
+    let new: id = msg![env; new initWithDouble:(a * b)];
+    autorelease(env, new)
+}
+
+- (id)decimalNumberByDividingBy:(id)other { // NSDecimalNumber*
+    let a: f64 = msg![env; this doubleValue];
+    let b: f64 = msg![env; other doubleValue];
+    let class: Class = msg![env; this class];
+    let new: id = msg![env; class alloc];
+    let new: id = msg![env; new initWithDouble:(a / b)];
+    autorelease(env, new)
+}
 
 @end
 

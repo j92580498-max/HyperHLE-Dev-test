@@ -22,6 +22,18 @@ View options:
         and it will automatically rotate the window, but some apps neglect to
         do this. These options may be useful in that case.
 
+    --landscape-native
+        Treat the device's natural orientation as landscape. The emulated
+        screen is landscape-shaped and no presentation rotation is applied.
+
+        This is for landscape apps that render "landscape-native": they set
+        their OpenGL viewport to the landscape size and draw directly, rather
+        than drawing rotated content into a portrait framebuffer and relying on
+        UIKit auto-rotation. Such apps come out rotated 90° and clipped with
+        --landscape-left / --landscape-right, because those keep a portrait
+        framebuffer and rotate at presentation. Use --landscape-native instead
+        for them. It is mutually exclusive with the other orientation options.
+
     --scale-hack=...
         Set a scaling factor for the window. tapHLE will attempt to run the
         app with an increased internal resolution. This is a hack and there's

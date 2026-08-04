@@ -1,8 +1,10 @@
 # Building tapHLE
 
-Windows is tapHLE's only product target. The macOS build is retained as a
-development convenience for debugging and behavioral comparison. Android is
-not an active target.
+Windows and modern iOS are tapHLE's product targets. Windows build instructions
+are below; the experimental iOS host and its Xcode workflow are documented in
+`../platform/ios/README.md`. macOS is also retained as a development
+convenience for debugging and behavioral comparison. Android is not an active
+target.
 
 If you are building to contribute, also read `../CONTRIBUTING.md` and the root
 `AGENTS.md`.
@@ -28,7 +30,7 @@ Clone and initialize the native submodules:
 ```powershell
 git clone https://github.com/ephun/tapHLE.git
 cd tapHLE
-git submodule update --init
+git submodule update --init --recursive
 ```
 
 ## Build and run
@@ -117,13 +119,14 @@ dev-scripts/make-macos-bundle.sh \
     "$(cargo run --package tapHLE_version -- --branding)"
 ```
 
-macOS failures should not displace Windows game work unless they block a
-debugging path needed for that work.
+macOS failures should not displace supported-host game work unless they block a
+debugging or iOS-build path needed for that work.
 
 ## Troubleshooting
 
 - If CMake cannot find Boost, confirm `vendor/boost/boost/version.hpp` exists.
-- If Cargo reports missing native source, rerun `git submodule update --init`.
+- If Cargo reports missing native source, rerun
+  `git submodule update --init --recursive`.
 - If the executable cannot open fonts or dynamic libraries, run it from the
   repository root or copy all three runtime resources beside it.
 - If a game fails, preserve the full tapHLE log and follow

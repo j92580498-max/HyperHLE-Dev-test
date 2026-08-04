@@ -62,6 +62,58 @@ fn strtok(env: &mut Environment, s: MutPtr<u8>, sep: ConstPtr<u8>) -> MutPtr<u8>
     token_start
 }
 
+/// `strtok_r` — the reentrant `strtok`. The only difference is where the "rest
+/// of the string" cursor lives: the caller owns it, so two interleaved
+/// tokenisations do not corrupt each other. That is also why it cannot simply
+/// delegate to `strtok`, whose cursor is global.
+fn strtok_r(
+    env: &mut Environment,
+    s: MutPtr<u8>,
+    sep: ConstPtr<u8>,
+    saveptr: MutPtr<MutPtr<u8>>,
+) -> MutPtr<u8> {
+    let start = if s.is_null() {
+        env.mem.read(saveptr)
+    } else {
+        s
+    };
+    if start.is_null() {
+        return Ptr::null();
+    }
+
+    let separators = env.mem.cstr_at(sep).to_vec();
+
+    // Skip leading separators; a string of nothing but separators has no token.
+    let mut token_start = start;
+    loop {
+        let c = env.mem.read(token_start);
+        if c == b'\0' {
+            env.mem.write(saveptr, Ptr::null());
+            return Ptr::null();
+        } else if separators.contains(&c) {
+            token_start += 1;
+        } else {
+            break;
+        }
+    }
+
+    let mut token_end = token_start;
+    let next_token = loop {
+        let c = env.mem.read(token_end);
+        if separators.contains(&c) {
+            env.mem.write(token_end, b'\0');
+            break token_end + 1;
+        } else if c == b'\0' {
+            break Ptr::null();
+        } else {
+            token_end += 1;
+        }
+    };
+
+    env.mem.write(saveptr, next_token);
+    token_start
+}
+
 // Functions shared with wchar.rs
 
 fn bzero(env: &mut Environment, dest: MutVoidPtr, count: GuestUSize) {
@@ -315,6 +367,7 @@ fn strlcpy(
 
 pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(strtok(_, _)),
+    export_c_func!(strtok_r(_, _, _)),
     export_c_func!(bzero(_, _)),
     // Functions shared with wchar.rs
     export_c_func!(memset(_, _, _)),

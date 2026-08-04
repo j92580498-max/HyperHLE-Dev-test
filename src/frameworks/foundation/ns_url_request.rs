@@ -68,6 +68,13 @@ pub const CLASSES: ClassExports = objc_classes! {
     autorelease(env, new)
 }
 
+// The convenience initialiser, with the same defaults +requestWithURL: uses.
+- (id)initWithURL:(id)url {
+    msg![env; this initWithURL:url
+                   cachePolicy:NSURLRequestUseProtocolCachePolicy
+               timeoutInterval:60.0]
+}
+
 - (id)initWithURL:(id)url
         cachePolicy:(NSURLRequestCachePolicy)cache_policy
     timeoutInterval:(NSTimeInterval)timeout_interval {
@@ -110,6 +117,22 @@ pub const CLASSES: ClassExports = objc_classes! {
 - (id)HTTPBody {
     env.objc.borrow::<NSURLRequestHostObject>(this).http_body
 }
+- (id)HTTPMethod {
+    env.objc.borrow::<NSURLRequestHostObject>(this).http_method
+}
+- (NSURLRequestCachePolicy)cachePolicy {
+    env.objc.borrow::<NSURLRequestHostObject>(this).cache_policy
+}
+- (NSTimeInterval)timeoutInterval {
+    env.objc.borrow::<NSURLRequestHostObject>(this).timeout_interval
+}
+- (id)allHTTPHeaderFields {
+    env.objc.borrow::<NSURLRequestHostObject>(this).http_header_fields
+}
+- (id)valueForHTTPHeaderField:(id)field { // NSString*
+    let http_header_fields = env.objc.borrow::<NSURLRequestHostObject>(this).http_header_fields;
+    msg![env; http_header_fields objectForKey:field]
+}
 
 - (())dealloc {
     log_dbg!("[(NSURLRequest*){:?} dealloc]", this);
@@ -147,6 +170,24 @@ pub const CLASSES: ClassExports = objc_classes! {
     let old_http_body = std::mem::replace(&mut host_obj.http_body, http_body_copy);
     release(env, old_http_body);
     // No need to retain http_body as we made a copy
+}
+
+// The cache policy and timeout are already stored by -initWithURL:...; these
+// are the mutable subclass's setters for them.
+- (())setCachePolicy:(NSURLRequestCachePolicy)cache_policy {
+    env.objc.borrow_mut::<NSURLRequestHostObject>(this).cache_policy = cache_policy;
+}
+
+- (())setTimeoutInterval:(NSTimeInterval)timeout_interval {
+    env.objc.borrow_mut::<NSURLRequestHostObject>(this).timeout_interval = timeout_interval;
+}
+
+- (())setAllHTTPHeaderFields:(id)fields { // NSDictionary*
+    let http_header_fields = env.objc.borrow::<NSURLRequestHostObject>(this).http_header_fields;
+    () = msg![env; http_header_fields removeAllObjects];
+    if fields != nil {
+        () = msg![env; http_header_fields addEntriesFromDictionary:fields];
+    }
 }
 
 - (())setURL:(id)url { // NSURL *

@@ -11,8 +11,8 @@
 //! - [[objc explain]: Classes and metaclasses](http://www.sealiesoftware.com/blog/archive/2009/04/14/objc_explain_Classes_and_metaclasses.html), especially [the PDF diagram](http://www.sealiesoftware.com/blog/class%20diagram.pdf)
 
 use super::{
-    id, ivar_list_t, method_list_t, nil, objc_object, AnyHostObject, HostIMP, HostObject, ObjC,
-    IMP, SEL,
+    id, ivar_list_t, method_list_t, nil, objc_object, objc_property_t, property_list_t,
+    AnyHostObject, HostIMP, HostObject, ObjC, IMP, SEL,
 };
 use crate::mach_o::MachO;
 use crate::mem::{guest_size_of, ConstPtr, ConstVoidPtr, GuestUSize, Mem, MutPtr, Ptr, SafeRead};
@@ -41,6 +41,10 @@ pub(super) struct ClassHostObject {
     /// Maps ivar name to a tuple of an offset (as pointer) and an alignment.
     /// (Alignment is used during ivar reconciliation.)
     pub(super) ivars: HashMap<String, (ConstPtr<GuestUSize>, u32)>,
+    /// Declared properties, in declaration order, each paired with a pointer to
+    /// its entry in the binary's property table. Only the class's own
+    /// properties; the superclass chain is walked at lookup time.
+    pub(super) properties: Vec<(String, objc_property_t)>,
     /// Offset into the allocated memory for the object where the ivars of
     /// instances of this class or metaclass (respectively: normal objects or
     /// classes) should live. This is always >= the value in the superclass.
@@ -156,7 +160,7 @@ struct class_rw_t {
     _base_protocols: ConstVoidPtr, // protocol list (TODO)
     ivars: ConstPtr<ivar_list_t>,
     _weak_ivar_layout: u32,
-    _base_properties: ConstVoidPtr, // property list (TODO)
+    base_properties: ConstPtr<property_list_t>,
 }
 unsafe impl SafeRead for class_rw_t {}
 
@@ -173,17 +177,6 @@ struct category_t {
     _property_list: ConstVoidPtr, // property list (TODO)
 }
 unsafe impl SafeRead for category_t {}
-
-#[repr(C, packed)]
-pub struct objc_property {
-    // TODO: define fields?
-    _pad: u8,
-}
-unsafe impl SafeRead for objc_property {}
-
-/// An opaque type that represents an Objective-C declared property.
-#[allow(non_camel_case_types)]
-type objc_property_t = MutPtr<objc_property>;
 
 /// A template for a class defined with [objc_classes].
 ///
@@ -438,6 +431,7 @@ impl ClassHostObject {
             instance_start: size,
             instance_size: size,
             ivars: HashMap::default(),
+            properties: Vec::new(),
             is_initialized: InitializationStatus::NotInitialized,
         }
     }
@@ -452,6 +446,7 @@ impl ClassHostObject {
             name,
             base_methods,
             ivars,
+            base_properties,
             ..
         } = mem.read(data);
 
@@ -466,6 +461,7 @@ impl ClassHostObject {
             instance_start,
             instance_size,
             ivars: HashMap::new(),
+            properties: Vec::new(),
             is_initialized: InitializationStatus::NotInitialized,
         };
 
@@ -475,6 +471,10 @@ impl ClassHostObject {
 
         if !ivars.is_null() {
             host_object.add_ivars_from_bin(ivars, mem);
+        }
+
+        if !base_properties.is_null() {
+            host_object.add_properties_from_bin(base_properties, mem);
         }
 
         host_object
@@ -572,6 +572,26 @@ impl ObjC {
     /// implementation of the class, panic.
     pub fn get_known_class(&mut self, name: &str, mem: &mut Mem) -> Class {
         self.link_class_inner(name, /* is_metaclass: */ false, mem, false)
+    }
+
+    /// Like [Self::get_known_class], but answers [None] instead of panicking
+    /// when tapHLE has no implementation of the class.
+    ///
+    /// This is for the feature-detection idiom: an app that asks
+    /// `NSClassFromString(@"GKLeaderboardViewController")` is explicitly
+    /// asking whether the class exists on this OS version, and "no" is a
+    /// legitimate answer it is written to handle. Do not use this where the
+    /// caller actually requires the class — there the panic is the useful
+    /// signal that something is missing.
+    pub fn get_known_class_if_implemented(&mut self, name: &str, mem: &mut Mem) -> Option<Class> {
+        if self
+            .get_class(name, /* is_metaclass: */ false, mem)
+            .is_none()
+            && Self::find_template(name).is_none()
+        {
+            return None;
+        }
+        Some(self.get_known_class(name, mem))
     }
 
     fn link_class_inner(
@@ -674,6 +694,114 @@ impl ObjC {
         }
     }
 
+    /// Point a guest class that subclasses an abstract Foundation class at
+    /// tapHLE's concrete implementation of it instead.
+    ///
+    /// Foundation's collection and string classes are class clusters: `NSArray`
+    /// declares the interface and a private subclass provides the storage. In
+    /// tapHLE the storage and the primitives — `count`, `objectAtIndex:` and so
+    /// on — live on `_tapHLE_NSArray`, and `NSArray` itself has none of them.
+    ///
+    /// An app that subclasses `NSArray` to add a category-like helper therefore
+    /// inherits an interface with no implementation behind it, and its
+    /// instances have nowhere to put elements. Before this, such a class either
+    /// tripped an assertion in `+allocWithZone:` or was quietly handed a plain
+    /// concrete array, losing its own identity and its own methods — which is
+    /// how SPY mouse HD's `AS_NSArrayJSONSerializable` died on `-serialize`.
+    ///
+    /// Splicing the concrete class into the chain fixes both halves at once:
+    /// the subclass keeps its identity and its methods, and inherits real
+    /// storage. The metaclass is re-parented alongside the class, which is the
+    /// part that matters for `+alloc` — otherwise allocation still resolves to
+    /// the abstract class's and hands back the wrong object.
+    ///
+    /// This is sound only because tapHLE's concrete classes add no guest ivars:
+    /// their instances are an `isa` and nothing else, exactly like the abstract
+    /// class the compiler laid the subclass out against. If that ever stops
+    /// being true, the subclass's ivar offsets would need shifting and this
+    /// would silently corrupt them, so it is checked rather than assumed.
+    fn reparent_onto_concrete_classes(&mut self, registered: &[Class], mem: &mut Mem) {
+        /// Abstract class an app may subclass, and the concrete class that
+        /// actually implements it.
+        const SUBSTITUTIONS: &[(&str, &str)] = &[
+            ("NSArray", "_tapHLE_NSArray"),
+            ("NSMutableArray", "_tapHLE_NSMutableArray"),
+            ("NSString", "_tapHLE_NSString"),
+            ("NSMutableString", "_tapHLE_NSMutableString"),
+            ("NSDictionary", "_tapHLE_NSDictionary"),
+            ("NSMutableDictionary", "_tapHLE_NSMutableDictionary"),
+        ];
+
+        for &(abstract_name, concrete_name) in SUBSTITUTIONS {
+            // Only look at apps that actually reference the abstract class;
+            // asking for it here would otherwise create every one of these.
+            let Some(abstract_class) = self.get_class(abstract_name, false, mem) else {
+                continue;
+            };
+
+            let mut concrete_class = None;
+            for &class in registered {
+                let Some(&ClassHostObject { superclass, .. }) = self
+                    .get_host_object(class)
+                    .and_then(|host_object| host_object.as_any().downcast_ref())
+                else {
+                    continue;
+                };
+                if superclass != abstract_class {
+                    continue;
+                }
+
+                let concrete =
+                    *concrete_class.get_or_insert_with(|| self.get_known_class(concrete_name, mem));
+
+                let abstract_size = {
+                    let host_object: &ClassHostObject = self.borrow(abstract_class);
+                    host_object.instance_size
+                };
+                let concrete_size = {
+                    let host_object: &ClassHostObject = self.borrow(concrete);
+                    host_object.instance_size
+                };
+                if abstract_size != concrete_size {
+                    log!(
+                        "Warning: not re-parenting a subclass of {} onto {}: their instance sizes differ ({} vs {}), so the subclass's ivars would move",
+                        abstract_name,
+                        concrete_name,
+                        abstract_size,
+                        concrete_size
+                    );
+                    continue;
+                }
+
+                let name = {
+                    let host_object: &ClassHostObject = self.borrow(class);
+                    host_object.name.clone()
+                };
+                log_dbg!(
+                    "Re-parenting guest class {:?} from {} onto {}",
+                    name,
+                    abstract_name,
+                    concrete_name
+                );
+                self.borrow_mut::<ClassHostObject>(class).superclass = concrete;
+
+                // And the metaclass, so +alloc finds the concrete allocator.
+                let metaclass = Self::read_isa(class, mem);
+                let concrete_metaclass = Self::read_isa(concrete, mem);
+                if let Some(host_object) = self.get_host_object(metaclass) {
+                    if host_object
+                        .as_any()
+                        .downcast_ref::<ClassHostObject>()
+                        .is_some()
+                    {
+                        self.borrow_mut::<ClassHostObject>(metaclass).superclass =
+                            concrete_metaclass;
+                    }
+                }
+            }
+        }
+    }
+
     /// For use by [crate::dyld]: register all the classes from the application
     /// binary.
     pub fn register_bin_classes(&mut self, bin: &MachO, mem: &mut Mem) {
@@ -683,6 +811,7 @@ impl ObjC {
 
         assert!(list.size % 4 == 0);
         let base: ConstPtr<Class> = Ptr::from_bits(list.addr);
+        let mut registered: Vec<Class> = Vec::new();
         for i in 0..(list.size / 4) {
             let class = mem.read(base + i);
             let metaclass = Self::read_isa(class, mem);
@@ -713,7 +842,10 @@ impl ObjC {
             };
 
             self.classes.insert(name.to_string(), class);
+            registered.push(class);
         }
+
+        self.reparent_onto_concrete_classes(&registered, mem);
 
         let mut queue = VecDeque::<Class>::new();
         let mut found_ns_object = false;
@@ -941,6 +1073,7 @@ impl ObjC {
                         instance_start: Default::default(),
                         instance_size: Default::default(),
                         ivars: Default::default(),
+                        properties: Default::default(),
                         is_initialized: InitializationStatus::NotInitialized,
                     },
                 );
@@ -964,6 +1097,14 @@ impl ObjC {
                 host_obj.add_methods_from_bin(methods, mem, self);
                 *self.borrow_mut::<ClassHostObject>(class) = host_obj;
             }
+        }
+    }
+
+    pub fn class_get_superclass(&self, class: Class) -> Class {
+        if class == nil {
+            nil
+        } else {
+            self.borrow::<ClassHostObject>(class).superclass
         }
     }
 
@@ -1105,19 +1246,152 @@ mod tests {
     }
 }
 
-pub(super) fn objc_getClass(env: &mut Environment, name: ConstPtr<u8>) -> id {
-    let name_str = env.mem.cstr_at_utf8(name).unwrap();
+/// `objc_getClass` — the class with this name, or nil.
+///
+/// Apple's runtime answers nil for a name it does not know (after consulting the
+/// class handler, which nothing here installs), and apps rely on that: it is how
+/// they probe for a class from a newer OS. Aborting instead turned a successful
+/// negative answer into a dead app.
+///
+/// The name is still logged, because "app asked for a class tapHLE does not
+/// implement" is exactly the signal that says what to implement next — and if
+/// the app was not probing, the nil will surface shortly afterwards as an
+/// unexpectedly inert message send, which this log explains.
+/// `objc_allocateClassPair` — create a class and its metaclass at run time.
+///
+/// Frameworks that generate delegates or proxies build their classes this way,
+/// so the app has no compiled class for the runtime to find and the pair must be
+/// made on demand. The result is deliberately *not* in the class registry yet:
+/// `objc_registerClassPair` publishes it, and between the two calls the caller
+/// adds methods and ivars.
+///
+/// The metaclass links exactly as a compiled one does — a class's isa is its
+/// metaclass, and a metaclass's superclass is the superclass's metaclass — so
+/// class methods resolve up the chain the same way instance methods do.
+pub(super) fn objc_allocateClassPair(
+    env: &mut Environment,
+    superclass: Class,
+    name: ConstPtr<u8>,
+    extra_bytes: GuestUSize,
+) -> Class {
+    let Ok(name) = env.mem.cstr_at_utf8(name) else {
+        return nil;
+    };
+    let name = name.to_string();
+
+    // Creating a class that already exists is an error, not a redefinition.
+    if env.objc.get_class(&name, false, &env.mem).is_some() {
+        log!(
+            "objc_allocateClassPair({:?}) -> nil: that class already exists",
+            name
+        );
+        return nil;
+    }
+    if extra_bytes != 0 {
+        log!(
+            "TODO: objc_allocateClassPair({:?}) asked for {} extra bytes, which are not allocated",
+            name,
+            extra_bytes
+        );
+    }
+
+    // A root class (nil superclass) would need its metaclass to point at
+    // itself, which nothing generating classes at run time actually does.
+    if superclass == nil {
+        log!(
+            "TODO: objc_allocateClassPair({:?}) with no superclass is not supported",
+            name
+        );
+        return nil;
+    }
+
+    let superclass_metaclass = ObjC::read_isa(superclass, &env.mem);
+    let instance_size = env.objc.borrow::<ClassHostObject>(superclass).instance_size;
+
+    let make = |is_metaclass: bool, superclass: Class, instance_size: GuestUSize| ClassHostObject {
+        name: name.clone(),
+        is_metaclass,
+        superclass,
+        methods: HashMap::new(),
+        guest_method_signatures: HashMap::new(),
+        ivars: HashMap::new(),
+        properties: Vec::new(),
+        instance_start: instance_size,
+        instance_size,
+        // Nothing was compiled for this class, so there is no +initialize to
+        // run and nothing to wait for.
+        is_initialized: InitializationStatus::Initialized,
+    };
+
+    let metaclass_object = Box::new(make(
+        true,
+        superclass_metaclass,
+        guest_size_of::<objc_object>(),
+    ));
+    let class_object = Box::new(make(false, superclass, instance_size));
+
+    let root_metaclass = ObjC::read_isa(superclass_metaclass, &env.mem);
+    let metaclass = env
+        .objc
+        .alloc_static_object(root_metaclass, metaclass_object, &mut env.mem);
     env.objc
-        .get_class(name_str, false, &env.mem)
-        .unwrap_or_else(|| panic!("objc_getClass() for unimplemented class {name_str}"))
+        .alloc_static_object(metaclass, class_object, &mut env.mem)
+}
+
+/// `objc_registerClassPair` — publish a class built by `objc_allocateClassPair`
+/// so that `objc_getClass` and message sends can find it by name.
+pub(super) fn objc_registerClassPair(env: &mut Environment, class: Class) {
+    if class == nil {
+        return;
+    }
+    let name = env.objc.borrow::<ClassHostObject>(class).name.clone();
+    env.objc.classes.insert(name, class);
+}
+
+/// `objc_disposeClassPair` — discard a class that was allocated but is no longer
+/// wanted. Only the registry entry is removed: the class object itself is
+/// static-lifetime, and anything still holding an instance of it would be left
+/// with a dangling isa if it were freed.
+pub(super) fn objc_disposeClassPair(env: &mut Environment, class: Class) {
+    if class == nil {
+        return;
+    }
+    let name = env.objc.borrow::<ClassHostObject>(class).name.clone();
+    env.objc.classes.remove(&name);
+}
+
+pub(super) fn objc_getClass(env: &mut Environment, name: ConstPtr<u8>) -> id {
+    let Ok(name_str) = env.mem.cstr_at_utf8(name) else {
+        return nil;
+    };
+    match env.objc.get_class(name_str, false, &env.mem) {
+        Some(class) => class,
+        None => {
+            log!(
+                "objc_getClass({:?}) -> nil: no such class in tapHLE",
+                name_str
+            );
+            nil
+        }
+    }
+}
+
+/// `objc_lookUpClass` — the same lookup as `objc_getClass`, except that a class
+/// the runtime does not know is reported as nil instead of being an error.
+///
+/// That difference is the entire reason apps call it: it is how you ask whether
+/// an optional class exists before using it, which is exactly what code guarding
+/// a newer-OS feature does. Treating an unknown name as fatal here would break
+/// the check it was written to perform.
+pub(super) fn objc_lookUpClass(env: &mut Environment, name: ConstPtr<u8>) -> id {
+    let Ok(name_str) = env.mem.cstr_at_utf8(name) else {
+        return nil;
+    };
+    env.objc.get_class(name_str, false, &env.mem).unwrap_or(nil)
 }
 
 pub(super) fn class_getSuperclass(env: &mut Environment, cls: Class) -> Class {
-    if cls == nil {
-        nil
-    } else {
-        env.objc.borrow::<ClassHostObject>(cls).superclass
-    }
+    env.objc.class_get_superclass(cls)
 }
 
 pub(super) fn class_getInstanceSize(env: &mut Environment, cls: Class) -> GuestUSize {
@@ -1128,28 +1402,103 @@ pub(super) fn class_getInstanceSize(env: &mut Environment, cls: Class) -> GuestU
     }
 }
 
+/// Look up a declared property by name, searching the superclass chain as the
+/// real runtime does.
+///
+/// Only classes read from the app binary have property metadata: tapHLE's own
+/// host classes are declared with `objc_classes!` and have no property table,
+/// so a lookup on one still finds nothing. That is the honest answer — a host
+/// class's accessors are methods, not declared properties — but it does mean a
+/// caller cannot use this to discover, say, `-[UIView frame]`.
 pub(super) fn class_getProperty(
     env: &mut Environment,
     cls: Class,
     name: ConstPtr<u8>,
 ) -> objc_property_t {
-    if cls == nil {
+    if cls == nil || name.is_null() {
         return Ptr::null();
     }
-    let c_name = env.mem.cstr_at_utf8(name).unwrap();
-    let class_name_string = env.objc.get_class_name(cls).to_owned();
-    if class_name_string == "UIScreen" && c_name == "scale" {
-        // Even if [UIScreen scale] is implemented, we're not yet having a
-        // proper support for `objc_property_t`, so we prefer to return a NULL
-        // here (e.g. property is not declared).
-        // Some games (such as Mirror's Edge) check for those to conditionally
-        // apply some parameters depending on the iOS version without actually
-        // using the property.
-        // We also prefer to not define this as a game-specific hack, because
-        // some other EA games may rely on the same logic.
-        // TODO: support `objc_property_t` properly
-        log!("TODO: class_getProperty(UIScreen, scale) -> NULL");
+    let name = env.mem.cstr_at_utf8(name).unwrap().to_string();
+
+    let mut class = cls;
+    loop {
+        let Some(&ClassHostObject {
+            superclass,
+            ref properties,
+            ..
+        }) = env
+            .objc
+            .get_host_object(class)
+            .and_then(|host_object| host_object.as_any().downcast_ref())
+        else {
+            return Ptr::null();
+        };
+        if let Some(&(_, property)) = properties.iter().find(|(n, _)| *n == name) {
+            return property;
+        }
+        if superclass == nil {
+            return Ptr::null();
+        }
+        class = superclass;
+    }
+}
+
+/// Return a malloc-compatible property array like Apple's runtime does.
+///
+/// Inherited properties are not included, matching the real runtime: a caller
+/// that wants them walks the superclass chain itself. The array is allocated
+/// out of the guest heap, so the caller frees it with `free()` as documented.
+pub(super) fn class_copyPropertyList(
+    env: &mut Environment,
+    cls: Class,
+    out_count: MutPtr<u32>,
+) -> MutPtr<objc_property_t> {
+    let properties: Vec<objc_property_t> = match env
+        .objc
+        .get_host_object(cls)
+        .and_then(|host_object| host_object.as_any().downcast_ref::<ClassHostObject>())
+    {
+        Some(host_object) => host_object.properties.iter().map(|&(_, p)| p).collect(),
+        None => Vec::new(),
+    };
+
+    if !out_count.is_null() {
+        env.mem
+            .write(out_count, properties.len().try_into().unwrap());
+    }
+    if properties.is_empty() {
+        // Apple's runtime returns NULL, not an empty allocation, for a class
+        // with no properties, and callers check for it before freeing.
         return Ptr::null();
     }
-    todo!()
+
+    let size = guest_size_of::<objc_property_t>() * properties.len() as GuestUSize;
+    let array: MutPtr<objc_property_t> = env.mem.alloc(size).cast();
+    for (i, property) in properties.into_iter().enumerate() {
+        env.mem.write(array + i as GuestUSize, property);
+    }
+    array
+}
+
+/// The name a property was declared with.
+pub(super) fn property_getName(env: &mut Environment, property: objc_property_t) -> ConstPtr<u8> {
+    if property.is_null() {
+        return Ptr::null();
+    }
+    env.mem.read(property).name
+}
+
+/// The property's attribute string, e.g. `T@"NSString",&,N,V_title`.
+///
+/// This is read straight out of the binary, so it describes the property
+/// exactly as the app's compiler encoded it — including the getter and setter
+/// names a caller needs in order to actually use the property.
+pub(super) fn property_getAttributes(
+    env: &mut Environment,
+    property: objc_property_t,
+) -> ConstPtr<u8> {
+    if property.is_null() {
+        return Ptr::null();
+    }
+    env.mem.read(property).attributes
 }

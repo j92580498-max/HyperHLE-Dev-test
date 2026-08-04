@@ -11,7 +11,8 @@ agent's summary before you publish anything.
 
 You need:
 
-1. A Windows computer.
+1. A supported test environment: a Windows computer, or a Mac with Xcode and a
+   modern iOS device for iOS-host testing.
 2. A fork or clone of tapHLE.
 3. A coding agent that can work in that folder.
 4. Lawful access to the exact game version you want to test.
@@ -25,22 +26,21 @@ Give the agent the exact item link and exact IPA file name. Do not ask the
 agent to search for a copy.
 
 After the agent confirms that exact name is an original file in the live item
-metadata, it may download only that file to a cache outside the tapHLE folder.
-It must match the hashes before opening it. The Archive filename stays the
-official name even if Windows needs a different local cache name.
+metadata, it may download only that file into `tapHLE_apps/`. That directory is
+ignored by Git and is the only approved local location for Archive-backed test
+apps.
 
 Before the agent opens, inspects, or runs the IPA, it must first match:
 
 - the Archive.org item and file name;
-- the file's MD5, SHA-1, and SHA-256 hashes; and
 - whether the rightsholder still sells or officially offers the game.
 
-Only after the item, file name, and hashes match may the agent read the app ID
-and version inside the IPA or run tapHLE.
+Only after the live metadata confirms the exact original filename may the
+agent read the app identity with `tapHLE --info` or run it. The agent records a
+locally computed SHA-256 so later runs can confirm they used the same bytes.
 
-If any file name, hash, app ID, or version does not match, stop. Do not use a
-different local copy because it looks close. The full rules are in
-`compatibility/README.md`.
+If the item or filename does not match, stop. Do not use a different local copy
+because it looks close. The full rules are in `compatibility/README.md`.
 
 ## Start the work
 
@@ -51,11 +51,11 @@ different local copy because it looks close. The full rules are in
 3. Replace the bracketed parts below, then paste the prompt into the agent.
 
 ```text
-I want to improve tapHLE support for [game title and exact version] on Windows.
+I want to improve tapHLE support for [game title and exact version] on [Windows or modern iOS host].
 
 Exact Archive.org item URL: [URL, or "none"]
 Exact Archive.org IPA file name: [file name, or "none"]
-Local IPA path: [path, or "download the exact named original to an external cache"]
+Local IPA path: [path, or "download the exact named original to tapHLE_apps/"]
 
 Read AGENTS.md, HELP_A_GAME.md, compatibility/README.md,
 dev-docs/agent-workflow.md, and dev-docs/app-debugging-playbook.md before
@@ -64,16 +64,15 @@ changing anything.
 Create or continue the branch compat/[short-game-name]. Check the compatibility
 database and dev-docs/app-notes first so you do not repeat old work.
 
-If I gave an Archive.org item, match the exact item, original file name, MD5,
-SHA-1, and SHA-256 before opening, inspecting, or running the IPA. If no local
-path was supplied, download only the exact named original to an external cache
-after live metadata confirms it, and treat it as opaque until its hashes match.
-If Windows changes the local name, preserve the exact Archive name through
---archive-filename. Only after the hashes match may you read the app ID and
-version. Stop if any check fails. If I wrote "none," do not search for an item
-and do not make an Archive-linked database report. Ask me to confirm that I
-authorize use of my lawful local copy for this task. Never commit the IPA,
-extracted files, save data, screenshots, raw logs, or my private file paths.
+If I gave an Archive.org item, verify the exact canonical item URL and original
+filename in the live metadata before opening, inspecting, or running the IPA.
+If no local path was supplied, download only that exact original into
+tapHLE_apps/. Record a locally computed SHA-256, then read the app identity with
+tapHLE --info before composing any report. Stop if the item or filename differs.
+If I wrote "none," do not search for an item and do not make an Archive-linked
+database report. Ask me to confirm that I authorize use of my lawful local copy
+for this task. Never commit the IPA, extracted files, save data, screenshots,
+raw logs, or my private file paths.
 
 Find the first thing that stops the game from working. Make the smallest useful
 fix, add a focused test when possible, and run the repository checks. Keep
@@ -85,8 +84,9 @@ If work continues into another session, update the sanitized app note so the
 next agent does not repeat the same work.
 
 Use simple status updates. Tell me when you need me to click, play, listen, or
-describe what is on screen. Do not push, create a release tag, or contact
-anyone unless I ask.
+describe what is on screen. Push ordinary committed work as required by
+AGENTS.md, but do not force-push, create a release tag, or contact anyone unless
+I ask.
 
 Follow the commit-credit rule in AGENTS.md. For OpenAI Codex, add this trailer:
 Co-authored-by: OpenAI Codex <codex@openai.com>
@@ -111,8 +111,8 @@ commits and app note later.
 
 The [compatibility database](https://taphle.ephun.net/compatibility) is the
 public answer to "how well does this game work?" Every rating there comes from
-a real tapHLE run on Windows. Recording your result is how other people find out
-the game moved.
+a real tapHLE run on its reported supported host. Recording your result is how
+other people find out the game moved.
 
 Record one when the star rating changes, in either direction — a game that got
 worse is worth knowing about too. Do not record one when a rerun just repeats a
@@ -163,5 +163,5 @@ A good pull request says:
 - which coding agent helped.
 
 Partial progress is welcome when it is clearly described. Do not claim that a
-game or feature works until it was tested on Windows from the commit in the
-pull request.
+game or feature works until it was tested on the claimed host from the commit
+in the pull request.

@@ -27,6 +27,7 @@ use crate::mem::{guest_size_of, ConstPtr, MutPtr, MutVoidPtr, Ptr, SafeRead};
 use crate::objc::classes::InitializationStatus;
 use crate::Environment;
 use std::any::TypeId;
+use std::sync::LazyLock;
 
 /// Call an Objective-C++ lifecycle method on one exact class implementation.
 /// Normal message dispatch is deliberately bypassed because every class-local
@@ -166,7 +167,18 @@ fn maybe_initialize_class(env: &mut Environment, receiver: id) {
         // not have a HostObjectEntry. Their isa still names a real class, so
         // initialize that class before dispatching the first message.
         let class = ObjC::read_isa(receiver, &env.mem);
-        assert!(class != nil);
+        if class == nil {
+            // Except when it does not. A global block literal whose
+            // `_NSConcreteGlobalBlock` import was never bound still reads as a
+            // nil isa here, and a `super` send reaches this point without the
+            // receiver's own isa having been looked at at all. Sending
+            // +initialize is bookkeeping ahead of dispatch, so there is simply
+            // nothing to initialize; the dispatch that follows uses the class
+            // the caller already resolved, and reports its own failure by name
+            // if there is one.
+            log_dbg!("No class to initialize for {:?}, its isa is nil", receiver);
+            return;
+        }
         maybe_initialize_class(env, class);
         return;
     };
@@ -302,6 +314,50 @@ fn maybe_initialize_class(env: &mut Environment, receiver: id) {
 /// Similarly, the return value of `objc_msgSend` is whatever value is returned
 /// by the method implementation. We are relying on CallFromGuest not
 /// overwriting it.
+/// Name of an environment variable holding a comma-separated list of selector
+/// names to trace, e.g. `touchesBegan:withEvent:,setAppMode:`.
+///
+/// Every matching dispatch logs the receiving class and the selector. This is a
+/// bounded alternative to enabling `log_dbg` for this module, which logs every
+/// message send and is far too noisy to use on a running game. The special
+/// value `all` traces everything, which is only useful for a very short window.
+pub const TRACE_SELECTORS_ENV_VAR: &str = "TAPHLE_TRACE_SELECTORS";
+
+/// Log a dispatch when its selector was named in [TRACE_SELECTORS_ENV_VAR].
+fn trace_selector(env: &mut Environment, receiver: id, selector: SEL, super2: Option<Class>) {
+    static TRACED: LazyLock<Vec<String>> = LazyLock::new(|| {
+        std::env::var(TRACE_SELECTORS_ENV_VAR)
+            .unwrap_or_default()
+            .split(',')
+            .map(|entry| entry.trim().to_string())
+            .filter(|entry| !entry.is_empty())
+            .collect()
+    });
+    if TRACED.is_empty() {
+        return;
+    }
+
+    let selector_str = selector.as_str(&env.mem);
+    if !TRACED.iter().any(|t| t == "all" || t == selector_str) {
+        return;
+    }
+    let selector_str = selector_str.to_string();
+
+    // Name the receiver by class where possible. A nil receiver and a freed
+    // object both have no readable class, and both are worth seeing: they are
+    // the usual reason a traced message appears to do nothing.
+    let class_name = if receiver == nil {
+        "nil".to_string()
+    } else {
+        let class = super2.unwrap_or_else(|| ObjC::read_isa(receiver, &env.mem));
+        match env.objc.try_get_class_name(class) {
+            Some(name) => name.to_string(),
+            None => "<no class>".to_string(),
+        }
+    };
+    log!("trace: [{} ({:?}) {}]", class_name, receiver, selector_str);
+}
+
 #[allow(non_snake_case)]
 fn objc_msgSend_inner(
     env: &mut Environment,
@@ -316,6 +372,7 @@ fn objc_msgSend_inner(
         selector.as_str(&env.mem),
         receiver
     );
+    trace_selector(env, receiver, selector, super2);
     let message_type_info = env.objc.message_type_info.take();
 
     if receiver == nil {
@@ -326,11 +383,33 @@ fn objc_msgSend_inner(
     }
 
     let orig_class = super2.unwrap_or_else(|| ObjC::read_isa(receiver, &env.mem));
-    assert!(
-        orig_class != nil,
-        "Receiver {receiver:?} has a nil isa while sending selector {:?}",
-        selector.as_str(&env.mem)
-    );
+    if orig_class == nil {
+        // A nil isa on a non-nil receiver means a freed object is being messaged,
+        // typically after an over-release.
+        //
+        // On Apple's runtime this is undefined behaviour that very often does
+        // nothing visible: the memory has not been reused yet, or the object was
+        // a constant string or other immortal whose release did nothing in the
+        // first place. So apps ship with this bug and work, and killing them
+        // here reports a real defect at the least useful possible moment — far
+        // from the over-release that caused it, with nothing on the stack that
+        // identifies the culprit. It was the second largest tapHLE-side crash in
+        // a survey of 1501 apps.
+        //
+        // Treat it as a message to nil, which is what the guest's own code is
+        // written to tolerate. The warning is not rate-limited, because how
+        // often this happens is itself the signal.
+        let selector_str = selector.as_str(&env.mem).to_string();
+        log!(
+            "Warning: sending {:?} to {:?}, which has already been deallocated. \
+             It was over-released elsewhere; treating this as a message to nil.",
+            selector_str,
+            receiver
+        );
+        // Same answer as the nil receiver above: zeroed return registers.
+        env.cpu.regs_mut()[0..2].fill(0);
+        return;
+    }
     if !skip_initialize {
         maybe_initialize_class(env, receiver);
     }
@@ -366,7 +445,34 @@ fn objc_msgSend_inner(
             );
         }
 
-        let host_object = env.objc.get_host_object(class).unwrap();
+        let Some(host_object) = env.objc.get_host_object(class) else {
+            // `class` is a pointer that is not any object tapHLE knows, let
+            // alone a class, so there is no method table to search. This is the
+            // same situation as the nil isa handled above and it arrives the
+            // same way: the receiver is not a live object. The case seen in the
+            // survey is `objc_setProperty` releasing whatever the property's
+            // ivar happened to hold before its first assignment.
+            //
+            // Apple's runtime would follow the garbage pointer, and mostly get
+            // away with it - which is why apps ship like this and work. Give
+            // the same answer as a message to nil so the app carries on, and
+            // say so plainly, because the count of these is the signal.
+            let selector_str = selector.as_str(&env.mem).to_string();
+            log!(
+                "Warning: sending {:?} to {:?}, whose {} {:?} is not a class \
+                 tapHLE knows; treating this as a message to nil.",
+                selector_str,
+                receiver,
+                if class == orig_class {
+                    "class"
+                } else {
+                    "superclass"
+                },
+                class
+            );
+            env.cpu.regs_mut()[0..2].fill(0);
+            return;
+        };
 
         if let Some(&super::ClassHostObject {
             superclass,
@@ -406,10 +512,26 @@ Type mismatch when sending message {} to {:?}!
                                     expected_type_id,
                                     expected_type_desc
                                 );
-                                if tolerate_type_mismatch {
+                                // Never fatal. Objective-C dispatch does no
+                                // type checking whatsoever — objc_msgSend moves
+                                // registers and the callee interprets them — so
+                                // a mismatch is something the real runtime
+                                // permits and apps genuinely rely on, whether by
+                                // type punning or by declaring a method with a
+                                // slightly different signature than the one
+                                // tapHLE implements. Fourteen apps in a survey
+                                // of 1501 died here.
+                                //
+                                // It is still worth saying. A mismatch means the
+                                // arguments are being interpreted differently
+                                // than the caller intended, and if something
+                                // misbehaves shortly afterwards this is the
+                                // first thing to suspect. `tolerate_type_mismatch`
+                                // now selects silence rather than survival: the
+                                // call sites that pass it know the mismatch is
+                                // expected and would only produce noise.
+                                if !tolerate_type_mismatch {
                                     log!("Warning: {}", msg);
-                                } else {
-                                    panic!("{}", msg);
                                 }
                             }
                         }
@@ -574,6 +696,32 @@ pub(super) fn objc_msgSendSuper2(
     )
 }
 
+/// Structure-return variant of [objc_msgSendSuper2]. The hidden return buffer
+/// occupies r0, so the real receiver has to replace the `objc_super` pointer
+/// in r1 before the selected method implementation is tail-called.
+#[allow(non_snake_case)]
+pub(super) fn objc_msgSendSuper2_stret(
+    env: &mut Environment,
+    _stret: MutVoidPtr,
+    super_ptr: ConstPtr<objc_super>,
+    selector: SEL,
+) {
+    let objc_super { receiver, class } = env.mem.read(super_ptr);
+
+    // Preserve the hidden structure-result pointer in r0 and rewrite r1,
+    // which is the receiver slot for a stret method implementation.
+    crate::abi::write_next_arg(&mut 1, env.cpu.regs_mut(), &mut env.mem, receiver);
+
+    objc_msgSend_inner(
+        env,
+        receiver,
+        selector,
+        /* super2: */ Some(class),
+        /* tolerate_type_mismatch: */ false,
+        /* skip_initialize: */ false,
+    )
+}
+
 /// Trait that assists with type-checking of [msg_send]'s arguments.
 ///
 /// - Statically constrains the types of [msg_send]'s arguments so that the
@@ -667,7 +815,8 @@ where
     // Provide type info for dynamic type checking.
     env.objc.message_type_info = Some(<(R, P) as MsgSendSuperSignature>::WithoutSuper::type_info());
     if R::SIZE_IN_MEM.is_some() {
-        todo!() // no stret yet
+        (objc_msgSendSuper2_stret as fn(&mut Environment, MutVoidPtr, ConstPtr<objc_super>, SEL))
+            .call_from_host(env, args)
     } else {
         (objc_msgSendSuper2 as fn(&mut Environment, ConstPtr<objc_super>, SEL))
             .call_from_host(env, args)
@@ -832,6 +981,7 @@ mod tests {
             methods: HashMap::new(),
             guest_method_signatures: HashMap::new(),
             ivars: HashMap::new(),
+            properties: Vec::new(),
             instance_start: 4,
             instance_size: 4,
             is_initialized: InitializationStatus::NotInitialized,

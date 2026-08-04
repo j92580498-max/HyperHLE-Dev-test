@@ -76,6 +76,11 @@ pub trait GLESContext {
 #[allow(clippy::upper_case_acronyms)]
 #[allow(clippy::too_many_arguments)] // not our fault :(
 #[allow(unused_variables)]
+// This is a binding surface, not application code: it names every entry point
+// a backend may implement, and which of them a guest happens to call is the
+// app's business. A method nothing calls yet is the normal state here, so
+// dead-code analysis has nothing useful to say about this trait.
+#[allow(dead_code)]
 pub trait GLES {
     /// Get some string describing the underlying driver. For OpenGL this is
     /// `GL_VENDOR`, `GL_RENDERER` and `GL_VERSION`.
@@ -468,6 +473,9 @@ pub trait GLES {
     }
     unsafe fn TexParameteriv(&mut self, target: GLenum, pname: GLenum, params: *const GLint) {
         unimplemented!("TexParameteriv not implemented by this backend")
+    }
+    unsafe fn GetTexParameteriv(&mut self, target: GLenum, pname: GLenum, params: *mut GLint) {
+        unimplemented!("GetTexParameteriv not implemented by this backend")
     }
     unsafe fn TexParameterfv(&mut self, target: GLenum, pname: GLenum, params: *const GLfloat) {
         unimplemented!("TexParameterfv not implemented by this backend")

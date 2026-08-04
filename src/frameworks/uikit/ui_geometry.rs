@@ -2,11 +2,36 @@
 //!
 //! See also [crate::frameworks::core_graphics::cg_geometry].
 
-use crate::dyld::{export_c_func, FunctionExports};
-use crate::frameworks::core_graphics::{CGPoint, CGRect, CGSize};
+use crate::dyld::{export_c_func, ConstantExports, FunctionExports, HostConstant};
+use crate::frameworks::core_graphics::{CGFloat, CGPoint, CGRect, CGSize};
 use crate::frameworks::foundation::ns_string;
+use crate::mem::{ConstVoidPtr, SafeRead};
 use crate::objc::{autorelease, id, nil};
 use crate::Environment;
+
+/// `UIEdgeInsets`.
+#[derive(Copy, Clone, Debug, Default, PartialEq)]
+#[repr(C, packed)]
+pub struct UIEdgeInsets {
+    pub top: CGFloat,
+    pub left: CGFloat,
+    pub bottom: CGFloat,
+    pub right: CGFloat,
+}
+unsafe impl SafeRead for UIEdgeInsets {}
+
+/// `UIEdgeInsetsZero`. Apps that lay out with insets read this constant, and
+/// reading it means dereferencing it, so leaving the symbol unbound turns an
+/// ordinary layout into a null-pointer crash.
+fn UIEdgeInsetsZero(env: &mut Environment) -> ConstVoidPtr {
+    env.mem
+        .alloc_and_write(UIEdgeInsets::default())
+        .cast()
+        .cast_const()
+}
+
+pub const CONSTANTS: ConstantExports =
+    &[("_UIEdgeInsetsZero", HostConstant::Custom(UIEdgeInsetsZero))];
 
 // Apple's documentation says all of these return zeroes if the input is not
 // well-formed. A nil string is not well-formed, so treat it as zeroes rather

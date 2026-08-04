@@ -41,6 +41,7 @@ pub const DYLIB: crate::dyld::HostDylib = crate::dyld::HostDylib {
         cf_uuid::CLASSES,
     ],
     constant_exports: &[
+        CONSTANTS,
         cf_allocator::CONSTANTS,
         cf_array::CONSTANTS,
         cf_bundle::CONSTANTS,
@@ -49,6 +50,7 @@ pub const DYLIB: crate::dyld::HostDylib = crate::dyld::HostDylib {
         cf_number::CONSTANTS,
         cf_preferences::CONSTANTS,
         cf_run_loop::CONSTANTS,
+        time::CONSTANTS,
     ],
     function_exports: &[
         FUNCTIONS,
@@ -78,7 +80,7 @@ pub type CFOptionFlags = u32;
 pub type CFComparisonResult = CFIndex;
 
 use crate::abi::GuestArg;
-use crate::dyld::FunctionExports;
+use crate::dyld::{ConstantExports, FunctionExports, HostConstant};
 use crate::environment::Environment;
 use crate::frameworks::foundation::ns_string::to_rust_string;
 use crate::mem::SafeRead;
@@ -86,6 +88,26 @@ use crate::objc::id;
 use crate::{export_c_func, impl_GuestRet_for_large_struct, msg};
 
 pub const kCFNotFound: CFIndex = -1;
+
+/// Value of the `kCFCoreFoundationVersionNumber` global on iPhone OS 3.2, the
+/// newest of the early builds tapHLE targets. Apps read this `double` to detect
+/// the OS version at runtime; reporting the 3.2 value makes an app's
+/// `>= 3.x`-style feature checks resolve the way they did on the real system.
+pub const kCFCoreFoundationVersionNumber_iPhoneOS_3_2: f64 = 478.61;
+
+/// The `kCFCoreFoundationVersionNumber` symbol is the *address of* that double,
+/// so we back it with a real guest allocation and point the symbol at it. This
+/// was previously an unhandled non-lazy symbol left null, which crashed any app
+/// that dereferenced it (e.g. SPY mouse HD's startup version check).
+pub const CONSTANTS: ConstantExports = &[(
+    "_kCFCoreFoundationVersionNumber",
+    HostConstant::Custom(|env| {
+        env.mem
+            .alloc_and_write(kCFCoreFoundationVersionNumber_iPhoneOS_3_2)
+            .cast()
+            .cast_const()
+    }),
+)];
 
 #[derive(Copy, Clone, Debug)]
 #[repr(C, packed)]

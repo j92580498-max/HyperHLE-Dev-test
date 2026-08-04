@@ -166,6 +166,16 @@ pub const CLASSES: ClassExports = objc_classes! {
 + (())setValue:(id)value forKey:(id)key {
     let key_string = to_rust_string(env, key);
     log_dbg!("[CATransaction setValue:{:?} forKey:{:?} ({})]", value, key, key_string);
+    // Core Animation creates an implicit transaction when there is no explicit
+    // one, committed at the end of the run-loop iteration. tapHLE only models
+    // explicit transactions, so a set outside begin/commit has nowhere to go.
+    // Dropping it loses an animation parameter, which is a visual imperfection;
+    // it is still much better than aborting the app, which is what unwrapping
+    // the missing transaction used to do.
+    if ThreadLocalState::get_current_transaction(env).is_none() {
+        log_once!("TODO: [CATransaction setValue:forKey:] outside an explicit transaction is ignored; implicit transactions are not modelled");
+        return;
+    }
     match &*key_string  {
         kCATransactionAnimationDuration => {
             let value: CFTimeInterval = msg![env; value doubleValue];

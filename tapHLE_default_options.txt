@@ -72,6 +72,12 @@ com.activision.thps2: --landscape-left --button-to-touch=DPadLeft,30,235 --butto
 # Left/Right = move, A = jump, B = action, Start = pause
 com.nabilchatbi.Ricky: --landscape-left --button-to-touch=DPadLeft,40,285 --button-to-touch=DPadRight,130,285 --button-to-touch=A,444,285 --button-to-touch=B,355,285 --button-to-touch=Start,16,16
 
+# Warlords HD: Call to Arms
+# Landscape-native renderer: draws a landscape-sized scene directly rather than
+# using UIKit auto-rotation, so it needs the landscape-native screen mode to
+# avoid coming out rotated 90° and clipped.
+greyhoundgames.warlordshdapp: --landscape-native
+
 # Head2Head
 com.darxun: --landscape-right --y-tilt-offset=24
 
@@ -232,3 +238,7 @@ www.fishlabs.net.GalaxyOnFire: --landscape-right --button-to-touch=A,427,274 --b
 
 # Palm Heroes
 com.palmheroes.PalmHeroes: --landscape-right
+
+# Glass Tower HD
+ru.idigger.Glass-Tower: --force-composition
+

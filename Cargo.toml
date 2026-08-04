@@ -2,6 +2,7 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 [workspace]
+exclude = ["platform/ios/rust-entry"]
 
 [workspace.package]
 version = "0.3.0-alpha.1"
@@ -13,7 +14,7 @@ repository = "https://github.com/ephun/tapHLE"
 
 [package]
 name = "tapHLE"
-description = "A Windows-focused high-level emulator for early iPhone OS games"
+description = "A high-level emulator for early iPhone OS games on Windows and modern iOS"
 version = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }
@@ -41,6 +42,7 @@ cmake = "0.1.49"
 gl_generator = "0.14.0"
 
 [dependencies]
+flate2 = "1.0"
 hound = "3.5.0"
 mach_object = "0.1.17"
 plist = "1.8.0"
@@ -64,6 +66,8 @@ quick-xml = "0.38.4"
 digest = "0.10.7"
 md-5 = "0.10.6"
 sha1 = "0.10.6"
+sha2 = "0.10.9"
+aes = "0.8.4"
 encoding_rs = "0.8.35"
 # This upstream-owned fork and tag are inherited, reviewed dependency pins.
 # Their URL is provenance, not product branding.

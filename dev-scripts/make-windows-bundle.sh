@@ -17,7 +17,6 @@ if [ "$#" -eq 1 ]; then
     cp ../tapHLE_apps/README.txt tapHLE_windows_bundle/tapHLE_apps/
     cp ../README.md tapHLE_windows_bundle/
     cp ../CHANGELOG.md tapHLE_windows_bundle/
-    cp ../COMPATIBILITY.md tapHLE_windows_bundle/
     cp gpl-3.0.txt tapHLE_windows_bundle/COPYING.txt
     cp ../OPTIONS_HELP.txt tapHLE_windows_bundle/
     cp ../tapHLE_default_options.txt tapHLE_windows_bundle/

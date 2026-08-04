@@ -35,7 +35,15 @@ fn CFDictionaryCreateMutable(
     value_callbacks: ConstPtr<CFDictionaryValueCallBacks>,
 ) -> CFMutableDictionaryRef {
     assert!(allocator == kCFAllocatorDefault || env.mem.read(allocator).is_system_default()); // unimplemented
-    assert_eq!(capacity, 0); // TODO: fixed capacity support
+                                                                                              // `capacity` is a hint: Core Foundation documents 0 as "no limit" and does
+                                                                                              // not enforce a non-zero value, and the dictionary here grows dynamically
+                                                                                              // regardless. Asserting on it turned an ordinary sizing hint into a crash.
+    if capacity != 0 {
+        log_dbg!(
+            "CFDictionaryCreateMutable() capacity hint {} ignored; the dictionary grows as needed",
+            capacity
+        );
+    }
 
     let new = msg_class![env; _tapHLE_NSMutableDictionary_non_retaining alloc];
     msg![env; new initWithKeyCallbacks:key_callbacks andValueCallbacks:value_callbacks]
@@ -102,6 +110,25 @@ fn CFDictionaryGetValue(
     let key: id = key.cast().cast_mut();
     let res: id = msg![env; dict objectForKey:key];
     res.cast().cast_const()
+}
+
+fn CFDictionaryGetValueIfPresent(
+    env: &mut Environment,
+    dict: CFDictionaryRef,
+    key: ConstVoidPtr,
+    value: ConstPtr<ConstVoidPtr>, // const void **
+) -> bool {
+    let key: id = key.cast().cast_mut();
+    let res: id = msg![env; dict objectForKey:key];
+    if res == nil {
+        return false;
+    }
+    // The out-parameter is optional; the caller may pass NULL to test only for
+    // membership.
+    if !value.is_null() {
+        env.mem.write(value.cast_mut(), res.cast().cast_const());
+    }
+    true
 }
 
 fn CFDictionaryGetCount(env: &mut Environment, dict: CFDictionaryRef) -> CFIndex {
@@ -262,6 +289,7 @@ pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(CFDictionaryRemoveValue(_, _)),
     export_c_func!(CFDictionaryRemoveAllValues(_)),
     export_c_func!(CFDictionaryGetValue(_, _)),
+    export_c_func!(CFDictionaryGetValueIfPresent(_, _, _)),
     export_c_func!(CFDictionaryGetCount(_)),
     export_c_func!(CFDictionaryGetKeysAndValues(_, _, _)),
 ];

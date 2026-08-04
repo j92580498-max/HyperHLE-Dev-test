@@ -44,7 +44,11 @@ fn CFArrayCreateMutable(
     callbacks: ConstPtr<CFArrayCallBacks>,
 ) -> CFMutableArrayRef {
     assert!(allocator == kCFAllocatorDefault || env.mem.read(allocator).is_system_default()); // unimplemented
-    assert!(capacity == 0); // TODO: fixed capacity support
+
+    // The capacity is a hint. Core Foundation documents it as the number of
+    // values the array is expected to hold and does not enforce it, so an array
+    // that simply grows is a faithful implementation of any capacity.
+    log_dbg!("CFArrayCreateMutable() with capacity hint {}", capacity);
 
     // A NULL callbacks pointer means the array does not retain/release its
     // values (they need not even be objects). A callbacks struct with a

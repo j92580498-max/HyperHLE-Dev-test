@@ -15,16 +15,35 @@ use crate::objc::{
     ClassExports, HostObject, NSZonePtr, SEL,
 };
 
+/// The `+mainQueue` singleton, which must be the same object every time an app
+/// asks for it: apps compare against it to decide whether they are already on
+/// the main queue.
+#[derive(Default)]
+pub struct State {
+    /// `NSOperationQueue*`
+    main_queue: Option<id>,
+}
+
 struct NSOperationHostObject {
     cancelled: bool,
     executing: bool,
     finished: bool,
-    invocation: Option<(id, SEL, id)>,
+    invocation: Option<OperationInvocation>,
 }
 impl HostObject for NSOperationHostObject {}
 
+#[derive(Clone, Copy)]
+enum OperationInvocation {
+    TargetSelectorObject(id, SEL, id),
+    NSInvocation(id),
+}
+
 struct NSOperationQueueHostObject {
     max_concurrent_operation_count: NSInteger,
+    suspended: bool,
+    /// Operations added while suspended, retained until they run or are
+    /// cancelled. `NSOperation*`.
+    pending: Vec<id>,
 }
 impl HostObject for NSOperationQueueHostObject {}
 
@@ -65,8 +84,14 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 - (())main {
     let invocation = env.objc.borrow::<NSOperationHostObject>(this).invocation;
-    if let Some((target, selector, object)) = invocation {
-        () = msg_send_no_type_checking(env, (target, selector, object));
+    match invocation {
+        Some(OperationInvocation::TargetSelectorObject(target, selector, object)) => {
+            () = msg_send_no_type_checking(env, (target, selector, object));
+        }
+        Some(OperationInvocation::NSInvocation(invocation)) => {
+            () = msg![env; invocation invoke];
+        }
+        None => {}
     }
 }
 
@@ -99,11 +124,14 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (())dealloc {
-    if let Some((target, _selector, object)) =
-        env.objc.borrow::<NSOperationHostObject>(this).invocation
-    {
-        release(env, target);
-        release(env, object);
+    if let Some(invocation) = env.objc.borrow::<NSOperationHostObject>(this).invocation {
+        match invocation {
+            OperationInvocation::TargetSelectorObject(target, _selector, object) => {
+                release(env, target);
+                release(env, object);
+            }
+            OperationInvocation::NSInvocation(invocation) => release(env, invocation),
+        }
     }
     env.objc.dealloc_object(this, &mut env.mem)
 }
@@ -120,7 +148,14 @@ pub const CLASSES: ClassExports = objc_classes! {
     retain(env, target);
     retain(env, object);
     env.objc.borrow_mut::<NSOperationHostObject>(this).invocation =
-        Some((target, selector, object));
+        Some(OperationInvocation::TargetSelectorObject(target, selector, object));
+    this
+}
+
+- (id)initWithInvocation:(id)invocation { // NSInvocation *
+    retain(env, invocation);
+    env.objc.borrow_mut::<NSOperationHostObject>(this).invocation =
+        Some(OperationInvocation::NSInvocation(invocation));
     this
 }
 
@@ -135,10 +170,30 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 @implementation NSOperationQueue: NSObject
 
+// The queue bound to the main thread. tapHLE has no separate main-queue
+// scheduling, so this is an ordinary queue that happens to be a singleton —
+// operations added to it run the same way they do on any other. Apps reach for
+// it constantly to hop work back to the main thread, which is why its absence
+// stopped seven apps in a 1501-app survey before they reached their own code.
++ (id)mainQueue {
+    if let Some(existing) = env.framework_state.foundation.ns_operation.main_queue {
+        return existing;
+    }
+    let queue: id = msg![env; this new];
+    env.framework_state.foundation.ns_operation.main_queue = Some(queue);
+    queue
+}
+
++ (id)currentQueue {
+    msg_class![env; NSOperationQueue mainQueue]
+}
+
 + (id)allocWithZone:(NSZonePtr)_zone {
     let host_object = NSOperationQueueHostObject {
         // NSOperationQueueDefaultMaxConcurrentOperationCount
         max_concurrent_operation_count: -1,
+        suspended: false,
+        pending: Vec::new(),
     };
     env.objc.alloc_object(this, Box::new(host_object), &mut env.mem)
 }
@@ -157,20 +212,67 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 - (())addOperation:(id)operation {
     retain(env, operation);
+    if env.objc.borrow::<NSOperationQueueHostObject>(this).suspended {
+        // A suspended queue accepts operations but starts none of them. Keep
+        // the reference until it runs; -setSuspended:NO drains the list.
+        env.objc
+            .borrow_mut::<NSOperationQueueHostObject>(this)
+            .pending
+            .push(operation);
+        return;
+    }
     () = msg![env; operation start];
     release(env, operation);
 }
 
+// This queue runs operations synchronously in -addOperation:, so "suspended"
+// is the only state in which one can be waiting.
+- (bool)isSuspended {
+    env.objc.borrow::<NSOperationQueueHostObject>(this).suspended
+}
+
+- (())setSuspended:(bool)suspended {
+    let host_object = env.objc.borrow_mut::<NSOperationQueueHostObject>(this);
+    let was_suspended = std::mem::replace(&mut host_object.suspended, suspended);
+    if !was_suspended || suspended {
+        return;
+    }
+    // Resuming: run everything that arrived while suspended, in order. Take
+    // the list first, because starting an operation reenters guest code that
+    // may add more.
+    let pending = std::mem::take(
+        &mut env.objc.borrow_mut::<NSOperationQueueHostObject>(this).pending,
+    );
+    for operation in pending {
+        () = msg![env; operation start];
+        release(env, operation);
+    }
+}
+
 - (id)operations {
-    // Completed synchronous operations leave the queue immediately.
-    msg_class![env; NSArray array]
+    // Completed synchronous operations leave the queue immediately, so only
+    // ones held back by suspension are still here.
+    let pending = env.objc.borrow::<NSOperationQueueHostObject>(this).pending.clone();
+    let array: id = msg_class![env; NSMutableArray array];
+    for operation in pending {
+        () = msg![env; array addObject:operation];
+    }
+    array
 }
 
 - (NSUInteger)operationCount {
-    0
+    env.objc.borrow::<NSOperationQueueHostObject>(this).pending.len() as NSUInteger
 }
 
-- (())cancelAllOperations {}
+- (())cancelAllOperations {
+    let pending = std::mem::take(
+        &mut env.objc.borrow_mut::<NSOperationQueueHostObject>(this).pending,
+    );
+    for operation in pending {
+        () = msg![env; operation cancel];
+        release(env, operation);
+    }
+}
 
 - (())waitUntilAllOperationsAreFinished {}
 

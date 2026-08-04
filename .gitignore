@@ -1,4 +1,10 @@
 /target
+/build
+/dist
+/DerivedData
+xcuserdata/
+*.xcuserstate
+*.xcuserdatad
 /vendor/boost
 /tapHLE_sandbox
 /tapHLE_apps/*
@@ -7,11 +13,20 @@
 tapHLE_log.txt
 tapHLE_wallpaper.*
 
+# Frontier surveys (dev-scripts/survey.py) list the apps in a personal
+# collection. Share the findings, never the file.
+*frontier-survey*.jsonl
+*.survey.jsonl
+
 # Legacy runtime data from pre-fork builds must never be committed.
 /touchHLE_sandbox
 /touchHLE_apps
 touchHLE_log.txt
 touchHLE_wallpaper.*
+*.p12
+*.cer
+*.mobileprovision
+*.mobiledevicepairing
 
 # Android
 
@@ -19,7 +34,6 @@ touchHLE_wallpaper.*
 .gradle
 /local.properties
 .idea/
-/build
 /captures
 .externalNativeBuild
 .cxx

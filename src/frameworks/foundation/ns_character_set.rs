@@ -130,6 +130,35 @@ pub const CLASSES: ClassExports = objc_classes! {
     autorelease(env, new)
 }
 
++ (id)decimalDigitCharacterSet {
+    // Unicode General Category Nd. We cover the ASCII decimal digits, which is
+    // what apps parsing numbers actually rely on; the full multi-script Nd set
+    // is not enumerated here, matching the pragmatic scope of the sets above.
+    let set: HashSet<unichar> = ('0'..='9').map(|c| unichar::try_from(c).unwrap()).collect();
+
+    let new: id = msg![env; this alloc];
+    env.objc.borrow_mut::<CharacterSetHostObject>(new).set = set;
+
+    autorelease(env, new)
+}
+
++ (id)alphanumericCharacterSet {
+    // Unicode General Categories L*, M*, and N*. We cover the ASCII letters and
+    // digits, which is what apps validating names or identifiers actually rely
+    // on; the full multi-script set is not enumerated here, matching the
+    // pragmatic scope of the other sets in this file.
+    let set: HashSet<unichar> = ('0'..='9')
+        .chain('A'..='Z')
+        .chain('a'..='z')
+        .map(|c| unichar::try_from(c).unwrap())
+        .collect();
+
+    let new: id = msg![env; this alloc];
+    env.objc.borrow_mut::<CharacterSetHostObject>(new).set = set;
+
+    autorelease(env, new)
+}
+
 @end
 
 // NSMutableCharacterSet defines no primitive methods. Subclasses must

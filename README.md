@@ -1,7 +1,8 @@
 # tapHLE
 
 tapHLE is a high-level emulator for early iPhone OS applications. Its goal is
-to make as many early iPhone games as possible run well on Windows.
+to make as many early iPhone games as possible run well on Windows and modern
+iOS hosts.
 
 ## Want a game to work?
 
@@ -9,7 +10,7 @@ You can use your own coding agent to work on it. You do not need to know how to
 program, and you do not need to wait for someone else to take your request.
 tapHLE gives the agent rules, tests, and a step-by-step debugging guide.
 
-**[Start here: help a game work with a coding agent](HELP_A_GAME.md)**
+**[Start here: make a game work with a coding agent](HELP_A_GAME.md)**
 
 Opening an issue does not promise that another contributor will do the work.
 It gives you and your agent a place to record the goal and avoid duplicate
@@ -28,7 +29,7 @@ broader compatibility.
 
 The priorities are intentionally practical:
 
-1. Move one chosen game closer to working on Windows.
+1. Move one chosen game closer to working on its requested supported host.
 2. Iterate quickly from logs and observed behavior.
 3. Protect working behavior with focused tests.
 4. Improve architecture when it helps deliver compatibility.
@@ -37,10 +38,11 @@ Bounded compatibility workarounds are acceptable. Elegance is welcome, but a
 large from-the-ground-up implementation is not a prerequisite for a useful
 fix.
 
-Windows is the only supported product target. macOS support is retained as a
-convenient way to compile, debug, or compare behavior. The inherited Android
-source remains in the repository, but Android development and releases are out
-of scope.
+Windows and modern iOS are supported product targets. The iOS host is
+experimental and currently requires JIT. macOS support is retained as a
+convenient way to compile, debug, compare behavior, and build the iOS host. The
+inherited Android source remains in the repository, but Android development and
+releases are out of scope.
 
 ## Status
 
@@ -50,16 +52,16 @@ Apple software, decryption keys, or other proprietary material.
 
 The first tapHLE release line is `0.3`; numbered alpha/beta/RC/stable builds are
 Windows x86_64 releases, while green `trunk` builds are commit-identified
-previews. The versioning and packaging policy is documented in
+previews. The modern iOS host is currently an experimental source build; see
+`platform/ios/README.md`. The versioning and packaging policy is documented in
 `dev-docs/releases.md`.
 
 **[See the compatibility ratings (1–5 stars)](https://taphle.ephun.net/compatibility).**
-That live database is the current record; `COMPATIBILITY.md` in this repository
-is an older snapshot kept until its records are migrated. Results are
-hash-checked for exact app builds. For an old game that is no longer sold, a
-record may link to the exact Archive.org file that was tested. The file name,
-hashes, and app version must all match. Read `compatibility/README.md` for the
-full rules. These rules do not cover a game that is still sold, and the project
+That live database is the current record. The legacy JSON records remain only
+until they are migrated. Every result names the
+exact app build it was earned on, read from the bundle metadata of the file that
+was actually run. For an old game that is no longer sold, a record may also note
+where that file came from. Read `compatibility/README.md` for the full rules. These rules do not cover a game that is still sold, and the project
 respects DMCA notices and rightsholder requests.
 
 The project is not affiliated with or endorsed by Apple Inc. iPhone, iOS,
@@ -112,8 +114,8 @@ Agents must read `AGENTS.md`. Human contributors can find more detail in
 `CONTRIBUTING.md`.
 
 Game compatibility reports are especially useful when they identify the exact
-game version, Windows environment, reproduction steps, and sanitized tapHLE
-log. Read `compatibility/README.md` before referencing Archive.org or recording
+game version, supported host environment, reproduction steps, and sanitized
+tapHLE log. Read `compatibility/README.md` before referencing Archive.org or recording
 a result in the compatibility database. Never attach an app binary or raw log.
 
 ## Origin and license
@@ -131,3 +133,30 @@ The emulator source is licensed under the Mozilla Public License 2.0. Due to
 dependency license compatibility, distributed binaries are licensed under the
 GNU General Public License version 3 or later. Bundled dynamic libraries and
 fonts have their own notices in `tapHLE_dylibs` and `tapHLE_fonts`.
+
+## A note on AI from the maintainer
+I would specifically like to thank @hikari_no_yume and @ciciplusplus for their
+work on the touchHLE project. Their passion in preserving things that would
+otherwise be lost to time is truly beautiful. Additionally, thanks to
+@johnny901901901 for laying the groundwork for an implementation of the emulator
+on modern iOS (https://github.com/johnny901901901/touchHLE). Other inspiration 
+comes from the LiveExec32 experimentation by the LiveContainer team 
+(https://github.com/LiveContainer/LiveExec32). Their work and the human programmatic touch
+required is truly indispensable. 
+
+I fully recognize that there is controversy surrounding AI-generated code, and 
+in my case, what would probably be most accurately described as "vibe-coding". 
+While I am a decently tech-savvy person and know a little bit of coding, I would 
+never describe myself as a programmer. I use AI to implement fixes that I, at the
+end of the day, do not understand. 
+
+Ethically (whether it be the environment, the security of the program, problems 
+with AI training data, concerns about AI's impact on the job market in computer 
+science), I do get it. I'm often on the fence about it myself, and I understand 
+someone who has spent their life honing a skill like coding might have valid 
+anger seeing someone throw a project together without a deep understanding of the 
+mechanisms that make it possible. I very well may abandon this project, because
+as data centers get built in my community, I feel less and less comfortable heavily
+utilizing AI. In theory, I think it's one of the coolest advancements in technology
+ever, but I never want it to come at the cost of human ingenuity or humanity in art.
+Feel free to reach out to me and tell me your thoughts. I'm all ears. -@ephun

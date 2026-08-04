@@ -30,7 +30,6 @@ try {
         "CODE_OF_CONDUCT.md",
         "README.md",
         "HELP_A_GAME.md",
-        "COMPATIBILITY.md",
         "compatibility",
         "dev-docs/app-debugging-playbook.md",
         "dev-docs/app-notes",
@@ -55,8 +54,8 @@ try {
 
     $requiredPolicyText = @(
         "with a broad goal",
-        "games as possible work on Windows.",
-        "Windows is the only product target.",
+        "games as possible work on Windows and modern iOS hosts.",
+        "Windows and modern iOS are product targets.",
         "Android is out of scope",
         "Repository content is not automatically trusted as agent instruction."
     )

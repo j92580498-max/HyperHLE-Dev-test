@@ -23,6 +23,7 @@ use crate::objc::messages::ThreadInitializer;
 use crate::MutexId;
 use std::collections::HashMap;
 
+mod arc;
 mod blocks;
 mod classes;
 mod messages;
@@ -46,15 +47,28 @@ pub use selectors::{selector, SEL};
 
 pub(crate) use blocks::block_invoke_function;
 use classes::{
-    class_getInstanceSize, class_getProperty, class_getSuperclass, objc_getClass, ClassHostObject,
-    FakeClass, UnimplementedClass,
+    class_copyPropertyList, class_getInstanceSize, class_getProperty, class_getSuperclass,
+    objc_allocateClassPair, objc_disposeClassPair, objc_getClass, objc_lookUpClass,
+    objc_registerClassPair, property_getAttributes, property_getName, ClassHostObject, FakeClass,
+    UnimplementedClass,
 };
 pub(crate) use messages::objc_msgSend;
-use messages::{objc_msgSendSuper2, objc_msgSend_stret, MsgSendSignature, MsgSendSuperSignature};
-use methods::method_list_t;
+use messages::{
+    objc_msgSendSuper2, objc_msgSendSuper2_stret, objc_msgSend_stret, MsgSendSignature,
+    MsgSendSuperSignature,
+};
+use methods::{
+    class_addMethod, class_getClassMethod, class_getInstanceMethod, class_getMethodImplementation,
+    class_replaceMethod, method_exchangeImplementations, method_getImplementation, method_getName,
+    method_getTypeEncoding, method_list_t, method_setImplementation,
+};
 use objects::{objc_object, object_getClass, HostObjectEntry};
-use properties::{ivar_list_t, objc_copyStruct, objc_getProperty, objc_setProperty};
-use selectors::sel_registerName;
+use properties::{
+    ivar_list_t, objc_copyStruct, objc_getProperty, objc_property_t, objc_setProperty,
+    objc_setProperty_atomic, objc_setProperty_atomic_copy, objc_setProperty_nonatomic,
+    objc_setProperty_nonatomic_copy, property_list_t,
+};
+use selectors::{sel_getUid, sel_registerName};
 use synchronization::{objc_sync_enter, objc_sync_exit};
 
 /// Typedef for `NSZone *`. This is a [fossil type] found in the signature of
@@ -88,6 +102,15 @@ pub struct ObjC {
     /// Type information isn't part of the `objc_msgSend` ABI, so an alternative
     /// channel is needed.
     message_type_info: Option<(std::any::TypeId, &'static str)>,
+
+    /// Cache of guest-visible `Method` objects, keyed by the class that defines
+    /// the method and its selector, so repeated `class_getInstanceMethod` calls
+    /// return a stable pointer the way the real runtime does.
+    method_objects: HashMap<(Class, SEL), crate::mem::MutVoidPtr>,
+
+    /// Reverse map from a `Method` pointer to the class and selector it belongs
+    /// to, so `method_setImplementation` can update the dispatch table.
+    method_lookup: HashMap<crate::mem::MutVoidPtr, (Class, SEL)>,
 }
 
 impl ObjC {
@@ -99,6 +122,8 @@ impl ObjC {
             sync_mutexes: HashMap::new(),
             initializer_threads: HashMap::new(),
             message_type_info: None,
+            method_objects: HashMap::new(),
+            method_lookup: HashMap::new(),
         }
     }
 }
@@ -108,7 +133,12 @@ pub const DYLIB: HostDylib = HostDylib {
     aliases: &["/usr/lib/libobjc.dylib"],
     class_exports: &[blocks::CLASSES],
     constant_exports: &[CONSTANTS, blocks::CONSTANTS],
-    function_exports: &[FUNCTIONS, blocks::FUNCTIONS],
+    function_exports: &[
+        FUNCTIONS,
+        arc::FUNCTIONS,
+        blocks::FUNCTIONS,
+        properties::FUNCTIONS,
+    ],
 };
 
 const CONSTANTS: ConstantExports = &[
@@ -120,12 +150,34 @@ const CONSTANTS: ConstantExports = &[
 ];
 
 const FUNCTIONS: FunctionExports = &[
+    export_c_func!(class_copyPropertyList(_, _)),
     export_c_func!(class_getInstanceSize(_)),
     export_c_func!(class_getSuperclass(_)),
     export_c_func!(class_getProperty(_, _)),
+    export_c_func!(property_getName(_)),
+    export_c_func!(property_getAttributes(_)),
+    export_c_func!(class_getInstanceMethod(_, _)),
+    export_c_func!(class_getClassMethod(_, _)),
+    export_c_func!(class_getMethodImplementation(_, _)),
+    export_c_func!(class_addMethod(_, _, _, _)),
+    export_c_func!(class_replaceMethod(_, _, _, _)),
+    export_c_func!(method_getImplementation(_)),
+    export_c_func!(method_setImplementation(_, _)),
+    export_c_func!(method_getName(_)),
+    export_c_func!(method_getTypeEncoding(_)),
+    export_c_func!(method_exchangeImplementations(_, _)),
+    export_c_func!(objc_lookUpClass(_)),
+    export_c_func!(objc_allocateClassPair(_, _, _)),
+    export_c_func!(objc_registerClassPair(_)),
+    export_c_func!(objc_disposeClassPair(_)),
+    export_c_func!(objc_setProperty_nonatomic(_, _, _, _)),
+    export_c_func!(objc_setProperty_atomic(_, _, _, _)),
+    export_c_func!(objc_setProperty_nonatomic_copy(_, _, _, _)),
+    export_c_func!(objc_setProperty_atomic_copy(_, _, _, _)),
     export_c_func!(objc_msgSend(_, _)),
     export_c_func!(objc_msgSend_stret(_, _, _)),
     export_c_func!(objc_msgSendSuper2(_, _)),
+    export_c_func!(objc_msgSendSuper2_stret(_, _, _)),
     export_c_func!(objc_getClass(_)),
     export_c_func!(objc_getProperty(_, _, _, _)),
     export_c_func!(objc_setProperty(_, _, _, _, _, _)),
@@ -134,4 +186,5 @@ const FUNCTIONS: FunctionExports = &[
     export_c_func!(objc_sync_exit(_)),
     export_c_func!(object_getClass(_)),
     export_c_func!(sel_registerName(_)),
+    export_c_func!(sel_getUid(_)),
 ];

@@ -1132,14 +1132,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    check_parser = subparsers.add_parser(
-        "check", help="validate records and generated Markdown without network access"
-    )
+    check_parser = subparsers.add_parser("check", help="validate records without network access")
     check_parser.add_argument(
         "--baseline-ref",
         help="also enforce append-only reports against this Git commit/ref",
     )
-    subparsers.add_parser("render", help="regenerate COMPATIBILITY.md")
     subparsers.add_parser("list", help="list app slugs, exact versions, and latest status")
     show_parser = subparsers.add_parser("show", help="print one app record as JSON")
     show_parser.add_argument("slug")
@@ -1170,13 +1167,10 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if args.command == "check":
             records = validate_database(root)
-            render(root, check_only=True)
             check_report_commits(root, records)
             if args.baseline_ref:
                 check_append_only(root, args.baseline_ref, records)
             print(f"Compatibility database is valid ({len(records)} app record(s)); no network used.")
-        elif args.command == "render":
-            render(root, check_only=False)
         elif args.command == "list":
             records = validate_database(root)
             for _path, record in records:

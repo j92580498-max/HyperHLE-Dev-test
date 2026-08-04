@@ -11,12 +11,13 @@ use crate::frameworks::core_foundation::cf_bundle::{
     CFBundleCopyBundleLocalizations, CFBundleCopyPreferredLocalizationsFromArray,
 };
 use crate::frameworks::foundation::ns_string::{
-    from_rust_string, to_rust_string, NSUTF8StringEncoding,
+    from_rust_string, to_rust_string, NSUTF16StringEncoding, NSUTF8StringEncoding,
 };
+use crate::fs::GuestPath;
 use crate::mem::{ConstVoidPtr, MutPtr, Ptr};
 use crate::objc::{
-    autorelease, id, msg, msg_class, nil, objc_classes, release, retain, ClassExports, HostObject,
-    NSZonePtr,
+    autorelease, id, msg, msg_class, nil, objc_classes, release, retain, Class, ClassExports,
+    HostObject, NSZonePtr,
 };
 use crate::Environment;
 use std::collections::{HashMap, HashSet};
@@ -41,7 +42,10 @@ const LANG_ID_TO_LANG_PROJ: &[(&str, &[&str])] = &[
 #[derive(Default)]
 pub struct State {
     main_bundle: Option<id>,
-    localization_tables: HashMap<id, id>, // NSString* to NSDictionary*
+    /// (NSBundle*, NSString* table name) to NSDictionary*. The bundle is part
+    /// of the key because two bundles may each carry a `Localizable.strings`
+    /// and they are different tables.
+    localization_tables: HashMap<(id, id), id>,
 }
 
 pub struct NSBundleHostObject {
@@ -65,6 +69,29 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 @implementation NSBundle: NSObject
 
++ (id)allocWithZone:(NSZonePtr)_zone {
+    // NSBundle's own allocation, for the alloc/init route below. Without this,
+    // +alloc falls through to NSObject and produces an object with no
+    // NSBundleHostObject behind it, which -initWithPath: would then panic on.
+    let host_object = NSBundleHostObject {
+        bundle: None,
+        bundle_path: nil,
+        bundle_identifier: nil,
+        bundle_url: None,
+        info_dictionary: None,
+    };
+    env.objc.alloc_object(this, Box::new(host_object), &mut env.mem)
+}
+
+
+// Every class a guest app can name lives either in its own executable or in a
+// framework tapHLE implements on the host; in both cases the bundle the app can
+// see is the main bundle. Apps use this to find resources shipped alongside a
+// class, which is exactly where those resources are.
++ (id)bundleForClass:(Class)_class {
+    msg_class![env; NSBundle mainBundle]
+}
+
 + (id)mainBundle {
     if let Some(bundle) = env.framework_state.foundation.ns_bundle.main_bundle {
         bundle
@@ -75,9 +102,70 @@ pub const CLASSES: ClassExports = objc_classes! {
    }
 }
 
++ (id)bundleWithIdentifier:(id)identifier { // NSString*
+    // We only model the main bundle. Return it when the requested identifier
+    // matches, otherwise nil — a separate framework or plugin bundle looked up
+    // by identifier is not available here.
+    let main_bundle: id = msg_class![env; NSBundle mainBundle];
+    let main_id: id = msg![env; main_bundle bundleIdentifier];
+    let matches: bool =
+        identifier != nil && main_id != nil && msg![env; identifier isEqualToString:main_id];
+    if matches {
+        main_bundle
+    } else {
+        nil
+    }
+}
+
++ (id)bundleWithPath:(id)path { // NSString*
+    // Model a bundle rooted at the given path. The iPhone OS bundle layout is
+    // flat, so resourcePath == bundlePath and resource lookups resolve relative
+    // to this path (see -resourcePath / -pathForResource:...).
+    retain(env, path);
+    let host_object = NSBundleHostObject {
+        bundle: None,
+        bundle_path: path,
+        bundle_identifier: nil,
+        bundle_url: None,
+        info_dictionary: None,
+    };
+    let new = env.objc.alloc_object(this, Box::new(host_object), &mut env.mem);
+    autorelease(env, new)
+}
+
 + (id)preferredLocalizationsFromArray:(id)localizations_array { // NSArray<NSString *> *
     let preferredLocalizations = CFBundleCopyPreferredLocalizationsFromArray(env, localizations_array);
     autorelease(env, preferredLocalizations)
+}
+
+// The class-method form. Unlike the instance method, `directory` here is an
+// absolute path to search rather than a subdirectory of a bundle, so this does
+// not go through -resourcePath.
++ (id)pathsForResourcesOfType:(id)extension // NSString*
+                  inDirectory:(id)directory { // NSString*
+    let result: id = msg_class![env; NSMutableArray array];
+    if directory == nil {
+        return result;
+    }
+    let file_manager: id = msg_class![env; NSFileManager defaultManager];
+    let entries: id = msg![env; file_manager directoryContentsAtPath:directory];
+    if entries == nil {
+        return result;
+    }
+    let count: NSUInteger = msg![env; entries count];
+    for i in 0..count {
+        let entry: id = msg![env; entries objectAtIndex:i];
+        if extension != nil {
+            let entry_extension: id = msg![env; entry pathExtension];
+            let matches: bool = msg![env; entry_extension isEqualToString:extension];
+            if !matches {
+                continue;
+            }
+        }
+        let full: id = msg![env; directory stringByAppendingPathComponent:entry];
+        () = msg![env; result addObject:full];
+    }
+    result
 }
 
 - (())dealloc {
@@ -95,6 +183,25 @@ pub const CLASSES: ClassExports = objc_classes! {
         release(env, info_dictionary);
     }
     env.objc.dealloc_object(this, &mut env.mem)
+}
+
+// The bundle-scoped form of NSClassFromString. Every class a guest can name is
+// either in its own executable or in a host-implemented framework, so the
+// answer does not actually depend on which bundle is asked. Like
+// NSClassFromString, an unimplemented class is nil rather than a panic: this is
+// a feature-detection idiom.
+- (Class)classNamed:(id)name { // NSString*
+    if name == nil {
+        return nil;
+    }
+    let name = ns_string::to_rust_string(env, name).to_string();
+    match env.objc.get_known_class_if_implemented(&name, &mut env.mem) {
+        Some(class) => class,
+        None => {
+            log!("[(NSBundle*) classNamed:\"{}\"] -> nil: no implementation of that class.", name);
+            nil
+        }
+    }
 }
 
 - (id)bundlePath {
@@ -150,10 +257,93 @@ pub const CLASSES: ClassExports = objc_classes! {
     msg_class![env; NSURL fileURLWithPath:exec_path]
 }
 
+// Loading a bundle's code at run time.
+//
+// A resource-only bundle — no CFBundleExecutable, which is what a `.bundle` of
+// images inside an app is — has no code to load, so it is trivially loaded and
+// usable for resource lookup. That is the case apps actually hit: an embedded
+// SDK ships its classes in the main executable and its artwork in a bundle
+// beside it, then calls -load before looking resources up.
+//
+// A bundle that really does carry an executable cannot be loaded: tapHLE links
+// the main executable and the system libraries it knows at startup and has no
+// run-time Mach-O loader (see the dlopen TODO in libc::dlfcn). Report that
+// honestly with NO rather than claiming a success that leaves the caller
+// messaging classes that do not exist.
+- (bool)load {
+    let bundle_is_main = env.objc.borrow::<NSBundleHostObject>(this).bundle.is_none();
+    if bundle_is_main {
+        // The main executable is loaded before any guest code runs.
+        return true;
+    }
+    let executable_path: id = msg![env; this objectForInfoDictionaryKey:(ns_string::get_static_str(env, "CFBundleExecutable"))];
+    if executable_path == nil {
+        log_dbg!("[(NSBundle*){:?} load] resource-only bundle, nothing to load", this);
+        return true;
+    }
+    log!(
+        "TODO: [(NSBundle*){:?} load] wants to load bundle code at run time, which tapHLE cannot do; reporting failure",
+        this
+    );
+    false
+}
+
+- (bool)isLoaded {
+    msg![env; this load]
+}
+
+- (bool)loadAndReturnError:(MutPtr<id>)error { // NSError**
+    let loaded: bool = msg![env; this load];
+    if !loaded && !error.is_null() {
+        env.mem.write(error, nil);
+    }
+    loaded
+}
+
+- (bool)unload {
+    // Nothing was ever loaded, so there is nothing to unload. Apple documents
+    // this as returning NO when the bundle's code is not loaded.
+    false
+}
+
+// Every resource of a type, rather than the first one. An app builds a level
+// list this way instead of hard-coding filenames.
+- (id)pathsForResourcesOfType:(id)extension // NSString*
+                  inDirectory:(id)directory { // NSString*, may be nil
+    let mut dir_path: id = msg![env; this resourcePath];
+    if directory != nil {
+        dir_path = msg![env; dir_path stringByAppendingPathComponent:directory];
+    }
+
+    let result: id = msg_class![env; NSMutableArray array];
+    let file_manager: id = msg_class![env; NSFileManager defaultManager];
+    let entries: id = msg![env; file_manager directoryContentsAtPath:dir_path];
+    if entries == nil {
+        return result;
+    }
+    let count: NSUInteger = msg![env; entries count];
+    for i in 0..count {
+        let entry: id = msg![env; entries objectAtIndex:i];
+        // A nil type means every resource, which is what the documentation
+        // says and what a caller enumerating a whole directory relies on.
+        if extension != nil {
+            let entry_extension: id = msg![env; entry pathExtension];
+            let matches: bool = msg![env; entry_extension isEqualToString:extension];
+            if !matches {
+                continue;
+            }
+        }
+        let full: id = msg![env; dir_path stringByAppendingPathComponent:entry];
+        () = msg![env; result addObject:full];
+    }
+    result
+}
+
 - (id)pathForResource:(id)name // NSString*
                ofType:(id)extension // NSString*
           inDirectory:(id)directory { // NSString*
-    assert!(name != nil); // TODO
+    // A nil name is legal: it means "the first resource of this type", so it is
+    // handled by path_for_resource_helper via a directory scan.
 
     // TODO: cache result of lookups
 
@@ -244,9 +434,11 @@ pub const CLASSES: ClassExports = objc_classes! {
     } else {
         table_name
     };
-    // TODO: support arbitrary bundles, not only main one
-    assert_eq!(this, env.framework_state.foundation.ns_bundle.main_bundle.unwrap());
-    let dict = if let Some(&table_dict) = env.framework_state.foundation.ns_bundle.localization_tables.get(&name) {
+    // The lookup below goes through URLForResource:withExtension:, which is
+    // already per-bundle, so the bundle only has to appear in the cache key.
+    // A framework or plug-in bundle asking for its own strings is ordinary.
+    let cache_key = (this, name);
+    let dict = if let Some(&table_dict) = env.framework_state.foundation.ns_bundle.localization_tables.get(&cache_key) {
         table_dict
     } else {
         let extension = ns_string::get_static_str(env, "strings");
@@ -254,7 +446,7 @@ pub const CLASSES: ClassExports = objc_classes! {
         if dict_url == nil {
             log!("Warning: Unable to locate localization table named '{}', caching as nil", to_rust_string(env, name));
             retain(env, name);
-            env.framework_state.foundation.ns_bundle.localization_tables.insert(name, nil);
+            env.framework_state.foundation.ns_bundle.localization_tables.insert(cache_key, nil);
             nil
         } else {
             let dict = {
@@ -269,7 +461,7 @@ pub const CLASSES: ClassExports = objc_classes! {
             };
             retain(env, name);
             retain(env, dict);
-            env.framework_state.foundation.ns_bundle.localization_tables.insert(name, dict);
+            env.framework_state.foundation.ns_bundle.localization_tables.insert(cache_key, dict);
             dict
         }
     };
@@ -320,6 +512,34 @@ pub const CLASSES: ClassExports = objc_classes! {
     autorelease(env, preferred_localizations)
 }
 
+// The alloc/init route to the same thing +bundleWithPath: produces.
+//
+// Returns nil when the path does not exist, which Apple documents and which
+// callers do check — it is how an app asks "is there a bundle here?". The
+// identifier and Info.plist are left unread, as +bundleWithPath: leaves them:
+// they are loaded lazily from the path when something asks.
+- (id)initWithPath:(id)path { // NSString*
+    if path == nil {
+        return nil;
+    }
+    let path_str = ns_string::to_rust_string(env, path).to_string();
+    if !env.fs.exists(GuestPath::new(&path_str)) {
+        log_dbg!("[NSBundle initWithPath:{:?}] no such path, returning nil", path_str);
+        return nil;
+    }
+
+    retain(env, path);
+    let host_object = env.objc.borrow_mut::<NSBundleHostObject>(this);
+    let old_path = std::mem::replace(&mut host_object.bundle_path, path);
+    let old_identifier = std::mem::replace(&mut host_object.bundle_identifier, nil);
+    host_object.bundle_url = None;
+    host_object.info_dictionary = None;
+    release(env, old_path);
+    release(env, old_identifier);
+    this
+}
+
+
 // TODO: constructors, more accessors
 
 @end
@@ -364,14 +584,38 @@ fn path_for_resource_helper(
     directory: id,
     extension: id,
 ) -> id {
-    let mut path: id = msg![env; bundle resourcePath];
+    let mut dir_path: id = msg![env; bundle resourcePath];
     if lproj != nil {
-        path = msg![env; path stringByAppendingPathComponent:lproj];
+        dir_path = msg![env; dir_path stringByAppendingPathComponent:lproj];
     }
     if directory != nil {
-        path = msg![env; path stringByAppendingPathComponent:directory];
+        dir_path = msg![env; dir_path stringByAppendingPathComponent:directory];
     }
-    path = msg![env; path stringByAppendingPathComponent:name];
+
+    if name == nil {
+        // A nil name means "the first resource with this extension" (or the
+        // first entry at all, if the extension is nil too). Scan the directory.
+        let file_manager: id = msg_class![env; NSFileManager defaultManager];
+        let entries: id = msg![env; file_manager directoryContentsAtPath:dir_path];
+        if entries == nil {
+            return nil;
+        }
+        let count: NSUInteger = msg![env; entries count];
+        for i in 0..count {
+            let entry: id = msg![env; entries objectAtIndex:i];
+            if extension != nil {
+                let entry_extension: id = msg![env; entry pathExtension];
+                let matches: bool = msg![env; entry_extension isEqualToString:extension];
+                if !matches {
+                    continue;
+                }
+            }
+            return msg![env; dir_path stringByAppendingPathComponent:entry];
+        }
+        return nil;
+    }
+
+    let mut path: id = msg![env; dir_path stringByAppendingPathComponent:name];
     if extension != nil {
         path = msg![env; path stringByAppendingPathExtension:extension];
     }
@@ -397,9 +641,18 @@ fn load_strings_as_standard_format(env: &mut Environment, dict_url: id) -> id {
     assert!(length > 2);
     let bytes: ConstVoidPtr = msg![env; data bytes];
     let maybe_bom = env.mem.bytes_at(bytes.cast(), 2);
-    assert!(maybe_bom[0..2] != [0xFE, 0xFF] && maybe_bom[0..2] != [0xFF, 0xFE]); // TODO: UTF-16 cases
+    // A .strings file is UTF-16 as often as it is UTF-8 - that is what Xcode
+    // writes when the file is edited as a property list - and the byte order
+    // mark is how the two are told apart. NSUTF16StringEncoding reads the mark
+    // itself, so the whole difference is which constant is handed over here.
+    let is_utf16 = maybe_bom[0..2] == [0xFE, 0xFF] || maybe_bom[0..2] == [0xFF, 0xFE];
+    let encoding = if is_utf16 {
+        NSUTF16StringEncoding
+    } else {
+        NSUTF8StringEncoding
+    };
     let strings_str = msg_class![env; NSString alloc];
-    let strings_str: id = msg![env; strings_str initWithData:data encoding:NSUTF8StringEncoding];
+    let strings_str: id = msg![env; strings_str initWithData:data encoding:encoding];
     assert!(strings_str != nil); // TODO
 
     let comment_start = ns_string::get_static_str(env, "/*");
@@ -458,18 +711,35 @@ fn scan_quoted_sanitized(env: &mut Environment, scanner: id) -> id {
     retain(env, orig_skip_set);
 
     let has_open_quote: bool = msg![env; scanner scanString:quote intoString:null_ptr];
-    assert!(has_open_quote);
-    // Should not skip chars at the beginning!
-    () = msg![env; scanner setCharactersToBeSkipped:nil];
-    let _: bool = msg![env; scanner scanUpToString:quote intoString:res_ptr];
-    () = msg![env; scanner setCharactersToBeSkipped:orig_skip_set];
-    release(env, orig_skip_set);
-    let has_end_quote: bool = msg![env; scanner scanString:quote intoString:null_ptr];
-    assert!(has_end_quote);
+    if has_open_quote {
+        // Should not skip chars at the beginning!
+        () = msg![env; scanner setCharactersToBeSkipped:nil];
+        let _: bool = msg![env; scanner scanUpToString:quote intoString:res_ptr];
+        () = msg![env; scanner setCharactersToBeSkipped:orig_skip_set];
+        release(env, orig_skip_set);
+        let has_end_quote: bool = msg![env; scanner scanString:quote intoString:null_ptr];
+        assert!(has_end_quote);
+    } else {
+        // The quotes around a key are optional in the standard format; a key
+        // with no spaces in it is often written bare. It runs until whitespace
+        // or the equals sign that follows it.
+        let delimiters = ns_string::get_static_str(env, " \t\r\n=;");
+        let delimiter_set: id =
+            msg_class![env; NSCharacterSet characterSetWithCharactersInString:delimiters];
+        () = msg![env; scanner setCharactersToBeSkipped:orig_skip_set];
+        release(env, orig_skip_set);
+        let _: bool = msg![env; scanner scanUpToCharactersFromSet:delimiter_set intoString:res_ptr];
+    }
 
     let res = env.mem.read(res_ptr);
     env.mem.free(res_ptr.cast());
-    assert!(res != nil); // TODO
+    // An empty quoted string scans nothing, and "" is a legal key and a legal
+    // value. Report it as the empty string it is.
+    let res = if res == nil {
+        ns_string::get_static_str(env, "")
+    } else {
+        res
+    };
 
     // TODO: implement generic parsing approach for unquoting
     let quoted_newline: id = ns_string::get_static_str(env, "\\n");

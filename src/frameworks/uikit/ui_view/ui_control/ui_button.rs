@@ -204,7 +204,15 @@ pub const CLASSES: ClassExports = objc_classes! {
 
     let key_ns_string = get_static_str(env, "UIButtonStatefulContent");
     let dict: id = msg![env; coder decodeObjectForKey:key_ns_string];
-    assert!(dict != nil);
+    if dict == nil {
+        // A button archived with no per-state content at all — no title, image
+        // or colour set in Interface Builder. That is a legal nib, and the
+        // button is simply blank, so there is nothing to decode. Asserting here
+        // aborted the app on a perfectly well-formed archive.
+        log_dbg!("UIButton initWithCoder: no UIButtonStatefulContent, leaving it blank");
+        update(env, this);
+        return this;
+    }
     log_dbg!("UIButtonStatefulContent dict: {}", {
         let desc: id = msg![env; dict description];
         to_rust_string(env, desc)
@@ -430,6 +438,14 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 @implementation UIRoundedRectButton: UIButton
 // TODO: rendering of round corners
+@end
+
+// `UIPushButton` is a private UIKit class from the earliest iPhone OS releases,
+// before UIButton was public API. It is a plain push button, so inheriting
+// UIButton's whole implementation is the right shim: apps that reference it
+// (usually through a nib archived long ago) get working behavior rather than a
+// "missing implementation" abort. No behavior of its own is known to differ.
+@implementation UIPushButton: UIButton
 @end
 
 @implementation UIButtonContent: NSObject

@@ -6,12 +6,28 @@
 //! `NSURLConnection`.
 
 use super::{ns_string, NSInteger};
+use crate::dyld::{ConstantExports, HostConstant};
 use crate::environment::Environment;
 use crate::mem::MutPtr;
 use crate::objc::{autorelease, id, msg, msg_class, nil, objc_classes, release, ClassExports};
 use std::borrow::Cow;
 
 const NSURLErrorDomain: &str = "NSURLErrorDomain";
+/// `userInfo` key on the errors this domain produces. Nothing here populates it
+/// yet, but apps reference the symbol to read it out of an error, and an unbound
+/// one is a null pointer they will dereference.
+const NSErrorFailingURLStringKey: &str = "NSErrorFailingURLStringKey";
+
+pub const CONSTANTS: ConstantExports = &[
+    (
+        "_NSURLErrorDomain",
+        HostConstant::NSString(NSURLErrorDomain),
+    ),
+    (
+        "_NSErrorFailingURLStringKey",
+        HostConstant::NSString(NSErrorFailingURLStringKey),
+    ),
+];
 
 /// Our helper type, Foundation just uses ints.
 type NSURLErrorCode = NSInteger;
@@ -72,6 +88,43 @@ pub const CLASSES: ClassExports = objc_classes! {
     );
     release(env, this);
     nil
+}
+
+@end
+
+
+// NSURLProtocol is the hook apps install to intercept or fake network requests,
+// and registering one is the first thing an offline-capable app does. Nothing
+// here performs requests, so nothing consults the registry — but refusing to
+// let an app register stopped eleven of them in a 1501-app survey before they
+// reached their own code.
+@implementation NSURLProtocol: NSObject
+
++ (bool)registerClass:(id)protocol_class {
+    log_dbg!("TODO: [NSURLProtocol registerClass:{:?}] accepted but never consulted", protocol_class);
+    true
+}
+
++ (())unregisterClass:(id)protocol_class {
+    log_dbg!("TODO: [NSURLProtocol unregisterClass:{:?}]", protocol_class);
+}
+
+// Asked of a *subclass* to decide whether it wants a request. The base class
+// answering NO is correct: NSURLProtocol itself handles nothing.
++ (bool)canInitWithRequest:(id)_request {
+    false
+}
+
++ (id)canonicalRequestForRequest:(id)request {
+    request
+}
+
++ (id)propertyForKey:(id)_key inRequest:(id)_request {
+    nil
+}
++ (())setProperty:(id)_value forKey:(id)_key inRequest:(id)_request {
+}
++ (())removePropertyForKey:(id)_key inRequest:(id)_request {
 }
 
 @end

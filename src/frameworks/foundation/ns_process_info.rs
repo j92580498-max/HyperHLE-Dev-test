@@ -5,7 +5,7 @@
  */
 //! `NSProcessInfo`.
 
-use super::NSTimeInterval;
+use super::{NSTimeInterval, NSUInteger};
 use crate::frameworks::foundation::ns_string;
 use crate::libc::mach::host::PHYSICAL_MEMORY;
 use crate::objc::{autorelease, id, msg, msg_class, objc_classes, ClassExports};
@@ -58,6 +58,25 @@ pub const CLASSES: ClassExports = objc_classes! {
 - (u64)physicalMemory {
     assert_process_info_singleton(env, this); // TODO
     PHYSICAL_MEMORY.into()
+}
+
+// The devices tapHLE emulates are single-core, and its guest scheduler runs one
+// guest thread at a time regardless, so reporting one is both the historically
+// accurate answer and the one that matches what actually happens. Apps use this
+// to size worker pools; a larger number would create threads that cannot run in
+// parallel anyway.
+- (NSUInteger)processorCount {
+    assert_process_info_singleton(env, this); // TODO
+    1
+}
+- (NSUInteger)activeProcessorCount {
+    assert_process_info_singleton(env, this); // TODO
+    1
+}
+
+- (i32)processIdentifier {
+    assert_process_info_singleton(env, this); // TODO
+    crate::libc::unistd::getpid(env)
 }
 
 - (id)environment {

@@ -5,8 +5,9 @@
  */
 //! `UIScrollView`.
 
+pub mod ui_table_view;
 pub mod ui_text_view;
-use crate::frameworks::core_graphics::{CGPoint, CGRect, CGSize};
+use crate::frameworks::core_graphics::{CGFloat, CGPoint, CGRect, CGSize};
 use crate::frameworks::foundation::NSInteger;
 use crate::objc::{
     id, impl_HostObject_with_superclass, msg, nil, objc_classes, todo_objc_setter, ClassExports,
@@ -22,6 +23,12 @@ pub struct UIScrollViewHostObject {
     scroll_enabled: bool,
     content_offset: CGPoint,
     content_size: CGSize,
+    /// Zoom is stored and reported back but not applied: nothing here
+    /// scales the content. Apps configure the limits during setup and read
+    /// them back, which is what round-tripping serves.
+    minimum_zoom_scale: CGFloat,
+    maximum_zoom_scale: CGFloat,
+    zoom_scale: CGFloat,
 }
 impl_HostObject_with_superclass!(UIScrollViewHostObject);
 impl Default for UIScrollViewHostObject {
@@ -35,6 +42,9 @@ impl Default for UIScrollViewHostObject {
                 width: 0.0,
                 height: 0.0,
             },
+            minimum_zoom_scale: 1.0,
+            maximum_zoom_scale: 1.0,
+            zoom_scale: 1.0,
         }
     }
 }
@@ -48,6 +58,30 @@ pub const CLASSES: ClassExports = objc_classes! {
 + (id)allocWithZone:(NSZonePtr)_zone {
     let host_object = Box::<UIScrollViewHostObject>::default();
     env.objc.alloc_object(this, host_object, &mut env.mem)
+}
+
+- (CGFloat)minimumZoomScale {
+    env.objc.borrow::<UIScrollViewHostObject>(this).minimum_zoom_scale
+}
+- (())setMinimumZoomScale:(CGFloat)scale {
+    env.objc.borrow_mut::<UIScrollViewHostObject>(this).minimum_zoom_scale = scale;
+}
+- (CGFloat)maximumZoomScale {
+    env.objc.borrow::<UIScrollViewHostObject>(this).maximum_zoom_scale
+}
+- (())setMaximumZoomScale:(CGFloat)scale {
+    env.objc.borrow_mut::<UIScrollViewHostObject>(this).maximum_zoom_scale = scale;
+}
+- (CGFloat)zoomScale {
+    env.objc.borrow::<UIScrollViewHostObject>(this).zoom_scale
+}
+- (())setZoomScale:(CGFloat)scale {
+    env.objc.borrow_mut::<UIScrollViewHostObject>(this).zoom_scale = scale;
+}
+- (())setZoomScale:(CGFloat)scale animated:(bool)_animated {
+    () = msg![env; this setZoomScale:scale];
+}
+- (())setBouncesZoom:(bool)_bounces {
 }
 
 - (id)delegate {

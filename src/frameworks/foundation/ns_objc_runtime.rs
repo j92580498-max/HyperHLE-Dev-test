@@ -33,12 +33,27 @@ fn NSClassFromString(env: &mut Environment, string: id) -> Class {
     // TODO: avoid copy?
     let string = ns_string::to_rust_string(env, string);
 
-    // While this method is supposed to return nil if the class is not found,
-    // tapHLE is missing many classes that apps might expect to be present,
-    // so this could be troublesome. So, let's use get_known_class, which panics
-    // when it can't find the class. We could except certain classes or apps if
-    // we need to.
-    env.objc.get_known_class(&string, &mut env.mem)
+    // Returning nil for an unknown class is both the documented behavior and
+    // the whole point of this function: apps call it to find out whether a
+    // class exists on the OS version they are running on, and branch to a
+    // fallback when it does not. Glass Tower 3 probes for
+    // GKLeaderboardViewController this way; panicking turned a supported
+    // "Game Center is unavailable" path into an abort.
+    //
+    // The missing class is still worth knowing about, so say so loudly rather
+    // than silently. If the app needed the class rather than merely probing
+    // for it, that will surface as a later nil-receiver failure.
+    let string = string.to_string();
+    match env
+        .objc
+        .get_known_class_if_implemented(&string, &mut env.mem)
+    {
+        Some(class) => class,
+        None => {
+            log!("NSClassFromString(\"{}\") -> nil: no implementation of that class. This is correct if the app is probing for an OS feature.", string);
+            nil
+        }
+    }
 }
 
 pub const FUNCTIONS: FunctionExports = &[

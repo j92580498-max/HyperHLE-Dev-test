@@ -97,17 +97,26 @@ enum StringHostObject {
 }
 impl HostObject for StringHostObject {}
 impl StringHostObject {
-    fn decode(bytes: Cow<[u8]>, encoding: NSStringEncoding) -> StringHostObject {
+    /// Decode bytes in `encoding`, or `None` if they are not valid in it.
+    ///
+    /// `None` is not an error condition to report: `initWithData:encoding:` and
+    /// its relatives are documented to return nil when the data cannot be
+    /// converted, and apps do pass data that cannot be — a binary property list
+    /// handed to the UTF-8 path is the case seen most. The caller returns nil
+    /// and the app takes the branch it already has for that.
+    fn decode(bytes: Cow<[u8]>, encoding: NSStringEncoding) -> Option<StringHostObject> {
         if bytes.is_empty() {
-            return StringHostObject::Utf8(Cow::Borrowed(""));
+            return Some(StringHostObject::Utf8(Cow::Borrowed("")));
         }
 
         // TODO: error handling
 
-        match encoding {
+        Some(match encoding {
             NSASCIIStringEncoding => {
-                assert!(bytes.iter().all(|byte| byte.is_ascii()));
-                // Safety: guaranteed by above assertion
+                if !bytes.iter().all(|byte| byte.is_ascii()) {
+                    return None;
+                }
+                // Safety: guaranteed by the check above
                 let string = unsafe { String::from_utf8_unchecked(bytes.into_owned()) };
                 StringHostObject::Utf8(Cow::Owned(string))
             }
@@ -119,7 +128,7 @@ impl StringHostObject {
                 StringHostObject::Utf8(Cow::Owned(string))
             }
             NSUTF8StringEncoding => {
-                let string = String::from_utf8(bytes.into_owned()).unwrap();
+                let string = String::from_utf8(bytes.into_owned()).ok()?;
                 StringHostObject::Utf8(Cow::Owned(string))
             }
             NSWindowsCP1252StringEncoding => {
@@ -154,9 +163,8 @@ impl StringHostObject {
                     },
                     _ => unreachable!(),
                 };
-                // TODO: Should the BOM be stripped? Always/sometimes/never?
 
-                StringHostObject::Utf16(if is_big_endian {
+                let units: Vec<u16> = if is_big_endian {
                     bytes
                         .chunks(2)
                         .map(|chunk| u16::from_be_bytes(chunk.try_into().unwrap()))
@@ -166,10 +174,24 @@ impl StringHostObject {
                         .chunks(2)
                         .map(|chunk| u16::from_le_bytes(chunk.try_into().unwrap()))
                         .collect()
-                })
+                };
+
+                // The mark is consumed, not kept: under
+                // NSUTF16StringEncoding it is how the byte order was just
+                // decided, so leaving it in would put an invisible character
+                // at the front of every file that has one. The
+                // explicitly-ordered encodings are different - nothing was
+                // decided from it there, so it stays as the zero width
+                // no-break space it nominally is.
+                let units = match units.split_first() {
+                    Some((0xFEFF, rest)) if encoding == NSUTF16StringEncoding => rest.to_vec(),
+                    _ => units,
+                };
+
+                StringHostObject::Utf16(units)
             }
             _ => panic!("Unimplemented encoding: {encoding:#x}"),
-        }
+        })
     }
     fn to_utf8(&self) -> Result<Cow<'static, str>, FromUtf16Error> {
         match self {
@@ -299,6 +321,53 @@ pub fn from_rust_ordering(ordering: std::cmp::Ordering) -> NSComparisonResult {
     }
 }
 
+/// Clear a caller's `NSError**` out-parameter.
+///
+/// These initialisers report failure by returning nil, which is what callers
+/// check. tapHLE has no NSError detail worth inventing here, so the pointer is
+/// set to nil rather than left holding stale memory — and, importantly, rather
+/// than asserting that the caller did not ask for an error at all, which used
+/// to abort any app that passed one.
+fn report_no_error(env: &mut Environment, error: MutPtr<id>) {
+    if !error.is_null() {
+        env.mem.write(error, nil);
+    }
+}
+
+/// The deprecated `initWithContentsOfFile:`/`initWithContentsOfURL:` take no
+/// encoding and are documented to determine one themselves. Honour a byte order
+/// mark when there is one, and otherwise assume the default C string encoding,
+/// which is right for the ASCII and UTF-8 text these apps actually ship.
+fn sniff_encoding(env: &mut Environment, bytes: &[u8]) -> NSStringEncoding {
+    if bytes.len() > 1 && (bytes[..2] == [0xFE, 0xFF] || bytes[..2] == [0xFF, 0xFE]) {
+        NSUTF16StringEncoding
+    } else if bytes.len() > 2 && bytes[..3] == [0xEF, 0xBB, 0xBF] {
+        NSUTF8StringEncoding
+    } else {
+        msg_class![env; NSString defaultCStringEncoding]
+    }
+}
+
+/// Body of the deprecated one-argument `initWithContentsOfURL:`, shared by the
+/// concrete string classes. They are siblings under NSString, so neither
+/// inherits the other's implementations and both have to declare it.
+fn init_with_contents_of_url(env: &mut Environment, this: id, url: id) -> id {
+    if url == nil {
+        release(env, this);
+        return nil;
+    }
+    let data: id = msg_class![env; NSData dataWithContentsOfURL:url];
+    if data == nil {
+        release(env, this);
+        return nil;
+    }
+    let bytes: ConstPtr<u8> = msg![env; data bytes];
+    let length: NSUInteger = msg![env; data length];
+    let prefix = env.mem.bytes_at(bytes, length.min(3)).to_vec();
+    let encoding = sniff_encoding(env, &prefix);
+    msg![env; this initWithData:data encoding:encoding]
+}
+
 pub const CLASSES: ClassExports = objc_classes! {
 
 (env, this, _cmd);
@@ -323,8 +392,20 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 + (id)stringWithString:(id)string { // NSString*
-    let new: id = msg![env; this alloc];
-    let new: id = msg![env; new initWithString:string];
+    // Foundation does not build a new string here: for an immutable receiver
+    // it returns the argument itself, and `-copyWithZone:` above already
+    // encodes that rule (retain for an immutable string, a real copy for a
+    // mutable one). Going through it rather than alloc/init keeps the two
+    // consistent.
+    //
+    // The identity matters, not just the allocation. An app that releases the
+    // result without owning it — which several SDKs do to constant strings,
+    // because on Apple's runtime a constant string's release is a no-op — kills
+    // a freshly allocated copy instead and crashes when the pool drains. Tap
+    // Tap Revenge 3's bundled comScore SDK does exactly this.
+    //
+    // NSMutableString overrides this; see below.
+    let new: id = msg![env; string copy];
     autorelease(env, new)
 }
 
@@ -366,6 +447,12 @@ pub const CLASSES: ClassExports = objc_classes! {
     let new: id = msg![env; new initWithContentsOfFile:path
                                               encoding:encoding
                                                  error:error];
+    autorelease(env, new)
+}
+
++ (id)stringWithContentsOfURL:(id)url { // NSURL*
+    let new: id = msg![env; this alloc];
+    let new: id = msg![env; new initWithContentsOfURL:url];
     autorelease(env, new)
 }
 
@@ -568,15 +655,37 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 - (NSRange)rangeOfCharacterFromSet:(id)set { // NSCharacterSet *
     let length: NSUInteger = msg![env; this length];
-    let mut idx: NSUInteger = 0;
-    while idx < length {
+    let range = NSRange { location: 0, length };
+    msg![env; this rangeOfCharacterFromSet:set options:0u32 range:range]
+}
+
+- (NSRange)rangeOfCharacterFromSet:(id)set // NSCharacterSet *
+                          options:(NSStringCompareOptions)options
+                            range:(NSRange)search_range {
+    let length: NSUInteger = msg![env; this length];
+    let end = search_range.location.checked_add(search_range.length).unwrap();
+    assert!(end <= length);
+    // Character-set membership is unaffected by literal/case-insensitive flags;
+    // only NSBackwardsSearch changes behaviour, selecting the last match rather
+    // than the first. Scanning the whole range and keeping the last hit handles
+    // both directions.
+    let backwards = options & NSBackwardsSearch != 0;
+    let mut found: Option<NSUInteger> = None;
+    let mut idx = search_range.location;
+    while idx < end {
         let c: u16 = msg![env; this characterAtIndex:idx];
         if msg![env; set characterIsMember:c] {
-            return NSRange { location: idx, length: 1 };
+            found = Some(idx);
+            if !backwards {
+                break;
+            }
         }
         idx += 1;
     }
-    NSRange { location: NSNotFound as NSUInteger, length: 0 }
+    match found {
+        Some(i) => NSRange { location: i, length: 1 },
+        None => NSRange { location: NSNotFound as NSUInteger, length: 0 },
+    }
 }
 
 - (id)description {
@@ -951,7 +1060,8 @@ pub const CLASSES: ClassExports = objc_classes! {
     let left: id = msg![env; this substringToIndex:loc];
     let middle: id = msg![env; this substringWithRange:range];
     let right: id = msg![env; this substringFromIndex:(loc + len)];
-    let new_middle: id = string_by_replacing_occurrences_inner(env, middle, target, replacement, options);
+    let (new_middle, _) =
+        string_by_replacing_occurrences_inner(env, middle, target, replacement, options);
     let res: id = msg![env; left stringByAppendingString:new_middle];
     msg![env; res stringByAppendingString:right]
 }
@@ -1031,18 +1141,34 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 - (id)stringByAddingPercentEscapesUsingEncoding:(NSStringEncoding)encoding {
     assert!(encoding == NSASCIIStringEncoding || encoding == NSUTF8StringEncoding); // TODO: other encodings
-    // TODO: implement escaping as per RFC 2396
     let str = to_rust_string(env, this);
-    // FIXME: figure out why '[' and ']' are escaped on iOS simulator
-    assert!(str.as_bytes().iter().all(|byte| {
-        (byte.is_ascii_alphanumeric() || b"-_.~".contains(byte)) // unreserved
-        || b"!*'();:@&=+$,/?%#".contains(byte) // reserved
-    }));
-    let new: id = msg![env; this copy];
+    // RFC 2396 leaves unreserved and reserved characters untouched. Escape
+    // all other UTF-8 bytes, including '[' and ']', as iPhone OS does.
+    const HEX: &[u8; 16] = b"0123456789ABCDEF";
+    let mut escaped = String::with_capacity(str.len());
+    for &byte in str.as_bytes() {
+        if byte.is_ascii_alphanumeric() || b"-_.~!*'();:@&=+$,/?%#".contains(&byte) {
+            escaped.push(byte as char);
+        } else {
+            escaped.push('%');
+            escaped.push(HEX[(byte >> 4) as usize] as char);
+            escaped.push(HEX[(byte & 0x0f) as usize] as char);
+        }
+    }
+    let new = from_rust_string(env, escaped);
     autorelease(env, new)
 }
 
 - (id)stringByAppendingPathComponent:(id)component { // NSString*
+    // Cocoa raises NSInvalidArgumentException for a nil component. tapHLE
+    // cannot raise into guest code, and aborting the emulator is a far worse
+    // answer than the app's own mistake deserves, so treat nil as "nothing to
+    // append" and return the receiver. Log it, because a nil here usually
+    // means an earlier lookup silently failed and that is the real bug.
+    if component == nil {
+        log!("Warning: -[NSString stringByAppendingPathComponent:nil], returning the receiver unchanged");
+        return this;
+    }
     // TODO: avoid copying
     let base_str = to_rust_string(env, this);
     let component_str = to_rust_string(env, component);
@@ -1053,6 +1179,11 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (id)stringByAppendingPathExtension:(id)extension { // NSString*
+    // See the note on -stringByAppendingPathComponent:.
+    if extension == nil {
+        log!("Warning: -[NSString stringByAppendingPathExtension:nil], returning the receiver unchanged");
+        return this;
+    }
     // FIXME: handle edge cases like trailing '/' (may differ from Rust!)
     let mut combined = to_rust_string(env, this).into_owned();
     // TODO: avoid copying
@@ -1102,22 +1233,24 @@ pub const CLASSES: ClassExports = objc_classes! {
     //       "/var/automount”, or "/private” from the path
     assert!(!path.starts_with("/private"));
     assert!(!path.starts_with("/var/automount"));
-    // TODO: Reducing empty components and references to the current directory
-    assert!(!path.contains("//"));
-    assert!(!path.contains("/./"));
     // Removing a trailing slash from the last component.
     let path = path_algorithms::trim_trailing_slashes(&path);
-    // For absolute paths only, resolve references to the parent directory
     let new_path_str = if path.starts_with('/') {
-        assert!(!path.starts_with("/.."));
-        // Note: while we are using fs function, it's just string manipulation
-        // here.
+        // For absolute paths, resolve_path already reduces empty components
+        // ("//"), current-directory references ("/./") and parent references
+        // ("/.."), which is exactly the reduction this method must perform.
+        // Note: while we are using an fs function, it's just string
+        // manipulation here.
         let resolved = fs::resolve_path(GuestPath::new(path), None);
-        let new_path = format!("/{}", resolved.join("/"));
-        assert!(!new_path.contains(".."));
-        new_path
+        format!("/{}", resolved.join("/"))
     } else {
-        String::from(path)
+        // For relative paths, reduce empty components and current-directory
+        // references. Apple leaves a leading ".." unresolved for these, so we
+        // do not pop parent references here.
+        path.split('/')
+            .filter(|component| !component.is_empty() && *component != ".")
+            .collect::<Vec<_>>()
+            .join("/")
     };
     log_dbg!("[(NSString *){:?} stringByStandardizingPath] {} -> {}", this, to_rust_string(env, this), new_path_str);
     let new_string = from_rust_string(env, new_path_str);
@@ -1283,6 +1416,13 @@ pub const CLASSES: ClassExports = objc_classes! {
     msg_class![env; _tapHLE_NSMutableString allocWithZone:zone]
 }
 
+// NSString's version returns the argument itself when it can, which would hand
+// back an immutable string to a caller that asked NSMutableString for one.
++ (id)stringWithString:(id)string { // NSString*
+    let new: id = msg![env; string mutableCopy];
+    autorelease(env, new)
+}
+
 + (id)stringWithCapacity:(NSUInteger)capacity {
     let new: id = msg![env; this alloc];
     let new: id = msg![env; new initWithCapacity:capacity];
@@ -1330,6 +1470,53 @@ pub const CLASSES: ClassExports = objc_classes! {
 
     let res: id = msg![env; left stringByAppendingString:right];
     () = msg![env; this setString:res];
+}
+
+- (())insertString:(id)a_string // NSString*
+           atIndex:(NSUInteger)index {
+    // Concatenate the text before `index`, the inserted string, and the text
+    // after `index`. Inefficient (rebuilds the whole string) but matches the
+    // primitive-based approach of the other mutators above.
+    let length: NSUInteger = msg![env; this length];
+    let left: id = if index == 0 {
+        get_static_str(env, "")
+    } else {
+        let left_range = NSRange { location: 0, length: index };
+        msg![env; this substringWithRange:left_range]
+    };
+    let right: id = if index == length {
+        get_static_str(env, "")
+    } else {
+        let right_range = NSRange { location: index, length: length - index };
+        msg![env; this substringWithRange:right_range]
+    };
+    let res: id = msg![env; left stringByAppendingString:a_string];
+    let res: id = msg![env; res stringByAppendingString:right];
+    () = msg![env; this setString:res];
+}
+
+- (NSUInteger)replaceOccurrencesOfString:(id)target // NSString*
+                              withString:(id)replacement // NSString*
+                                 options:(NSStringCompareOptions)options
+                                   range:(NSRange)range {
+    assert_ne!(target, nil);
+    assert_ne!(replacement, nil);
+
+    let total_length: NSUInteger = msg![env; this length];
+    let location = range.location;
+    let length = range.length;
+    assert!(location <= total_length);
+    assert!(length <= total_length - location);
+
+    let left: id = msg![env; this substringToIndex:location];
+    let middle: id = msg![env; this substringWithRange:range];
+    let right: id = msg![env; this substringFromIndex:(location + length)];
+    let (new_middle, replacements) =
+        string_by_replacing_occurrences_inner(env, middle, target, replacement, options);
+    let result: id = msg![env; left stringByAppendingString:new_middle];
+    let result: id = msg![env; result stringByAppendingString:right];
+    () = msg![env; this setString:result];
+    replacements
 }
 
 @end
@@ -1381,13 +1568,29 @@ pub const CLASSES: ClassExports = objc_classes! {
 - (id)initWithBytes:(ConstPtr<u8>)bytes
              length:(NSUInteger)len
            encoding:(NSStringEncoding)encoding {
-    // TODO: error handling
     let slice = env.mem.bytes_at(bytes, len);
-    let host_object = StringHostObject::decode(Cow::Borrowed(slice), encoding);
+    let Some(host_object) = StringHostObject::decode(Cow::Borrowed(slice), encoding) else {
+        release(env, this);
+        return nil;
+    };
 
     *env.objc.borrow_mut(this) = host_object;
 
     this
+}
+
+// See the note on the same method in _tapHLE_NSMutableString. Both concrete
+// classes need it: _tapHLE_NSString and _tapHLE_NSMutableString are siblings
+// under NSString, so neither inherits the other's implementations.
+- (id)initWithBytesNoCopy:(MutPtr<u8>)bytes
+                   length:(NSUInteger)len
+                 encoding:(NSStringEncoding)encoding
+             freeWhenDone:(bool)free_when_done {
+    let new: id = msg![env; this initWithBytes:(bytes.cast_const()) length:len encoding:encoding];
+    if free_when_done {
+        env.mem.free(bytes.cast());
+    }
+    new
 }
 
 - (id)initWithCharacters:(ConstPtr<unichar>)characters length:(NSUInteger)len {
@@ -1425,7 +1628,10 @@ pub const CLASSES: ClassExports = objc_classes! {
         msg_class![env; NSString defaultCStringEncoding]
     };
 
-    let host_object = StringHostObject::decode(Cow::Owned(bytes), encoding);
+    let Some(host_object) = StringHostObject::decode(Cow::Owned(bytes), encoding) else {
+        release(env, this);
+        return nil;
+    };
     *env.objc.borrow_mut(this) = host_object;
     this
 }
@@ -1433,26 +1639,46 @@ pub const CLASSES: ClassExports = objc_classes! {
 - (id)initWithContentsOfFile:(id)path // NSString*
                     encoding:(NSStringEncoding)encoding
                        error:(MutPtr<id>)error { // NSError**
+    // A nil path is not an error to raise on: there is nothing to read, so the
+    // documented nil return is the answer. The single-argument variant already
+    // did this; without it here, to_rust_string() below panicked on nil.
+    if path == nil {
+        report_no_error(env, error);
+        release(env, this);
+        return nil;
+    }
     // TODO: avoid copy?
     let path = to_rust_string(env, path);
     let Ok(bytes) = env.fs.read(GuestPath::new(&path)) else {
-        assert!(error.is_null()); // TODO: error handling
+        report_no_error(env, error);
         release(env, this);
         return nil;
     };
 
-    // TODO: error handling for encoding
-    let host_object = StringHostObject::decode(Cow::Owned(bytes), encoding);
+    let Some(host_object) = StringHostObject::decode(Cow::Owned(bytes), encoding) else {
+        report_no_error(env, error);
+        release(env, this);
+        return nil;
+    };
     *env.objc.borrow_mut(this) = host_object;
     this
+}
+
+- (id)initWithContentsOfURL:(id)url { // NSURL*
+    init_with_contents_of_url(env, this, url)
 }
 
 - (id)initWithContentsOfURL:(id)url // NSURL*
                     encoding:(NSStringEncoding)encoding
                        error:(MutPtr<id>)error { // NSError**
+    if url == nil {
+        report_no_error(env, error);
+        release(env, this);
+        return nil;
+    }
     let data: id = msg_class![env; NSData dataWithContentsOfURL:url];
     if data == nil {
-        assert!(error.is_null()); // TODO: error handling
+        report_no_error(env, error);
         release(env, this);
         return nil;
     }
@@ -1598,16 +1824,98 @@ pub const CLASSES: ClassExports = objc_classes! {
     msg![env; this init]
 }
 
+// Reading a string from a file. Present on _tapHLE_NSString and needed here
+// too: the two concrete classes are siblings under NSString, so neither
+// inherits the other's implementations. This has now caught four separate
+// methods; when adding anything NSString declares, add it to both.
+- (id)initWithContentsOfFile:(id)path { // NSString*
+    if path == nil {
+        return nil;
+    }
+    let path = to_rust_string(env, path);
+    let Ok(bytes) = env.fs.read(GuestPath::new(&path)) else {
+        return nil;
+    };
+    let encoding = msg_class![env; NSString defaultCStringEncoding];
+    let Some(host_object) = StringHostObject::decode(Cow::Owned(bytes), encoding) else {
+        release(env, this);
+        return nil;
+    };
+    *env.objc.borrow_mut(this) = host_object;
+    this
+}
+
+- (id)initWithContentsOfURL:(id)url { // NSURL*
+    init_with_contents_of_url(env, this, url)
+}
+
+- (id)initWithContentsOfURL:(id)url // NSURL*
+                    encoding:(NSStringEncoding)encoding
+                       error:(MutPtr<id>)error { // NSError**
+    if url == nil {
+        report_no_error(env, error);
+        release(env, this);
+        return nil;
+    }
+    let data: id = msg_class![env; NSData dataWithContentsOfURL:url];
+    if data == nil {
+        report_no_error(env, error);
+        release(env, this);
+        return nil;
+    }
+    msg![env; this initWithData:data encoding:encoding]
+}
+
+- (id)initWithContentsOfFile:(id)path // NSString*
+                    encoding:(NSStringEncoding)encoding
+                       error:(MutPtr<id>)error { // NSError**
+    if path == nil {
+        report_no_error(env, error);
+        release(env, this);
+        return nil;
+    }
+    let path = to_rust_string(env, path);
+    let Ok(bytes) = env.fs.read(GuestPath::new(&path)) else {
+        report_no_error(env, error);
+        release(env, this);
+        return nil;
+    };
+    let Some(host_object) = StringHostObject::decode(Cow::Owned(bytes), encoding) else {
+        report_no_error(env, error);
+        release(env, this);
+        return nil;
+    };
+    *env.objc.borrow_mut(this) = host_object;
+    this
+}
+
 - (id)initWithBytes:(ConstPtr<u8>)bytes
              length:(NSUInteger)len
            encoding:(NSStringEncoding)encoding {
-    // TODO: error handling
     let slice = env.mem.bytes_at(bytes, len);
-    let host_object = StringHostObject::decode(Cow::Borrowed(slice), encoding);
+    let Some(host_object) = StringHostObject::decode(Cow::Borrowed(slice), encoding) else {
+        release(env, this);
+        return nil;
+    };
 
     *env.objc.borrow_mut(this) = host_object;
 
     this
+}
+
+// The no-copy variant. tapHLE's NSString always owns decoded storage, so the
+// bytes are copied regardless; what the caller is actually promising is that it
+// will not touch the buffer again, and `freeWhenDone` transfers ownership of it
+// to the string. Honour that by freeing it here, since nothing else will.
+- (id)initWithBytesNoCopy:(MutPtr<u8>)bytes
+                   length:(NSUInteger)len
+                 encoding:(NSStringEncoding)encoding
+             freeWhenDone:(bool)free_when_done {
+    let new: id = msg![env; this initWithBytes:(bytes.cast_const()) length:len encoding:encoding];
+    if free_when_done {
+        env.mem.free(bytes.cast());
+    }
+    new
 }
 
 - (id)initWithFormat:(id)format, // NSString*
@@ -2078,7 +2386,7 @@ fn string_by_replacing_occurrences_inner(
     target: id,      // NSString *
     replacement: id, // NSString *
     options: NSStringCompareOptions,
-) -> id {
+) -> (id, NSUInteger) {
     // TODO: support foreign subclasses (perhaps via a helper function that
     // copies the string first)
     let mut main_iter = env
@@ -2097,7 +2405,7 @@ fn string_by_replacing_occurrences_inner(
     // Zero-length target case
     if target_iter.clone().next().is_none() {
         let res = msg![env; source copy];
-        return autorelease(env, res);
+        return (autorelease(env, res), 0);
     }
 
     let case_insensitive = match options {
@@ -2107,11 +2415,13 @@ fn string_by_replacing_occurrences_inner(
     };
 
     let mut result: Utf16String = Vec::new();
+    let mut replacements: NSUInteger = 0;
     loop {
         if let Some(new_main_iter) = main_iter.strip_prefix(&target_iter, case_insensitive) {
             // matched target, replace it
             result.extend(replacement_iter.clone());
             main_iter = new_main_iter;
+            replacements += 1;
         } else {
             // no match, copy as normal
             match main_iter.next() {
@@ -2126,5 +2436,5 @@ fn string_by_replacing_occurrences_inner(
     // worth the effort, but it's an interesting question.
     let result_ns_string = msg_class![env; _tapHLE_NSString alloc];
     *env.objc.borrow_mut(result_ns_string) = StringHostObject::Utf16(result);
-    autorelease(env, result_ns_string)
+    (autorelease(env, result_ns_string), replacements)
 }

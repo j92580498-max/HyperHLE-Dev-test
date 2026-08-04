@@ -9,10 +9,10 @@ use super::ui_graphics::UIGraphicsGetCurrentContext;
 use crate::font::{Font, TextAlignment, WrapMode};
 use crate::frameworks::core_graphics::cg_bitmap_context::CGBitmapContextDrawer;
 use crate::frameworks::core_graphics::{CGFloat, CGPoint, CGRect, CGSize};
-use crate::frameworks::foundation::ns_string::{get_static_str, to_rust_string};
+use crate::frameworks::foundation::ns_string::{from_rust_string, get_static_str, to_rust_string};
 use crate::frameworks::foundation::NSInteger;
 use crate::objc::{
-    autorelease, id, msg, msg_class, objc_classes, release, retain, ClassExports, HostObject,
+    autorelease, id, msg, msg_class, objc_classes, release, retain, Class, ClassExports, HostObject,
 };
 use crate::Environment;
 use std::collections::HashMap;
@@ -64,6 +64,11 @@ enum FontKind {
 struct UIFontHostObject {
     size: CGFloat,
     kind: FontKind,
+    /// PostScript name reported by `-fontName`. For fonts created by name this
+    /// is the requested name (even when we substitute a bundled font); for the
+    /// system-font factories it is the corresponding Helvetica variant, as on
+    /// early iPhone OS.
+    name: String,
 }
 impl HostObject for UIFontHostObject {}
 
@@ -115,6 +120,7 @@ pub const CLASSES: ClassExports = objc_classes! {
     let host_object = UIFontHostObject {
         size,
         kind: FontKind::SansRegular,
+        name: "Helvetica".to_string(),
     };
     let new = env.objc.alloc_object(this, Box::new(host_object), &mut env.mem);
     autorelease(env, new)
@@ -123,6 +129,7 @@ pub const CLASSES: ClassExports = objc_classes! {
     let host_object = UIFontHostObject {
         size,
         kind: FontKind::SansBold,
+        name: "Helvetica-Bold".to_string(),
     };
     let new = env.objc.alloc_object(this, Box::new(host_object), &mut env.mem);
     autorelease(env, new)
@@ -131,6 +138,7 @@ pub const CLASSES: ClassExports = objc_classes! {
     let host_object = UIFontHostObject {
         size,
         kind: FontKind::SansItalic,
+        name: "Helvetica-Oblique".to_string(),
     };
     let new = env.objc.alloc_object(this, Box::new(host_object), &mut env.mem);
     autorelease(env, new)
@@ -144,6 +152,7 @@ pub const CLASSES: ClassExports = objc_classes! {
             FontKind::SansRegular
         }),
         size: fontSize,
+        name: font_name,
     };
     let new = env.objc.alloc_object(this, Box::new(host_object), &mut env.mem);
     autorelease(env, new)
@@ -161,6 +170,41 @@ pub const CLASSES: ClassExports = objc_classes! {
     release(env, this);
     let font: id = msg_class![env; UIFont fontWithName:font_name size:font_size];
     retain(env, font)
+}
+
+// The same typeface at a different size. Resolving through the name keeps the
+// font-substitution table as the single place that maps a name to a FontKind.
+- (id)fontWithSize:(CGFloat)fontSize {
+    let host_object = env.objc.borrow::<UIFontHostObject>(this);
+    if host_object.size == fontSize {
+        return this;
+    }
+    let host_object = UIFontHostObject {
+        kind: host_object.kind,
+        size: fontSize,
+        name: host_object.name.clone(),
+    };
+    let class: Class = msg![env; this class];
+    let new = env.objc.alloc_object(class, Box::new(host_object), &mut env.mem);
+    autorelease(env, new)
+}
+
+- (CGFloat)pointSize {
+    env.objc.borrow::<UIFontHostObject>(this).size
+}
+- (id)fontName {
+    let name = env.objc.borrow::<UIFontHostObject>(this).name.clone();
+    let string = from_rust_string(env, name);
+    autorelease(env, string)
+}
+- (id)familyName {
+    // The family name drops the PostScript style suffix (e.g. "Helvetica-Bold"
+    // -> "Helvetica"). This is the common shape apps read; it is not a full
+    // PostScript-name parser.
+    let name = env.objc.borrow::<UIFontHostObject>(this).name.clone();
+    let family = name.split('-').next().unwrap_or(&name).to_string();
+    let string = from_rust_string(env, family);
+    autorelease(env, string)
 }
 
 - (CGFloat)ascender {
