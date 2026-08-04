@@ -11,8 +11,7 @@ agent's summary before you publish anything.
 
 You need:
 
-1. A supported test environment: a Windows computer, or a Mac with Xcode and a
-   modern iOS device for iOS-host testing.
+1. A supported test environment: a Windows computer.
 2. A fork or clone of tapHLE.
 3. A coding agent that can work in that folder.
 4. Lawful access to the exact game version you want to test.
@@ -51,7 +50,7 @@ because it looks close. The full rules are in `compatibility/README.md`.
 3. Replace the bracketed parts below, then paste the prompt into the agent.
 
 ```text
-I want to improve tapHLE support for [game title and exact version] on [Windows or modern iOS host].
+I want to improve tapHLE support for [game title and exact version] on Windows.
 
 Exact Archive.org item URL: [URL, or "none"]
 Exact Archive.org IPA file name: [file name, or "none"]

@@ -31,12 +31,9 @@
   loading a second race.
 - Rebrand the fork as tapHLE across the executable, crates, runtime resources,
   internal symbols, tests, and packaging.
-- Define Windows and modern iOS game compatibility as the product focus, with
-  macOS retained for development and iOS builds and Android outside the active
-  support scope.
-- Add an experimental native host for modern iOS with a SwiftUI game library,
-  app importing, device orientation, save persistence, JIT handoff, in-game
-  exit control, and iOS OpenGL ES presentation.
+- Define Windows game compatibility as the product focus, with macOS retained
+  for development and Android outside the active support scope. Running on
+  modern iOS remains a likely future direction, but no iOS host ships yet.
 - Add AI-agent contribution guidance, provenance rules, upstream quarantine
   instructions, game-focused issue forms, and repository policy checks.
 - Add a simple self-service guide for people using coding agents to improve a

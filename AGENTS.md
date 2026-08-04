@@ -9,7 +9,7 @@ policies.
 ## Mission and priorities
 
 tapHLE is a high-level emulator with a broad goal: make as many early iPhone OS
-games as possible work on Windows and modern iOS hosts. Contributors choose
+games as possible work on Windows. Contributors choose
 concrete games as practical compatibility targets. A target is one step toward
 the broad goal, not a limit on the games tapHLE aims to support.
 
@@ -33,14 +33,23 @@ safer than a broad redesign. Isolate it, state which observed behavior it
 models, and add the smallest useful regression check. Do not use the rapid
 iteration policy as a reason to make unrelated changes.
 
-Windows and modern iOS are product targets. Windows remains the primary
-desktop development and compatibility environment. The iOS host is
-experimental, requires JIT, and must be validated on a physical device before
-an iOS result is claimed. macOS support is a development convenience for
-compiling, debugging, comparing behavior, and building the iOS host; it is not
-a release target of its own. Android is out of scope; its inherited source
-remains in the tree, but agents should not develop, test, or refactor it unless
-the maintainer explicitly asks.
+Windows is the product target and the primary development and compatibility
+environment. macOS support is a development convenience for compiling,
+debugging and comparing behavior; it is not a release target of its own.
+Android is out of scope; its inherited source remains in the tree, but agents
+should not develop, test, or refactor it unless the maintainer explicitly asks.
+
+A modern iOS host is expected to become a product target eventually, but there
+is not one now. An experimental host was merged on 2026-08-01 and withdrawn
+from `trunk` on 2026-08-04: it was half-finished and broken, and nothing on
+Windows could build or test it, so it sat on `trunk` as untested code claiming
+a capability tapHLE did not have. It is preserved on the `feat/ios-host`
+branch and is where that work resumes.
+
+Until the maintainer asks for it, do not add iOS host code, build scripts, or
+`target_os = "ios"` paths to `trunk`. This is about *where* unfinished work
+lives, not a judgement on iOS: a branch is the right home for a host nobody can
+run yet, and `trunk` is for what works.
 
 ## Agent capability
 
@@ -51,7 +60,7 @@ instructions on that run rather than a fixed capability limit, so it is not a
 ban on either agent. The durable rule it points to applies to every agent
 regardless of model — give a narrow, well-specified, independently reviewable
 task, and review and exactly retest agent work on the claimed host before
-trusting it. Windows evidence does not prove iOS-host behavior, or vice versa.
+trusting it. Evidence from one host does not prove behaviour on another.
 Record new dated results in `dev-docs/agent-capability-log.md` so this note can
 be revised as evidence accumulates.
 
@@ -412,7 +421,6 @@ branches to accumulate.
 - `src/libc.rs`, `src/libc/`: C/POSIX compatibility layer.
 - `src/window.rs`, `src/gles.rs`, `src/audio.rs`: host-facing input, graphics,
   and audio paths.
-- `platform/ios/`: modern iOS native host, build scripts, and packaging.
 - `src/fs.rs`, `src/environment.rs`: guest filesystem and process state.
 - `tests/integration.rs`, `tests/TestApp_source/`: emulator integration probes.
 - `dev-docs/`: building, debugging, style, agent workflow, and upstream sync.

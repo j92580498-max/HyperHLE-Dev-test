@@ -76,16 +76,13 @@ pub fn recomposite_if_necessary(env: &mut Environment, force: bool) -> Option<In
         return None;
     }
 
-    if env.options.print_fps || cfg!(target_os = "ios") {
+    if env.options.print_fps {
         env.framework_state
             .core_animation
             .composition
             .fps_counter
             .get_or_insert_with(FpsCounter::start)
-            .count_frame(
-                format_args!("Core Animation compositor"),
-                env.options.print_fps,
-            );
+            .count_frame(format_args!("Core Animation compositor"));
     }
 
     let now = Instant::now();
@@ -145,7 +142,6 @@ pub fn recomposite_if_necessary(env: &mut Environment, force: bool) -> Option<In
         env.window().rotation_matrix(),
         env.window().virtual_cursor_visible_at(),
     );
-    let host_framebuffer = env.window().host_framebuffer();
     let frame_capture_request = env.framework_state.take_triggered_frame_capture();
 
     // TODO: draw status bar if it's not hidden
@@ -376,7 +372,7 @@ pub fn recomposite_if_necessary(env: &mut Environment, force: bool) -> Option<In
     // host window framebuffer, so we need to unbind our internal framebuffer.
     let rearm_capture_request = unsafe {
         gles.BindTexture(gles11::TEXTURE_2D, texture);
-        gles.BindFramebufferOES(gles11::FRAMEBUFFER_OES, host_framebuffer);
+        gles.BindFramebufferOES(gles11::FRAMEBUFFER_OES, 0);
         present_frame(
             gles.as_mut(),
             present_frame_args.0,

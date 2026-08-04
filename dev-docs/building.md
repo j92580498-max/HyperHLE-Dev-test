@@ -1,10 +1,10 @@
 # Building tapHLE
 
-Windows and modern iOS are tapHLE's product targets. Windows build instructions
-are below; the experimental iOS host and its Xcode workflow are documented in
-`../platform/ios/README.md`. macOS is also retained as a development
-convenience for debugging and behavioral comparison. Android is not an active
-target.
+Windows is tapHLE's product target, and its build instructions are below.
+macOS is retained as a development convenience for debugging and behavioral
+comparison. Android is not an active target. A modern iOS host is a likely
+future target; the experimental one is not on `trunk` and lives on the
+`feat/ios-host` branch, with its own build instructions there.
 
 If you are building to contribute, also read `../CONTRIBUTING.md` and the root
 `AGENTS.md`.

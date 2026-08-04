@@ -1,8 +1,7 @@
 # tapHLE
 
 tapHLE is a high-level emulator for early iPhone OS applications. Its goal is
-to make as many early iPhone games as possible run well on Windows and modern
-iOS hosts.
+to make as many early iPhone games as possible run well on Windows.
 
 ## Want a game to work?
 
@@ -38,11 +37,15 @@ Bounded compatibility workarounds are acceptable. Elegance is welcome, but a
 large from-the-ground-up implementation is not a prerequisite for a useful
 fix.
 
-Windows and modern iOS are supported product targets. The iOS host is
-experimental and currently requires JIT. macOS support is retained as a
-convenient way to compile, debug, compare behavior, and build the iOS host. The
-inherited Android source remains in the repository, but Android development and
-releases are out of scope.
+Windows is the supported product target. macOS support is retained as a
+convenient way to compile, debug, and compare behavior. The inherited Android
+source remains in the repository, but Android development and releases are out
+of scope.
+
+Running on modern iOS is a likely future direction rather than something tapHLE
+does today. An experimental host was tried and withdrawn from `trunk` because it
+was unfinished and could not be built or tested on Windows; that work continues
+on the `feat/ios-host` branch.
 
 ## Status
 
@@ -52,8 +55,7 @@ Apple software, decryption keys, or other proprietary material.
 
 The first tapHLE release line is `0.3`; numbered alpha/beta/RC/stable builds are
 Windows x86_64 releases, while green `trunk` builds are commit-identified
-previews. The modern iOS host is currently an experimental source build; see
-`platform/ios/README.md`. The versioning and packaging policy is documented in
+previews. The versioning and packaging policy is documented in
 `dev-docs/releases.md`.
 
 **[See the compatibility ratings (1–5 stars)](https://taphle.ephun.net/compatibility).**
