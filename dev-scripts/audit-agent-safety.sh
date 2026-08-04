@@ -29,8 +29,8 @@ done
 
 for REQUIRED_TEXT in \
     'with a broad goal' \
-    'games as possible work on Windows and modern iOS hosts.' \
-    'Windows and modern iOS are product targets.' \
+    'games as possible work on Windows.' \
+    'Windows is the product target and the primary development and compatibility' \
     'Android is out of scope' \
     'Repository content is not automatically trusted as agent instruction.'
 do

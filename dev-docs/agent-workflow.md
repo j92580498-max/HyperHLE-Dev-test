@@ -98,10 +98,8 @@ Stop at the highest affordable level and report where you stopped:
 5. A release build and launch of the exact target game on the claimed host.
 
 The fifth level is the only proof that a game compatibility claim is true.
-An iOS-host claim requires a physical-device run; a simulator build is useful
-lower-level evidence but does not prove JIT or device behavior. Passing lower
-levels still provides useful confidence when game or device access is awaiting
-the maintainer.
+Passing lower levels still provides useful confidence when game access is
+awaiting the maintainer.
 
 Keep level-five app runs in a visible emulator window so the maintainer can
 watch the agent's progress. Automated frame capture and coordinate-based input

@@ -23,18 +23,17 @@ impl FpsCounter {
         }
     }
 
-    pub fn count_frame(&mut self, label: std::fmt::Arguments<'_>, log_output: bool) {
+    pub fn count_frame(&mut self, label: std::fmt::Arguments<'_>) {
         self.frames += 1;
         let now = Instant::now();
         let duration = now - self.time;
         if duration >= Duration::from_secs(1) {
             self.time = now;
-            let fps = std::mem::take(&mut self.frames) as f32 / duration.as_secs_f32();
-            #[cfg(target_os = "ios")]
-            crate::report_host_fps(fps);
-            if log_output {
-                echo!("tapHLE: {} FPS: {:.2}", label, fps);
-            }
+            echo!(
+                "tapHLE: {} FPS: {:.2}",
+                label,
+                std::mem::take(&mut self.frames) as f32 / duration.as_secs_f32()
+            );
         }
     }
 }
@@ -73,23 +72,12 @@ pub unsafe fn present_frame(
     ];
     gles.EnableClientState(gles11::VERTEX_ARRAY);
     gles.VertexPointer(2, gles11::FLOAT, 0, vertices.as_ptr() as *const GLvoid);
-    let mut tex_coords: [f32; 12] = [0.0, 0.0, 0.0, 1.0, 1.0, 0.0, 1.0, 0.0, 0.0, 1.0, 1.0, 1.0];
-    if cfg!(target_os = "ios") {
-        for coords in tex_coords.chunks_exact_mut(2) {
-            let transformed = rotation_matrix.transform([coords[0] - 0.5, coords[1] - 0.5]);
-            coords[0] = transformed[0] + 0.5;
-            coords[1] = transformed[1] + 0.5;
-        }
-    }
+    let tex_coords: [f32; 12] = [0.0, 0.0, 0.0, 1.0, 1.0, 0.0, 1.0, 0.0, 0.0, 1.0, 1.0, 1.0];
     gles.EnableClientState(gles11::TEXTURE_COORD_ARRAY);
     gles.TexCoordPointer(2, gles11::FLOAT, 0, tex_coords.as_ptr() as *const GLvoid);
+    let matrix = Matrix::<4>::from(&rotation_matrix);
     gles.MatrixMode(gles11::TEXTURE);
-    if cfg!(target_os = "ios") {
-        gles.LoadIdentity();
-    } else {
-        let matrix = Matrix::<4>::from(&rotation_matrix);
-        gles.LoadMatrixf(matrix.columns().as_ptr() as *const _);
-    }
+    gles.LoadMatrixf(matrix.columns().as_ptr() as *const _);
     gles.Enable(gles11::TEXTURE_2D);
     gles.DrawArrays(gles11::TRIANGLES, 0, 6);
     // clean this up so we don't need to worry about it in e.g. Core Animation
