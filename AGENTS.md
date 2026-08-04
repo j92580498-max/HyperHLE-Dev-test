@@ -205,6 +205,22 @@ deliberately does not deduplicate reports, so a repeat submission is pure
 moderation noise. Every submission lands unapproved and becomes public only when
 the maintainer approves it.
 
+**Every star boundary gets its own report, at the time it is crossed.** An app
+that goes one star to two to three earns three reports, not one. Do not save
+them up and submit only the highest rating reached, and do not treat a boundary
+as unimportant because you expect to pass the next one shortly — that
+expectation is exactly when a boundary goes unrecorded. Each report is a dated
+snapshot of a specific revision, so the series is the app's history; skipping
+one deletes the evidence that a particular commit is what moved the app, which
+is the thing a later regression hunt needs.
+
+A boundary that was passed without a report cannot be recovered afterwards. Do
+not compose one from memory, from an app note, or from a rerun on a later
+revision: a report asserts that an artifact was run at that revision and rated
+then, and a reconstruction cannot honestly assert it. Record the omission in the
+app note if it matters, submit the rating the app holds now, and file every
+subsequent boundary on time.
+
 Read the database to choose work. `GET /api/apps` returns the public list as
 JSON, needs no credential, and answers two questions a compatibility branch
 cannot: which apps have the lowest ratings, and which have a rating but no

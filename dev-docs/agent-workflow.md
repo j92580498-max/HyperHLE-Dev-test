@@ -127,9 +127,12 @@ Summarize:
 
 When a verified result changes the app's star rating, submit it to the
 compatibility database at <https://taphle.ephun.net/compatibility> through
-`POST /api/report`, as described in `AGENTS.md`. Never edit an earlier report;
-each one is a dated snapshot. Do not add records under `compatibility/apps`:
-those predate the live database and remain only until they are migrated.
+`POST /api/report`, as described in `AGENTS.md`. Submit at *every* boundary the
+app crosses, as it crosses it — carrying two stars forward unreported because
+three looks reachable is how a rating goes unrecorded, and a boundary missed
+cannot be filled in afterwards. Never edit an earlier report; each one is a
+dated snapshot. Do not add records under `compatibility/apps`: those predate the
+live database and remain only until they are migrated.
 
 Agent work should make the next iteration cheaper, even when one turn cannot
 reach the game menu.

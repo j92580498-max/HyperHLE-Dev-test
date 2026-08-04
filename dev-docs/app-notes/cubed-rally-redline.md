@@ -18,6 +18,12 @@
 - Tilt steering does not work (Core Motion is a no-op) and some compressed
   audio is silent (`AudioQueueOfflineRender` is unimplemented). Neither stops
   play: the on-screen left/right controls steer fine.
+- **The two-star boundary was never reported.** This app reached menus well
+  before it reached gameplay, and no report was filed at the time, so the
+  database has no two-star snapshot for it and its first entry is the
+  three-star one. That gap is not recoverable — a report asserts a rating was
+  made against a revision when it was run — so it is recorded here instead.
+  File every boundary as it is crossed; see `compatibility/README.md`.
 
 ## What this app is
 

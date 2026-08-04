@@ -119,6 +119,12 @@ worse is worth knowing about too. Do not record one when a rerun just repeats a
 rating that is already listed for the same tapHLE commit; that only makes work
 for the moderator.
 
+Record *every* step. A game you take from one star to three needs a report at
+two as well as at three. It is tempting to skip the first when the next one
+looks close, and that is exactly how a step goes missing — and a step that was
+never recorded cannot be added later, because a report says the game was run and
+rated at that commit, which nobody can honestly say afterwards.
+
 Who records it depends on who did the testing:
 
 - **You tested it yourself.** Sign in at the database with your GitHub account

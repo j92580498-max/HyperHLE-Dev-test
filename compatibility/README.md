@@ -144,6 +144,21 @@ Do not submit a rerun that reproduces a rating already recorded for the same
 tapHLE revision; the endpoint does not deduplicate, so that is pure moderation
 noise.
 
+**Every star boundary gets its own report, at the time it is crossed.** An app
+taken from one star to three earns a report at two *and* a report at three, not
+a single report at the end. The temptation to skip the first is strongest
+exactly when the next boundary looks close — and that is when it gets missed.
+Each report is a dated snapshot of one revision, so the series is what shows
+which commit moved the app; a missing boundary erases that, and a later
+regression hunt has nothing to bisect against.
+
+A boundary passed without a report cannot be filled in later. Do not reconstruct
+one from an app note, from memory, or from a rerun on a newer revision: a report
+asserts that the artifact was run at that revision and rated then, and a
+reconstruction cannot honestly assert it. Submit the rating the app holds now,
+note the gap in the app note if it is worth knowing, and file every later
+boundary on time.
+
 To choose what to work on, read the list:
 
 ```
