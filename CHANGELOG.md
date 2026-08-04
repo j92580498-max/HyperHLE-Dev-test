@@ -2,6 +2,10 @@
 
 ## Unreleased for 0.3.0-alpha.1
 
+- Stop Unity games aborting when their garbage collector restores access to
+  memory it had released. tapHLE has no page protection to apply, so refusing
+  the request described tapHLE rather than the game's memory, and Mono shut the
+  app down over it.
 - Stop claiming OpenGL ES support for vertex array objects, which tapHLE does
   not have. Games that believed the claim drew whole scenes with another
   object's geometry; Cubed Rally Redline's track and terrain were invisible.
