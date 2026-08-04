@@ -276,6 +276,39 @@ impl super::ObjC {
         self.objects.get(&object).map(|entry| &*entry.host_object)
     }
 
+    /// Give `object` host storage of type `T` if tapHLE has none for it,
+    /// returning whether it had to be adopted.
+    ///
+    /// Guest code may create an Objective-C instance without going through
+    /// `+alloc`. JSONKit does exactly this for its private `JKArray` and
+    /// `JKDictionary` collections: it `calloc()`s `class_getInstanceSize()`
+    /// bytes, assigns `isa` directly, and then sends `init`. That is legal on
+    /// Apple's runtime, where an object is nothing but the memory holding its
+    /// `isa` and ivars. tapHLE keeps the other half of every object in a side
+    /// table, so an instance made this way is absent from it, and the first
+    /// host method to reach for host storage — `retain` and `release` included
+    /// — would otherwise abort the emulator.
+    ///
+    /// Adopting the instance at `init` is the natural repair: `init` is the
+    /// message such guest code sends immediately after assigning `isa`, and it
+    /// is exactly where tapHLE's own concrete classes set up their storage
+    /// anyway. The adopted object gets a refcount of 1, matching what `+alloc`
+    /// would have produced.
+    pub fn ensure_host_object<T: AnyHostObject + Default>(&mut self, object: id) -> bool {
+        if self.objects.contains_key(&object) {
+            return false;
+        }
+        self.objects.insert(
+            object,
+            HostObjectEntry {
+                host_object: Box::<T>::default(),
+                refcount: Some(NonZeroU32::new(1).unwrap()),
+                cxx_lifecycle: CxxLifecycle::Allocated,
+            },
+        );
+        true
+    }
+
     /// Get a reference to a host object and downcast it. Panics if there is
     /// no such object, or if downcasting fails.
     pub fn borrow<T: AnyHostObject + 'static>(&self, object: id) -> &T {
@@ -441,5 +474,61 @@ pub(super) fn object_getClass(env: &mut Environment, obj: id) -> Class {
         nil
     } else {
         super::ObjC::read_isa(obj, &env.mem)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::objc::ObjC;
+
+    #[derive(Debug, Default, PartialEq)]
+    struct TestHostObject {
+        value: u32,
+    }
+    impl HostObject for TestHostObject {}
+
+    /// An instance the guest allocated itself (JSONKit's `calloc()` + `isa`
+    /// pattern) is absent from the object table; adopting it must give it
+    /// storage and the same refcount `+alloc` would have.
+    #[test]
+    fn ensure_host_object_adopts_a_guest_allocated_instance() {
+        let mut objc = ObjC::new();
+        let object: id = Ptr::from_bits(0x2000);
+
+        assert!(objc.get_host_object(object).is_none());
+        assert!(objc.ensure_host_object::<TestHostObject>(object));
+
+        assert_eq!(
+            objc.borrow::<TestHostObject>(object),
+            &TestHostObject::default()
+        );
+        assert_eq!(objc.get_refcount(object).get(), 1);
+    }
+
+    /// Adoption must not disturb an object tapHLE allocated, or a second
+    /// `init` would silently discard the storage set up by `+allocWithZone:`.
+    #[test]
+    fn ensure_host_object_leaves_existing_storage_alone() {
+        let mut objc = ObjC::new();
+        let mut mem = Mem::new();
+        mem.set_null_segment_size(0x1000);
+        let object = objc.alloc_static_object(nil, Box::new(TestHostObject { value: 7 }), &mut mem);
+
+        assert!(!objc.ensure_host_object::<TestHostObject>(object));
+        assert_eq!(objc.borrow::<TestHostObject>(object).value, 7);
+    }
+
+    /// An adopted object must be releasable, since the guest owns it and will
+    /// send it `release`/`dealloc` like any other.
+    #[test]
+    fn an_adopted_object_can_be_released() {
+        let mut objc = ObjC::new();
+        let object: id = Ptr::from_bits(0x3000);
+        assert!(objc.ensure_host_object::<TestHostObject>(object));
+
+        objc.increment_refcount(object);
+        assert!(!objc.decrement_refcount(object));
+        assert!(objc.decrement_refcount(object));
     }
 }
