@@ -87,7 +87,11 @@ fn mmap(
     // uninitialised, so keeping stale contents is allowed, whereas zeroing a
     // range that some *other* mapping shares would destroy live data.
     if flags & MAP_FIXED != 0 && within_existing_mapping(&env.libc_state.mman, addr, len) {
-        log_dbg!("mmap: MAP_FIXED re-map of {:?}+{}, already mapped", addr, len);
+        log_dbg!(
+            "mmap: MAP_FIXED re-map of {:?}+{}, already mapped",
+            addr,
+            len
+        );
         return addr;
     }
 
@@ -212,9 +216,7 @@ mod tests {
 
     fn state_with(base: u32, size: GuestUSize) -> State {
         let mut state = State::default();
-        state
-            .mmap_allocations
-            .insert(Ptr::from_bits(base), size);
+        state.mmap_allocations.insert(Ptr::from_bits(base), size);
         state
     }
 
