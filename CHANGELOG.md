@@ -2,6 +2,12 @@
 
 ## Unreleased for 0.3.0-alpha.1
 
+- Show a landscape game's launch image the way it was drawn. tapHLE looked only
+  for `Default.png` — the portrait image such a game never actually shows — and
+  then turned it on its side to fill the window, so games opened on a squashed,
+  sideways splash. Games that ship a left- and a right-handed image, such as
+  Baby Monkey, were also handed the one for the opposite orientation and came up
+  upside down.
 - Stop Unity games aborting when their garbage collector restores access to
   memory it had released. tapHLE has no page protection to apply, so refusing
   the request described tapHLE rather than the game's memory, and Mono shut the

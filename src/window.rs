@@ -1271,11 +1271,26 @@ impl Window {
     fn display_splash(&mut self) {
         assert!(self.splash_image.is_some());
 
-        // OpenGL ES expects bottom-to-top row order for image data, but our
-        // image data will be top-to-bottom. A reflection transform compensates.
-        let matrix = self.rotation_matrix().multiply(&Matrix::y_flip());
         let (vx, vy, vw, vh) = self.viewport();
         let viewport = (vx, vy + self.viewport_y_offset(), vw, vh);
+
+        // OpenGL ES expects bottom-to-top row order for image data, but our
+        // image data will be top-to-bottom. A reflection transform compensates.
+        //
+        // The device rotation is a separate question, and applying it
+        // unconditionally was wrong. It exists to turn a portrait image upright
+        // in a landscape window, which is what a landscape app's fallback
+        // `Default.png` needs — but an app that ships `Default-Landscape.png`
+        // gives us an image that is already the shape of the window, and
+        // rotating that lays it on its side and stretches it to fit. So rotate
+        // only when the image and the window disagree about which way up they
+        // are.
+        let (image_width, image_height) = self.splash_image.as_ref().unwrap().dimensions();
+        let matrix = if (image_width > image_height) == (vw > vh) {
+            Matrix::y_flip()
+        } else {
+            self.rotation_matrix().multiply(&Matrix::y_flip())
+        };
 
         let image = self.splash_image.as_ref().unwrap();
 
