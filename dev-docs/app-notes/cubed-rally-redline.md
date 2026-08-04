@@ -13,11 +13,12 @@
   persists, but the game is not playable**. A race starts, the HUD counts
   distance and score, the car responds to physics, the player crashes, the
   RESULT screen appears, and its play button starts another race that also
-  runs to a result. **Do not read that as three stars.** The world geometry is
-  shredded into diagonal streaks and menu artwork is covered by opaque white
-  blocks, so a person cannot actually see where the road is. Rating stays at
-  **two stars** until the rendering is fixed; the loop persisting is a
-  necessary part of three stars, not a sufficient one.
+  runs to a result. **Do not read that as three stars.** The ground is a flat
+  opaque grey sheet with a hard diagonal horizon, and the voxel terrain is a
+  scatter of a few pixels, so a person cannot see where the road is. Rating
+  stays at **two stars** until the rendering is fixed; the loop persisting is a
+  necessary part of three stars, not a sufficient one. See "The rendering
+  frontier, measured (2026-08-04)" for exactly which draw does what.
 
 ## What this app is
 
@@ -178,77 +179,98 @@ knows what is missing rather than re-deriving it.
 **None of this explains the rendering defect.** Every gap above is a missing
 API; the render failure is in code tapHLE does implement. Keep the two apart.
 
-## The rendering frontier, measured (2026-08-03)
+## The rendering frontier, measured (2026-08-04)
 
-Everything before this section about textures, combiners, mip selection and
-"collapsed" geometry was observed through the double-rotation presentation bug
-and is worthless. This is measured with the frame reaching the window intact.
+Everything written before 2026-08-03 about textures, combiners and mip
+selection was observed through the double-rotation presentation bug and is
+worthless. The 2026-08-03 conclusion — "seven world batches rasterise zero
+pixels, the geometry is placed where the camera cannot see it" — is **also
+wrong**, and is corrected below. It came from computing NDC by hand for one
+vertex read out of a shared scratch buffer at the wrong offset.
+
+This section is measured with a probe that read back the framebuffer before
+and after **every** draw of a race frame, alongside the matrices, the GL state,
+and the vertex/texcoord data read through the very array pointers the driver
+uses (`glGetPointerv`, not the probe's own bookkeeping).
 
 ### What the defect actually is
 
-During a race the road and terrain are absent and the car flies over empty
-sky. A per-draw framebuffer readback of one race frame (17 draws) shows that
-**seven of them change zero pixels**: the large world-geometry batches, with
-index counts in the hundreds to a thousand. The small objects — the car, a
-coin, the HUD — draw normally.
+A race frame is 13–16 draws. Every one of them rasterises. Nothing is culled
+away and nothing lands off-screen by mistake. The frame is:
 
-So the world geometry is submitted and rasterises nothing. It is not a
-texture, blend, combiner or filtering problem; those affect what a fragment
-looks like, and there are no fragments.
+| what | indices | texture | result |
+| --- | --- | --- | --- |
+| terrain chunks | 228–480 each | 103 | 0–6 pixels each |
+| **ground plane** | **1050** | **103** | **~80 000 px, flat (128,128,128)** |
+| car | 1020 | 99 | correct |
+| clouds | 18–36 | 97 | correct |
+| HUD, text, particles | 6–546 | 35/65/67 | correct |
 
-### Where it goes
+So the world **is** drawn. The screen-covering grey sheet the maintainer sees
+as "shredded diagonal streaks" is one 1050-index ground plane resolving to a
+single flat colour, and the voxel terrain chunks are each a handful of pixels.
 
-Both matrices were read back at draw time and the transform worked through by
-hand. The projection is orthographic and correct for the screen:
+The projection is a correct 480x320 orthographic matrix, the modelview is a
+constant proper rotation, and the camera position recovered from it
+(`-Rᵀt`) tracks the car sensibly: y fixed at 19.71, z advancing about 0.3
+units a frame while the car drives. **The camera and the geometry transform
+are fine.** Do not look there again.
 
-```
-proj = [0.148 0 0 0; 0 0.222 0 0; 0 0 -0.013 0; 0 0 -1 1]
-```
+### Why the ground plane is flat grey
 
-Half-width 1/0.148 = 6.76, half-height 1/0.222 = 4.50, ratio 1.5 = 480/320.
+- Texture 103 is a 1024x1024 `GL_RGB`/`GL_UNSIGNED_BYTE` sprite atlas with a
+  guest-supplied 11-level mip chain, `MIN_FILTER = NEAREST_MIPMAP_NEAREST`,
+  `MAG_FILTER = NEAREST`, wrap `REPEAT` on both axes.
+- The bytes the guest hands `glTexImage2D` are **correct**. They were dumped
+  and viewed: a proper atlas, art packed into a strip at one end, the rest
+  white. Levels 0–10 are all sane; the 1x1 level is (239,238,235).
+- The ground plane's texture coordinates, read through GL's own array pointer,
+  span **u ∈ [-10.4, +21.4], v ∈ [-1.0, +1.0]** — while every other draw in
+  the frame is inside 0..1. The u range *slides* as the car drives (20.19,
+  20.60, 21.44 on three consecutive frames) but keeps a roughly constant span
+  of about 31. That is a scrolling, tiling strip.
+- Tiling a mostly-white atlas 31 times across the screen makes the minification
+  derivative enormous, so the sampler lands on the top mip levels, which are
+  near-white. Near-white texel × a ~0.5 primary colour is exactly the observed
+  (128,128,128).
+- Proof: forcing every `*_MIPMAP_*` minification filter down to `GL_NEAREST`
+  makes texture detail reappear on that plane (a tiled, multicoloured band
+  instead of flat grey). The grey is texture-sampling collapse, not geometry.
 
-For a batch that **does** draw, the first vertex `(-57.392, 0.610, 53.854)`
-under its modelview gives eye `(-1.05, -1.71, -45.54)`, hence NDC
-`(-0.155, -0.379, -0.408)` — on screen, inside the clip volume.
+The state at that draw: `TEXTURE_ENV_MODE = GL_COMBINE`, `GL_LIGHTING`
+enabled, blending off, depth test and depth write on, culling on, texture
+matrix identity, `ACTIVE_TEXTURE = CLIENT_ACTIVE_TEXTURE = GL_TEXTURE0`.
 
-For a batch that draws **nothing**, the first vertex `(-51.159, 0.233, 50.455)`
-under its modelview gives eye `(-72.5, -2.62, -44.39)`, hence NDC x of
-**-10.7**. It is off the left of the screen by an order of magnitude. Its y
-and z are both in range, so only x is wrong.
+### Ruled out, with the evidence
 
-Both modelviews are proper rotations (columns orthonormal, orthogonal to each
-other), so neither matrix is corrupt. The geometry is simply being placed
-where the camera cannot see it.
-
-### What that rules in and out
-
-- Not a tapHLE GL translation bug in texturing, blending, depth, culling or
-  filtering: those cannot produce zero fragments from geometry that is
-  off-screen for a legitimate reason.
-- Not the buffer-mapping path. `glMapBufferOES` is **never called** by this
-  app; a log placed in it during a full race produced nothing. (The
-  read-seeding defect found there is real and was fixed, but it is not this.)
-- Not VBOs. Every draw in the race uses client arrays: `vbuf=0 ibuf=0`, one
-  shared scratch pointer that Unity rewrites between draws.
-- Not `--landscape-native`, which is now on and fixed a *different*, earlier
-  defect.
+- **The texture matrix.** The guest touches it five times in a whole session,
+  always `glLoadIdentity` on an already-identity matrix. It never scales UVs
+  that way, so `present_frame` clobbering it could not be the cause. (Its
+  push/pop in `present_renderbuffer` is symmetric anyway.)
+- **`fmod`/`fmodf`.** Rust's `%` on floats is C `fmod` semantics; the
+  implementations in `src/libc/math.rs` are correct.
+- **The soft-float helpers.** `src/libc/compiler_rt.rs` is correct for every
+  finite value, and the marshalling is pinned by tests.
+- **`mach_absolute_time`/`mach_timebase_info`.** Nanoseconds with a 1/1
+  timebase; correct.
+- **The buffer-mapping path.** `glMapBufferOES` is never called by this app.
+- **`--landscape-native`**, which is on and fixed a *different*, earlier defect.
 
 ### Next discriminator
 
-The maintainer observes that **the track renders for about one frame at the
-start of a race** and then disappears. Combined with the measurement above,
-that points at an offset between the world and the camera that is near zero at
-race start and grows — the track is procedurally extended as the car drives,
-and world coordinates were seen at x ≈ -51 in one run and x ≈ -79 in another,
-so they do grow with distance.
+Two questions remain, and they are different questions:
 
-Test that directly before changing any GL code: capture the modelview of one
-world batch on the first three frames of a race and every ~30 frames after,
-and plot its NDC x. If the error grows with distance driven, the fault is in a
-value the guest computes from something tapHLE supplies — a timer, a
-soft-float helper, or an accumulated transform — and the place to look is what
-feeds Unity's per-frame delta and the `___fixdfdi`/`___floatdidf` family this
-binary calls, not the GL layer. If the error is present and constant from the
-first frame, look instead at how the camera's own transform is built.
+1. **Is the ground plane meant to use texture 103 at all?** A strip that tiles
+   31 times wants a small tileable road texture, not a sprite atlas. Trace
+   every `glBindTexture` in the frames *before* the one being read back (the
+   array and texture setup for these batches happens in an earlier frame, so a
+   single-frame trace does not show it), and check whether the guest asked for
+   a texture tapHLE never created or silently dropped.
+2. **Why is each terrain chunk only a handful of pixels?** 228–480 indices
+   should not paint 2 pixels. Read that batch's positions through
+   `glGetPointerv` the way the ground plane's UVs were read here, and compare
+   the predicted window bounding box with the measured one. If they agree, the
+   guest is submitting collapsed chunk meshes and the fault is upstream of GL.
 
-Do not resume the pre-2026-08-03 texture/combiner investigation.
+Do not resume the "geometry is off-screen" or the pre-2026-08-03
+texture/combiner investigations. Both are closed.
