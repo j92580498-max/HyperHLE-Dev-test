@@ -451,6 +451,14 @@ pub const CLASSES: ClassExports = objc_classes! {
     env.objc.alloc_object(this, host_object, &mut env.mem)
 }
 
+- (id)init {
+    // Adopt an instance a guest subclass allocated itself instead of through
+    // +alloc; see ObjC::ensure_host_object. For an object tapHLE did allocate
+    // this is a no-op, because +allocWithZone: already installed the storage.
+    env.objc.ensure_host_object::<ArrayHostObject>(this);
+    this
+}
+
 // NSCoding implementation
 - (id)initWithCoder:(id)coder {
     init_with_coder_inner(env, this, coder)
@@ -610,7 +618,15 @@ pub const CLASSES: ClassExports = objc_classes! {
     env.objc.alloc_object(this, host_object, &mut env.mem)
 }
 
+- (id)init {
+    // See the immutable class's init: JSONKit's JKArray allocates its own
+    // instances and then sends init.
+    env.objc.ensure_host_object::<ArrayHostObject>(this);
+    this
+}
+
 - (id)initWithCapacity:(NSUInteger)capacity {
+    env.objc.ensure_host_object::<ArrayHostObject>(this);
     env.objc.borrow_mut::<ArrayHostObject>(this).array.reserve(capacity as usize);
     this
 }

@@ -2,6 +2,9 @@
 
 ## Unreleased for 0.3.0-alpha.1
 
+- Keep running when a game builds a Foundation collection by hand instead of
+  through `+alloc`. JSONKit, which many games bundle to read JSON, does this,
+  and it previously ended the app the moment a parsed result came back.
 - Rebrand the fork as tapHLE across the executable, crates, runtime resources,
   internal symbols, tests, and packaging.
 - Define Windows and modern iOS game compatibility as the product focus, with

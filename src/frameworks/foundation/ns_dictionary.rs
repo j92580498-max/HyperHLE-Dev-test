@@ -745,7 +745,11 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (id)init {
-    *env.objc.borrow_mut(this) = <DictionaryHostObject as Default>::default();
+    // A guest subclass may have allocated this instance itself rather than
+    // through +alloc, in which case it has no host storage yet.
+    if !env.objc.ensure_host_object::<DictionaryHostObject>(this) {
+        *env.objc.borrow_mut(this) = <DictionaryHostObject as Default>::default();
+    }
     this
 }
 
@@ -866,7 +870,11 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (id)init {
-    *env.objc.borrow_mut(this) = <DictionaryHostObject as Default>::default();
+    // See the note on the immutable class's init: a guest subclass such as
+    // JSONKit's JKDictionary allocates its own instances.
+    if !env.objc.ensure_host_object::<DictionaryHostObject>(this) {
+        *env.objc.borrow_mut(this) = <DictionaryHostObject as Default>::default();
+    }
     this
 }
 
