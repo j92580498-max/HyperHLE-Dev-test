@@ -2,6 +2,9 @@
 
 ## Unreleased for 0.3.0-alpha.1
 
+- Say which file a failed `open()` was looking for. The warning previously
+  printed only the address the filename happened to sit at, so a game quietly
+  missing a level or a save gave no clue what it wanted.
 - Let older JSON parsers reserve mutable byte storage and access NSObject's
   root ivar offset, advancing Cubed Rally Redline's review and results paths.
 - Let OpenGL ES 1 games use non-power-of-two textures and render targets on
