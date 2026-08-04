@@ -216,7 +216,18 @@ pub fn open_direct(env: &mut Environment, path: ConstPtr<u8>, flags: i32) -> Fil
             find_or_create_fd(env, host_object)
         }
         Err(error) => {
-            log!("Warning: open({path:?}, {flags:#x}) failed with: {error:?}, returning -1");
+            // Name the file. A failed open is one of the most common ways an
+            // app quietly loses content — a level that never loads, a save
+            // that never restores — and the guest address the path happened
+            // to sit at says nothing about which file was missing, so the
+            // warning could not be acted on without re-running under a
+            // debugger.
+            log!(
+                "Warning: open({:?}, {:#x}) failed with: {:?}, returning -1",
+                path_string,
+                flags,
+                error
+            );
             let errno = match error {
                 FsError::AccessDenied => EACCES,
                 FsError::AlreadyExist => EEXIST,
