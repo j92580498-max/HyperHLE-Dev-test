@@ -30,6 +30,22 @@ pub struct State {
     mmap_allocations: HashMap<MutVoidPtr, GuestUSize>,
 }
 
+/// Whether `[addr, addr + len)` lies wholly inside a mapping `mmap` has already
+/// handed out.
+fn within_existing_mapping(state: &State, addr: MutVoidPtr, len: GuestUSize) -> bool {
+    if addr.is_null() || len == 0 {
+        return false;
+    }
+    let start = addr.to_bits();
+    let Some(end) = start.checked_add(len) else {
+        return false;
+    };
+    state.mmap_allocations.iter().any(|(&base, &size)| {
+        let base = base.to_bits();
+        start >= base && end <= base.saturating_add(size)
+    })
+}
+
 /// For files, our implementation of mmap is really simple:
 /// it's just load entirety of file in memory!
 fn mmap(
@@ -53,6 +69,27 @@ fn mmap(
         fd,
         offset
     );
+
+    // A MAP_FIXED mapping over memory this process already mapped is a
+    // *re*-mapping, not a new allocation. Boehm's garbage collector — the one
+    // inside Mono, and therefore inside every Unity game — releases memory
+    // with `mmap(addr, len, PROT_NONE, MAP_FIXED | MAP_ANON, ...)` over its own
+    // heap, and takes it back the same way, because that keeps the address
+    // reserved while telling the kernel the contents are gone. On a real kernel
+    // MAP_FIXED replaces whatever is mapped there; tapHLE's allocator instead
+    // refuses an address it has already handed out, so the collector saw
+    // MAP_FAILED and called `ABORT("mmap(PROT_NONE) failed")`, terminating the
+    // app. In Cubed Rally Redline that happened while loading the second race.
+    //
+    // Answering with the same address models the replacement. tapHLE has no
+    // per-page protection to apply, and leaving the bytes untouched is the
+    // conservative choice: the collector treats remapped memory as
+    // uninitialised, so keeping stale contents is allowed, whereas zeroing a
+    // range that some *other* mapping shares would destroy live data.
+    if flags & MAP_FIXED != 0 && within_existing_mapping(&env.libc_state.mman, addr, len) {
+        log_dbg!("mmap: MAP_FIXED re-map of {:?}+{}, already mapped", addr, len);
+        return addr;
+    }
 
     // A mapping that cannot be satisfied is an ordinary runtime outcome, not a
     // programming error: mmap is specified to return MAP_FAILED and set errno,
@@ -167,3 +204,58 @@ pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(shm_open(_, _, _)),
     export_c_func!(mprotect(_, _, _)),
 ];
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::mem::Ptr;
+
+    fn state_with(base: u32, size: GuestUSize) -> State {
+        let mut state = State::default();
+        state
+            .mmap_allocations
+            .insert(Ptr::from_bits(base), size);
+        state
+    }
+
+    #[test]
+    fn a_subrange_of_an_existing_mapping_is_recognised() {
+        let state = state_with(0x1f00000, 0x100000);
+        // The exact call Boehm's GC_unmap made in Cubed Rally Redline.
+        assert!(within_existing_mapping(
+            &state,
+            Ptr::from_bits(0x1f2e000),
+            176128
+        ));
+        // Whole-range and start-aligned cases are re-mappings too.
+        assert!(within_existing_mapping(
+            &state,
+            Ptr::from_bits(0x1f00000),
+            0x100000
+        ));
+    }
+
+    #[test]
+    fn an_unmapped_or_overrunning_range_is_not_recognised() {
+        let state = state_with(0x1f00000, 0x100000);
+        // Below the mapping.
+        assert!(!within_existing_mapping(
+            &state,
+            Ptr::from_bits(0x1000000),
+            0x1000
+        ));
+        // Starts inside but runs past the end.
+        assert!(!within_existing_mapping(
+            &state,
+            Ptr::from_bits(0x1ff0000),
+            0x100000
+        ));
+        // Degenerate requests never count, so they still take the normal path.
+        assert!(!within_existing_mapping(&state, Ptr::null(), 0x1000));
+        assert!(!within_existing_mapping(
+            &state,
+            Ptr::from_bits(0x1f00000),
+            0
+        ));
+    }
+}

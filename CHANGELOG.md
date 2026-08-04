@@ -6,6 +6,13 @@
   root ivar offset, advancing Cubed Rally Redline's review and results paths.
 - Let OpenGL ES 1 games use non-power-of-two textures and render targets on
   Windows, fixing games that otherwise disable their requested display mode.
+- Keep running when a game builds a Foundation collection by hand instead of
+  through `+alloc`. JSONKit, which many games bundle to read JSON, does this,
+  and it previously ended the app the moment a parsed result came back.
+- Stop Unity games dying when their garbage collector recycles memory. Mono's
+  collector releases and reclaims its own heap by re-mapping it in place, and
+  tapHLE refused, so the game shut itself down — in Cubed Rally Redline, while
+  loading a second race.
 - Rebrand the fork as tapHLE across the executable, crates, runtime resources,
   internal symbols, tests, and packaging.
 - Define Windows and modern iOS game compatibility as the product focus, with
