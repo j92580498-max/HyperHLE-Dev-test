@@ -1497,7 +1497,9 @@ impl Window {
 }
 
 pub fn open_url(env: &mut Environment, url: &str) -> Result<(), String> {
-    env.on_parent_stack_in_coroutine(|_, _| sdl2::url::open_url(url).map_err(|e| e.to_string()))
+    env.on_parent_stack_in_coroutine_windowless(|_| {
+        sdl2::url::open_url(url).map_err(|e| e.to_string())
+    })
 }
 
 /// Show an SDL messagebox for an error (typically after a panic).
@@ -1579,7 +1581,7 @@ pub fn get_battery_status() -> (i32, BatteryState) {
 }
 
 pub fn get_preferred_language_codes(env: &mut Environment) -> Vec<String> {
-    env.on_parent_stack_in_coroutine(|_, _| {
+    env.on_parent_stack_in_coroutine_windowless(|_| {
         sdl2::locale::get_preferred_locales()
             .map(|loc| loc.lang)
             .collect()
@@ -1587,7 +1589,7 @@ pub fn get_preferred_language_codes(env: &mut Environment) -> Vec<String> {
 }
 
 pub fn get_preferred_country_codes(env: &mut Environment) -> Vec<String> {
-    env.on_parent_stack_in_coroutine(|_, _| {
+    env.on_parent_stack_in_coroutine_windowless(|_| {
         sdl2::locale::get_preferred_locales()
             .filter_map(|loc| loc.country)
             .collect()

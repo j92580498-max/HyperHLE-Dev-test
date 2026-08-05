@@ -1991,7 +1991,9 @@ impl Environment {
             unsafe {
                 let yielder = self.yielder.as_ref().unwrap();
                 let wrapped = WindowWrapper {
-                    window: self.window.as_mut().unwrap(),
+                    window: self.window.as_mut().expect(
+                        "Tried to do something that needs a window, but tapHLE is running in headless mode!",
+                    ),
                 };
                 let res = yielder.on_parent_stack(|| {
                     let wrapped = wrapped;
@@ -2005,7 +2007,40 @@ impl Environment {
             if let Some(w) = self.window.as_mut() {
                 w.on_main_stack = true;
             }
-            f(self.window.as_mut().unwrap(), self.options.as_mut())
+            f(
+                self.window.as_mut().expect(
+                    "Tried to do something that needs a window, but tapHLE is running in headless mode!",
+                ),
+                self.options.as_mut(),
+            )
+        }
+    }
+
+    /// Run a function on the parent stack, for work that does not involve the
+    /// window.
+    ///
+    /// Not everything that needs the parent stack is about the window. Asking
+    /// SDL for the host's preferred locales, or handing it a URL to open, needs
+    /// the main stack because SDL requires it, and nothing more.
+    ///
+    /// Routing those through [Environment::on_parent_stack_in_coroutine] meant
+    /// they took a `&mut Window` they never touched, which made them panic in
+    /// headless mode for no reason: two of four sampled apps died on it during
+    /// `UIApplicationMain`, before reaching anything that wanted a window.
+    /// `-[NSBundle preferredLocalizations]` reaches the locale query on almost
+    /// every launch, so this was close to a blanket failure of `--headless`
+    /// rather than an edge case.
+    pub fn on_parent_stack_in_coroutine_windowless<F, R>(&mut self, f: F) -> R
+    where
+        F: FnOnce(&mut options::Options) -> R + Send,
+    {
+        if !self.yielder.is_null() {
+            unsafe {
+                let yielder = self.yielder.as_ref().unwrap();
+                yielder.on_parent_stack(|| f(self.options.as_mut()))
+            }
+        } else {
+            f(self.options.as_mut())
         }
     }
 }
