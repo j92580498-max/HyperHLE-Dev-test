@@ -15,6 +15,65 @@
 - tapHLEdb: App 20, version 20, report 28 (2026-07-26, tapHLE `4e246384`,
   ★☆☆☆☆).
 
+## 2026-08-04: the menu is on screen. Two stars.
+
+**Everything below this section is history.** It describes a one-star app whose
+window died before anything was presented, and that is no longer what happens.
+Read it for the reasoning, not for the current state.
+
+Measured on `1c22d176`, a clean worktree, with an OS-level `PrintWindow`
+screenshot — the same method that overturned the earlier two-star claim, and the
+only one this app's history says to trust:
+
+- The Chillingo launch image comes up **upright, landscape, correctly shaped**.
+- By twelve seconds the **full main menu** is on screen: the illustrated scene,
+  the title *The Jim & Frank Mysteries — The Blood River Files*, and all five
+  signposts (Play Game, Select Profile, Options, Extras, About).
+- It is **stable**: a capture at thirty seconds is identical to the one at
+  twelve. Not a transient frame.
+
+Identity, read from `--info` and not from the filename: `J & F HD`,
+`com.chillingo.thejimandfrankmysterieshd`, version `1.1`, minimum OS `3.2`,
+device family iPad.
+
+### What fixed it, and why nothing here had to be redone
+
+Three changes that landed on `trunk` for other reasons, none of them this app:
+
+1. `2cf13f66` — `UIApplicationMain` now owns the main nib's top-level objects
+   and makes its window key. This is exactly the retain that the note below
+   describes as "correct on its own terms" but deliberately withheld because,
+   alone, it turned a rendering app grey.
+2. `0f9d5a16` — the compositor's presented texture wraps again.
+3. `c0cdbd1c` — an app launches in the orientation its `UIInterfaceOrientation`
+   asks for. This app asks for `UIInterfaceOrientationLandscapeRight`.
+
+Together they resolve the conflict the note below could only describe: the
+window survives *and* the GL content reaches the screen. The `CAEAGLLayer` is
+now in the composited tree — traced with `TAPHLE_LOG_MODULES`, it composites
+every frame at 768x1024 with `eagl_pixels=true` — and `MOUNT [UIWindow
+addSubview:EAGLView]` appears, which is the mount the last section said never
+happened.
+
+So the closing question of the previous section — "what is supposed to put the
+EAGLView on screen" — is answered: the app always did it, and could not while
+the window it queried for had already been deallocated.
+
+### What is not yet known
+
+Nobody has pressed a button. Two stars is "reaches a stable screen"; three
+requires a gameplay loop that starts and persists, which needs a real tap on
+Play Game and is the obvious next step. The menu geometry recorded below is
+stale — it was measured in a 768x1024 window, and the window is now landscape.
+
+Not yet reported to the database. The 1★ -> 2★ boundary is a report that has not
+been filed; see `AGENTS.md` on why every boundary gets its own.
+
+Still missing statically, from `dev-scripts/demand.py app`: the AddressBook
+framework entire, `NSHTTPCookie`, `NSHTTPURLResponse`, `NSURLCredential`,
+`SKPayment`, `UISwipeGestureRecognizer`, and 35 symbols. None of them stopped it
+reaching the menu.
+
 ## CORRECTED: 1 star. The menu was never on screen
 
 **Report 50 said two stars and was wrong.** Superseded by report 52 (1 star) on
