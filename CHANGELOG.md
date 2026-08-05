@@ -2,6 +2,10 @@
 
 ## Unreleased for 0.3.0-alpha.1
 
+- Start landscape games the right way round. A game that only says which way up
+  it goes in its code, rather than in its bundle information, used to open
+  sideways in a portrait window with its edges cut off, and needed
+  `--landscape-left` passed by hand. tapHLE now asks the game at startup.
 - Let games create and save their own files. tapHLE told a game that any folder
   it had not made yet already existed, so games skipped creating their save
   directories and then failed, much later, when they tried to write into them.
