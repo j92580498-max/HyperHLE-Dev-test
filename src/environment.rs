@@ -280,37 +280,46 @@ impl Environment {
         let supports_portrait = supported
             .iter()
             .any(|&o| o == "UIInterfaceOrientationPortrait" || o == "UIDeviceOrientationPortrait");
-        if options.initial_orientation == window::DeviceOrientation::Portrait && !supports_portrait
-        {
-            if let Some(&non_portrait_orientation) = supported
-                .iter()
-                .find(|&&o| o != "UIInterfaceOrientationPortrait")
-            {
+        if options.initial_orientation == window::DeviceOrientation::Portrait {
+            // An app that names the orientation it launches in is believed,
+            // even when it also says it supports portrait: those are different
+            // claims, and a game that rotates to portrait later still has to
+            // start the way it says. Ignore a launch orientation the same app
+            // lists as unsupported, which is a contradiction rather than an
+            // instruction.
+            let declared = bundle
+                .initial_interface_orientation()
+                .filter(|o| supported.contains(o));
+            // Otherwise, only override the default when the app cannot actually
+            // do portrait. Checking "is there a non-portrait entry?" is not the
+            // same question: an app that supports portrait *and* something else
+            // — very commonly portrait plus upside-down — would be rotated away
+            // from the orientation it already handles. That rotates input as
+            // well as display, so every touch arrives mirrored and nothing can
+            // be tapped.
+            let chosen = declared.or_else(|| {
+                (!supports_portrait)
+                    .then(|| {
+                        supported
+                            .iter()
+                            .copied()
+                            .find(|&o| o != "UIInterfaceOrientationPortrait")
+                    })
+                    .flatten()
+            });
+            if let Some(interface_orientation) = chosen {
                 // TODO: Overwriting the options might not be ideal; do we need
                 //       to distinguish this kind of orientation change from
                 //       others?
-                options.initial_orientation = match non_portrait_orientation {
-                    // UIInterfaceOrientation values are flipped relative to
-                    // (UI)DeviceOrientation values (content has to rotate in
-                    // the opposite direction to how the device rotates).
-                    "UIInterfaceOrientationPortrait" | "UIDeviceOrientationPortrait" => {
-                        window::DeviceOrientation::Portrait
+                match bundle::device_orientation_for_interface_orientation(interface_orientation) {
+                    Some(device_orientation) => {
+                        options.initial_orientation = device_orientation;
+                        log!("App launches in user interface orientation {:?}, applying device orientation {:?}.", interface_orientation, device_orientation);
                     }
-                    "UIInterfaceOrientationPortraitUpsideDown" => {
-                        window::DeviceOrientation::PortraitUpsideDown
+                    None => {
+                        log!("Warning: app names an unrecognised interface orientation {:?}; launching portrait.", interface_orientation);
                     }
-                    "UIInterfaceOrientationLandscapeLeft" => {
-                        window::DeviceOrientation::LandscapeRight
-                    }
-                    "UIInterfaceOrientationLandscapeRight" => {
-                        window::DeviceOrientation::LandscapeLeft
-                    }
-                    // This appears to be an older way set the orientation.
-                    // From testing, it seems to correspond to left.
-                    "UIInterfaceOrientationLandscape" => window::DeviceOrientation::LandscapeLeft,
-                    other => unimplemented!("Unsupported startup orientation: {:?}", other),
-                };
-                log!("App needs non-portrait user interface orientation {:?}, applying device orientation {:?}.", non_portrait_orientation, options.initial_orientation);
+                }
             }
         }
 

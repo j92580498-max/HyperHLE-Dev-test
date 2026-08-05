@@ -256,6 +256,27 @@ impl Bundle {
             .map(|v| v.as_string().unwrap())
     }
 
+    /// The interface orientation the app declares it *launches* in, if it says.
+    ///
+    /// `UIInterfaceOrientation` and `UISupportedInterfaceOrientations` answer
+    /// different questions, and conflating them loses this one. The array says
+    /// which orientations the app can rotate to; the older singular key says
+    /// which one it starts in. An app that lists all four but launches
+    /// landscape is ordinary — The Jim and Frank Mysteries HD is exactly that —
+    /// and reading only the array leaves it in portrait, drawing its landscape
+    /// artwork sideways in a portrait window.
+    ///
+    /// When the older key holds a comma-separated list, the first entry is the
+    /// one the app launches in.
+    pub fn initial_interface_orientation(&self) -> Option<&str> {
+        let value = self.plist.get("UIInterfaceOrientation")?;
+        let Some(string) = value.as_string() else {
+            log!("UIInterfaceOrientation is not a string, ignoring");
+            return None;
+        };
+        string.split(',').next().filter(|s| !s.is_empty())
+    }
+
     pub fn supported_interface_orientations(&self) -> Vec<&str> {
         // UIInterfaceOrientation (iPhone OS 2.0) is a single string
         // (or a comma separated list of strings).
@@ -326,6 +347,30 @@ impl Bundle {
     }
 }
 
+/// The device orientation that shows `interface_orientation` upright, or [None]
+/// for a name that is not one of iPhone OS's.
+///
+/// Landscape is inverted between the two vocabularies: interface
+/// `LandscapeLeft` is device `LandscapeRight`, because the interface rotates
+/// against the way the device is turned. The two portrait values agree.
+/// Getting this backwards leaves an app upside down rather than failing, so it
+/// is pinned by tests.
+pub fn device_orientation_for_interface_orientation(
+    interface_orientation: &str,
+) -> Option<DeviceOrientation> {
+    Some(match interface_orientation {
+        "UIInterfaceOrientationPortrait" | "UIDeviceOrientationPortrait" => {
+            DeviceOrientation::Portrait
+        }
+        "UIInterfaceOrientationPortraitUpsideDown" => DeviceOrientation::PortraitUpsideDown,
+        "UIInterfaceOrientationLandscapeLeft" => DeviceOrientation::LandscapeRight,
+        "UIInterfaceOrientationLandscapeRight" => DeviceOrientation::LandscapeLeft,
+        // An older way to spell it. From testing, it corresponds to left.
+        "UIInterfaceOrientationLandscape" => DeviceOrientation::LandscapeLeft,
+        _ => return None,
+    })
+}
+
 /// Launch image name modifiers to try for a device orientation, most specific
 /// first.
 ///
@@ -363,8 +408,56 @@ fn launch_image_names(base_name: &str, orientation_suffixes: &[&str]) -> Vec<Str
 
 #[cfg(test)]
 mod tests {
-    use super::{launch_image_names, launch_image_suffixes};
+    use super::{
+        device_orientation_for_interface_orientation, launch_image_names, launch_image_suffixes,
+    };
     use crate::window::DeviceOrientation;
+
+    /// The landscape pair is inverted between the interface and device
+    /// vocabularies. It reads like a transcription error, so it is pinned.
+    #[test]
+    fn landscape_interface_orientations_map_to_the_opposite_device_orientation() {
+        assert_eq!(
+            device_orientation_for_interface_orientation("UIInterfaceOrientationLandscapeLeft"),
+            Some(DeviceOrientation::LandscapeRight)
+        );
+        assert_eq!(
+            device_orientation_for_interface_orientation("UIInterfaceOrientationLandscapeRight"),
+            Some(DeviceOrientation::LandscapeLeft)
+        );
+    }
+
+    /// Portrait is where the two vocabularies agree, so it must not pick up the
+    /// inversion. `UIDeviceOrientationPortrait` appears in shipped plists that
+    /// use the wrong prefix.
+    #[test]
+    fn portrait_interface_orientations_are_not_inverted() {
+        assert_eq!(
+            device_orientation_for_interface_orientation("UIInterfaceOrientationPortrait"),
+            Some(DeviceOrientation::Portrait)
+        );
+        assert_eq!(
+            device_orientation_for_interface_orientation("UIDeviceOrientationPortrait"),
+            Some(DeviceOrientation::Portrait)
+        );
+        assert_eq!(
+            device_orientation_for_interface_orientation(
+                "UIInterfaceOrientationPortraitUpsideDown"
+            ),
+            Some(DeviceOrientation::PortraitUpsideDown)
+        );
+    }
+
+    /// A name from outside iPhone OS's vocabulary is reported rather than
+    /// crashing the app over a string in its Info.plist.
+    #[test]
+    fn an_unrecognised_orientation_is_not_an_orientation() {
+        assert_eq!(
+            device_orientation_for_interface_orientation("Sideways"),
+            None
+        );
+        assert_eq!(device_orientation_for_interface_orientation(""), None);
+    }
 
     /// The unqualified name must come last. It is the one every app has, so
     /// putting it anywhere else would mean a landscape app never reaches the
