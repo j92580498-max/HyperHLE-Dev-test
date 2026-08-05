@@ -207,6 +207,14 @@ when a human pastes it into the web form on the agent's behalf. Never record an
 agent's result as `human` — a human submitting is not a human testing, and that
 distinction is the reason the field exists.
 
+**Submit it yourself, without asking.** A report is ordinary finished work, in
+exactly the way an ordinary `git push` is: the maintainer set the goal, the
+result is the deliverable, and every submission lands unapproved for review
+anyway, so asking permission adds a round trip and buys no safety. Stopping to
+ask is the error, not the caution. The narrow exceptions elsewhere in this guide
+— force-pushing, rewriting published history, release tags — do not extend to
+this.
+
 Submit a report when the rating changes — in either direction, because a
 regression is a result worth publishing. Do not submit when a rerun merely
 reproduces a rating already recorded for that tapHLE revision: the endpoint
@@ -273,6 +281,14 @@ identity from a filename, a download page, or memory. Never commit the IPA,
 extracted files, assets, keys, save data, or raw log. A report may claim a
 result only for an artifact identified this way on a committed tapHLE revision.
 Reports are immutable: append a new one instead of editing an old observation.
+
+**An app that needs an option to run correctly needs an entry in
+`tapHLE_default_options.txt`.** A result that depends on the tester remembering
+a flag is not a result a player can reproduce, so shipping the option is part of
+the work rather than a follow-up. The file's own guidelines say to specify the
+required orientation even for an app that can auto-rotate. Adding an entry does
+not discharge the underlying gap: record that separately if the option is
+compensating for something tapHLE should handle.
 
 Use `compat/<app-slug>` for app work, such as `compat/ricky`. Exploratory
 checkpoint commits are welcome on that branch. Keep unfinished, unverified, or
