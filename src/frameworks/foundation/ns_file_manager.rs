@@ -526,7 +526,10 @@ pub const CLASSES: ClassExports = objc_classes! {
     // TODO: other attributes
     log_once!("Warning: NSFileManager attributesOfFileSystemForPath:error: returns only filesystem size attributes!");
 
-    assert!(error.is_null()); // TODO
+    // Nothing below can fail, and a method that succeeds leaves the caller's
+    // NSError* untouched. Asserting that no error was requested crashed apps
+    // that simply passed one and would never have read it.
+    let _ = error;
 
     let dict = msg_class![env; NSMutableDictionary new];
 

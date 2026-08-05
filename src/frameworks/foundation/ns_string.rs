@@ -10,6 +10,8 @@
 
 mod path_algorithms;
 
+use super::ns_error::NSFileWriteUnknownError;
+use super::ns_file_manager::write_error;
 use super::ns_keyed_archiver::set_value_to_encode_for_current_key;
 use super::ns_error::NSFileWriteUnknownError;
 use super::ns_file_manager::write_error;
