@@ -90,6 +90,30 @@ compatibility rating and must not be filed as one — nothing in it presses a
 button, so an app waiting on a tap looks stuck. Ratings still come from actually
 playing the app under `compatibility/README.md`.
 
+### The other half: what the collection asks for
+
+The survey needs a build and runs every app. `dev-scripts/demand.py` needs
+neither — it reads the import tables out of each binary and subtracts what
+`src/` exports, which takes minutes rather than a night:
+
+```
+python dev-scripts/demand.py scan --apps "D:\path\to\your ipas"
+python dev-scripts/demand.py todo
+python dev-scripts/demand.py app "some game"
+```
+
+The two answer different questions. A survey says where an app stopped, which is
+what to fix next but reveals nothing about what lies behind it — the remaining
+work stays unknown until the last app runs. `demand.py` measures the whole
+backlog up front, so it can say which framework is worth starting, how much of
+one already exists, and which app is *closest* to running rather than merely
+furthest along today.
+
+Its counts are references, not calls: an app that links CoreLocation may never
+reach the line that needs it. A symbol ranked highly by both tools is
+unambiguous work. The same privacy rule applies — the file lists your
+collection, it is gitignored, and the findings are what you share.
+
 ## Compatibility records and app branches
 
 `compatibility/README.md` is the canonical protocol. The maintainer may accept
