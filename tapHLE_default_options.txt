@@ -261,3 +261,8 @@ com.palmheroes.PalmHeroes: --landscape-right
 # Glass Tower HD
 ru.idigger.Glass-Tower: --force-composition
 
+
+# Crafted
+# A landscape game that declares no orientation at all, so nothing asks it
+# which way up it goes and it launches portrait with its layout cut off.
+com.Pickl.Crafted: --landscape-left
