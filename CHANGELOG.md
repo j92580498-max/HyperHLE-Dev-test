@@ -2,6 +2,11 @@
 
 ## Unreleased for 0.3.0-alpha.1
 
+- Stop `--headless` crashing during startup on games that ask the system what
+  languages the player prefers, which is most of them. The crash reported only
+  an internal error, and it happened before the game did anything worth
+  watching. Games that need a real window for their graphics still cannot run
+  headless, but they now say that instead.
 - Show a landscape game's launch image the way it was drawn. tapHLE looked only
   for `Default.png` — the portrait image such a game never actually shows — and
   then turned it on its side to fill the window, so games opened on a squashed,
