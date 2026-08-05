@@ -59,15 +59,19 @@ So the closing question of the previous section — "what is supposed to put the
 EAGLView on screen" — is answered: the app always did it, and could not while
 the window it queried for had already been deallocated.
 
+### Reported
+
+tapHLEdb report 66 (2026-08-05, tapHLE `a92bdd40`, ★★☆☆☆), against the existing
+app 20 and version 20. Re-verified on that revision before submitting rather
+than filed from the earlier `1c22d176` run, so the report cites what was
+actually tested.
+
 ### What is not yet known
 
 Nobody has pressed a button. Two stars is "reaches a stable screen"; three
 requires a gameplay loop that starts and persists, which needs a real tap on
 Play Game and is the obvious next step. The menu geometry recorded below is
 stale — it was measured in a 768x1024 window, and the window is now landscape.
-
-Not yet reported to the database. The 1★ -> 2★ boundary is a report that has not
-been filed; see `AGENTS.md` on why every boundary gets its own.
 
 Still missing statically, from `dev-scripts/demand.py app`: the AddressBook
 framework entire, `NSHTTPCookie`, `NSHTTPURLResponse`, `NSURLCredential`,
