@@ -8,10 +8,12 @@
 tapHLE_log.txt
 tapHLE_wallpaper.*
 
-# Frontier surveys (dev-scripts/survey.py) list the apps in a personal
-# collection. Share the findings, never the file.
+# Frontier surveys (dev-scripts/survey.py) and import scans
+# (dev-scripts/demand.py) list the apps in a personal collection. Share the
+# findings, never the file.
 *frontier-survey*.jsonl
 *.survey.jsonl
+*import-demand*.jsonl
 
 # Legacy runtime data from pre-fork builds must never be committed.
 /touchHLE_sandbox
