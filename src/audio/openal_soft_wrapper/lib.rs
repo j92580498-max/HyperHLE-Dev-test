@@ -52,6 +52,13 @@ pub mod alc_defines {
 
     pub const ALC_DEVICE_SPECIFIER: ALCenum = 0x1005;
 
+    // Queryable with alcGetIntegerv. The two version queries accept a null
+    // device; the two attribute queries do not.
+    pub const ALC_MAJOR_VERSION: ALCenum = 0x1000;
+    pub const ALC_MINOR_VERSION: ALCenum = 0x1001;
+    pub const ALC_ATTRIBUTES_SIZE: ALCenum = 0x1002;
+    pub const ALC_ALL_ATTRIBUTES: ALCenum = 0x1003;
+
     // Context attributes
     pub const ALC_FREQUENCY: ALCint = 0x1007;
     pub const ALC_REFRESH: ALCint = 0x1008;
@@ -84,6 +91,13 @@ extern "C" {
     pub fn alcGetError(device: *mut ALCdevice) -> ALCenum;
 
     pub fn alcGetString(device: *mut ALCdevice, param: ALCenum) -> *const ALCchar;
+
+    pub fn alcGetIntegerv(
+        device: *mut ALCdevice,
+        param: ALCenum,
+        size: ALCsizei,
+        values: *mut ALCint,
+    );
 }
 
 // === al.h ===
