@@ -160,7 +160,7 @@ impl HostObject for NSDirectoryEnumeratorHostObject {}
 /// Always the Cocoa domain: every caller here is a filesystem operation, and
 /// tapHLE's guest filesystem does not surface an errno that would justify
 /// anything finer.
-fn write_error(env: &mut Environment, out_error: MutPtr<id>, code: NSInteger) {
+pub(super) fn write_error(env: &mut Environment, out_error: MutPtr<id>, code: NSInteger) {
     if out_error.is_null() {
         return;
     }
@@ -221,7 +221,13 @@ pub const CLASSES: ClassExports = objc_classes! {
         // TODO: mutualize with fileExistsAtPath:
         let path = ns_string::to_rust_string(env, path); // TODO: avoid copy
         let guest_path = GuestPath::new(&path);
-        (env.fs.exists(guest_path), !env.fs.is_file(guest_path))
+        // Ask whether it *is* a directory, not whether it fails to be a file.
+        // `!is_file` is true for a path that does not exist at all, so a first
+        // launch was told every missing folder was already a directory. An app
+        // that trusts the out-parameter — Crafted checks it and skips creating
+        // what it believes is there — then never creates its save folder, and
+        // fails much later with a nonexistent parent directory.
+        (env.fs.exists(guest_path), env.fs.is_dir(guest_path))
     };
 
     if !is_dir.is_null() {
@@ -279,9 +285,12 @@ pub const CLASSES: ClassExports = objc_classes! {
     match env.fs.rename(GuestPath::new(&path), GuestPath::new(&toPath)) {
         Ok(()) => true,
         Err(_) => {
-            if !error.is_null() {
-               todo!(); // TODO: create an NSError if requested
-            }
+            // `rename` does not say why it failed, and a move can fail because
+            // the source is absent or because the destination could not be
+            // written. Reporting the write code is the honest choice: it is the
+            // operation the caller asked for, and claiming "no such file" about
+            // a path that may well exist would be worse than being vague.
+            write_error(env, error, NSFileWriteUnknownError);
             false
         }
     }
@@ -319,12 +328,15 @@ pub const CLASSES: ClassExports = objc_classes! {
             true
         }
         Err(err) => {
-            assert!(error.is_null()); // TODO
             log!(
                 "Warning: createDirectoryAtPath {} failed with {:?}, returning false",
                 path_str,
                 err,
             );
+            // An app that passes an NSError** expects to be told why, and
+            // asserting that it did not is a crash on the ordinary path where a
+            // game creates a save folder and checks the result.
+            write_error(env, error, NSFileWriteUnknownError);
             false
         }
     }
@@ -363,8 +375,12 @@ pub const CLASSES: ClassExports = objc_classes! {
 - (id)contentsOfDirectoryAtPath:(id)path /* NSString* */
                           error:(MutPtr<id>)error { // NSError**
     let contents: id = msg![env; this directoryContentsAtPath:path];
-    if contents == nil && !error.is_null() {
-        todo!(); // TODO: create an NSError if requested
+    if contents == nil {
+        // Listing a directory that is not there yet is ordinary, not
+        // exceptional: an app checking for its own save folder before creating
+        // it does exactly this on first launch, and gets nil plus an error
+        // describing what was missing.
+        write_error(env, error, NSFileReadNoSuchFileError);
     }
     contents
 }
