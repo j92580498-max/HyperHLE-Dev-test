@@ -2,6 +2,11 @@
 
 ## Unreleased for 0.3.0-alpha.1
 
+- Let games create and save their own files. tapHLE told a game that any folder
+  it had not made yet already existed, so games skipped creating their save
+  directories and then failed, much later, when they tried to write into them.
+  Games that ask what went wrong, or that sort saved games by date, no longer
+  stop the emulator either. Crafted now generates and saves a world.
 - Stop `--headless` crashing during startup on games that ask the system what
   languages the player prefers, which is most of them. The crash reported only
   an internal error, and it happened before the game did anything worth
