@@ -110,9 +110,26 @@ one already exists, and which app is *closest* to running rather than merely
 furthest along today.
 
 Its counts are references, not calls: an app that links CoreLocation may never
-reach the line that needs it. A symbol ranked highly by both tools is
-unambiguous work. The same privacy rule applies — the file lists your
-collection, it is gitignored, and the findings are what you share.
+reach the line that needs it. The same privacy rule applies — the file lists
+your collection, it is gitignored, and the findings are what you share.
+
+### Both at once
+
+If you have run both tools over the same collection, `cross` joins them into a
+single priority order:
+
+```
+python dev-scripts/demand.py cross
+```
+
+Every gap is labelled `BLOCKING` when some app's run stopped exactly there,
+`reachable` when tapHLE failed to bind it at load but something else stopped the
+app, and `latent` when nothing has reached it yet. That separates work that is
+proven to block from work that merely looks large — a symbol with high demand
+and no blocking evidence is behind the current frontier, not in front of it.
+
+Counts are a floor. A survey older than your working tree under-reports, because
+anything implemented since has already been dropped from the static gap list.
 
 ## Compatibility records and app branches
 

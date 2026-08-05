@@ -8,6 +8,7 @@ tables in `src/`, so the output is the backlog rather than the frontier:
     python dev-scripts/demand.py scan --apps "I:\\iOS\\ROMs\\Decrypted IPAs"
     python dev-scripts/demand.py todo
     python dev-scripts/demand.py todo --framework UIKit
+    python dev-scripts/demand.py cross          # needs a survey.py catalogue too
     python dev-scripts/demand.py show _CGContextDrawImage
     python dev-scripts/demand.py app "Angry Birds"
     python dev-scripts/demand.py closest
@@ -49,6 +50,32 @@ own method, while one sent by two hundred is an API. `todo` applies
 `--min-apps 3` to selectors for this reason. Class and function counts do not
 have this problem — they come from the undefined-symbol table, which by
 construction lists only what the binary does not define itself.
+
+## `cross`: one priority order out of both measurements
+
+`cross` joins this catalogue with a `survey.py` one over the same collection and
+labels every gap with what the runtime actually showed:
+
+- `BLOCKING` — some app's run stopped exactly here. Guest code demonstrably
+  reaches this and cannot get past it.
+- `reachable` — tapHLE tried to bind the symbol at load and had nothing to bind,
+  but something else is what stopped the app. This is measured over every binary
+  tapHLE loaded, including the bundled dylibs, so it can legitimately exceed the
+  static demand of the app executables alone: a symbol libstdc++ imports goes
+  unbound in every app that loads libstdc++. `coverage` lists that set.
+- `latent` — referenced only. Nothing has reached it yet, so it is real work but
+  not next work.
+
+The `surv` column counts apps that *survived* their run and still reference the
+gap: what those apps would meet next rather than now. A high `demand` with a
+zero `front` is the signature of work that looks urgent statically and is in
+fact behind the current frontier.
+
+The join is conservative when the survey is older than the working tree.
+Anything implemented since was already dropped from the static gap set, so stale
+evidence under-reports a gap and can never invent one — treat every count as a
+floor. Re-run both after a batch of fixes; the order moves, and that iteration
+is the point.
 
 ## The result file is private and must never be committed
 
@@ -585,6 +612,10 @@ def host_coverage():
     # runtimes — which the guest links normally. Their exports are supplied just
     # as surely as a host function is, and omitting them would put every
     # `_sqlite3_*` and C++ ABI symbol on the to-do list as work already done.
+    # A bundled dylib is a guest binary like any other, so it has imports of its
+    # own that tapHLE must satisfy. They are collected here and filtered below,
+    # once every export is known.
+    dylib_imports = {}  # symbol -> dylib that needs it
     for path in sorted((REPO / paths_dylibs_dir()).glob("*.dylib")):
         rel = f"{paths_dylibs_dir()}/{path.name}"
         try:
@@ -594,7 +625,17 @@ def host_coverage():
         for sl in arm_slices(data):
             for symbol in sl.exports():
                 symbols.setdefault(symbol, rel)
+            for symbol, _library, weak in sl.imports():
+                if not weak:
+                    dylib_imports.setdefault(symbol, path.name)
         dylibs.setdefault("/usr/lib/" + path.name, rel)
+
+    # These are invisible to a scan of app executables, and they are unresolved
+    # for *every* app that loads the dylib rather than for the few that import
+    # them directly — which is why a symbol can show far more runtime evidence
+    # than static demand. `___mb_cur_max` is imported by thirteen executables in
+    # one collection and went unbound in seven hundred and forty-four apps.
+    dylib_needs = {s: lib for s, lib in dylib_imports.items() if s not in symbols}
 
     selectors = set()
     for entry in classes.values():
@@ -604,6 +645,7 @@ def host_coverage():
         "classes": classes,
         "selectors": selectors,
         "dylibs": dylibs,
+        "dylib_needs": dylib_needs,
     }
 
 
@@ -698,6 +740,21 @@ def cmd_coverage(args):
     print(f"{len(host['dylibs'])} provided dylibs:")
     for path, rel in sorted(host["dylibs"].items()):
         print(f"    {framework_of(path):24s} {rel}")
+
+    needs = host["dylib_needs"]
+    if needs:
+        print(
+            f"\n{len(needs)} symbols the bundled dylibs import and nothing "
+            "provides.\nThese are unresolved for every app that loads the "
+            "dylib, not only for apps\nthat import them directly:\n"
+        )
+        by_lib = collections.defaultdict(list)
+        for symbol, lib in needs.items():
+            by_lib[lib].append(symbol)
+        for lib in sorted(by_lib):
+            print(f"    {lib}")
+            for symbol in sorted(by_lib[lib]):
+                print(f"        {symbol}")
     if args.classes:
         print()
         for name, entry in sorted(host["classes"].items()):
@@ -806,6 +863,179 @@ def cmd_todo(args):
             result["selectors"],
             max(args.min_apps, 3),
         )
+
+
+DEFAULT_SURVEY = (
+    Path(os.environ.get("TEMP") or os.environ.get("TMPDIR") or "/tmp")
+    / "taphle-frontier-survey.jsonl"
+)
+
+
+def survey_evidence(survey_rows):
+    """Turn frontier rows into per-gap runtime evidence.
+
+    Three signals, in descending order of strength:
+
+    - `frontier` — an app's run stopped exactly here. Proof that guest code
+      reaches this and cannot proceed without it.
+    - `unbound` — tapHLE tried to bind this symbol at load and had nothing to
+      bind. Proof it is genuinely absent at runtime, though something else may
+      be what actually stopped the app.
+    - `survivors` — the app got through its run and still references this, so
+      this is what it would meet next rather than now.
+    """
+    evidence = {
+        "frontier_symbol": collections.defaultdict(set),
+        "frontier_class": collections.defaultdict(set),
+        "frontier_selector": collections.defaultdict(set),
+        "unbound": collections.defaultdict(set),
+        "survived": set(),
+        "broken": set(),
+    }
+    for row in survey_rows:
+        key = app_key(row)
+        reason = row.get("reason_key") or ""
+        if reason == "ok:survived":
+            evidence["survived"].add(key)
+        else:
+            evidence["broken"].add(key)
+        for symbol in row.get("missing_symbols") or []:
+            evidence["unbound"][symbol].add(key)
+
+        head, _, rest = reason.partition(":")
+        if head == "function":
+            evidence["frontier_symbol"][rest].add(key)
+        elif head == "class-missing":
+            evidence["frontier_class"][rest].add(key)
+        elif head == "class-stub":
+            # "class-stub:NSPersistentStoreCoordinator.alloc" — the class is a
+            # placeholder, so the class is the gap, not the method.
+            evidence["frontier_class"][rest.partition(".")[0]].add(key)
+        elif head == "selector":
+            # "selector:NSURLCache.initWith...:" — the class exists and answered
+            # to something; the method is what is missing.
+            cls, _, sel = rest.partition(".")
+            if sel:
+                evidence["frontier_selector"][sel].add(key)
+    return evidence
+
+
+def cmd_cross(args):
+    """Rank static gaps by whether the runtime survey saw them block an app.
+
+    Neither list can produce this order alone. `todo` knows what the collection
+    references but not whether anything reaches it; `survey.py rank` knows what
+    stopped each app but not what waits behind it. Joining them separates a gap
+    that is *proven* to block from one that is merely widely referenced.
+
+    The join is conservative when the survey is older than the working tree.
+    Anything implemented since was already dropped from the static gap set, so
+    stale evidence can only under-report a gap, never invent one — the verdicts
+    are a floor, not an estimate.
+    """
+    demand_rows = [r for r in load_catalogue(Path(args.catalogue)) if "error" not in r]
+    if not demand_rows:
+        sys.exit("import catalogue is empty; run `demand.py scan --apps ...` first")
+    survey_path = Path(args.survey)
+    if not survey_path.exists():
+        sys.exit(
+            f"no frontier survey at {survey_path}. Run `python dev-scripts/survey.py "
+            "run --apps ...` first, or pass --survey with its path."
+        )
+    survey_rows = load_catalogue(survey_path)
+    host = host_coverage()
+    result = gaps(demand_rows, host, include_weak=args.include_weak)
+    evidence = survey_evidence(survey_rows)
+
+    demand_apps = {app_key(r) for r in demand_rows}
+    survey_apps = {app_key(r) for r in survey_rows}
+    shared = demand_apps & survey_apps
+    revisions = sorted({r.get("taphle_version", "?") for r in survey_rows})
+    print(
+        f"{len(demand_apps)} apps scanned, {len(survey_apps)} surveyed, "
+        f"{len(shared)} in both. Survey revision(s): {', '.join(revisions)}."
+    )
+    if len(shared) < len(demand_apps):
+        print(
+            f"  note: {len(demand_apps) - len(shared)} scanned apps were never "
+            "surveyed, so they contribute demand but no runtime evidence."
+        )
+    print(
+        "  Evidence is a floor: a survey older than the working tree under-"
+        "reports, never over-reports.\n"
+    )
+
+    def rank(mapping, frontier, unbound=None):
+        rows = []
+        for name, apps in mapping.items():
+            f = len(frontier.get(name, ()) )
+            u = len(unbound.get(name, ())) if unbound is not None else 0
+            s = len(apps & evidence["survived"])
+            if f:
+                tier, verdict = 0, "BLOCKING"
+            elif u:
+                tier, verdict = 1, "reachable"
+            else:
+                tier, verdict = 2, "latent"
+            rows.append((tier, len(apps), f, u, s, verdict, name))
+        if args.sort == "demand":
+            rows.sort(key=lambda r: (-r[1], r[6]))
+        elif args.sort == "frontier":
+            rows.sort(key=lambda r: (-r[2], -r[1], r[6]))
+        else:
+            rows.sort(key=lambda r: (r[0], -r[2], -r[3], -r[1], r[6]))
+        return rows
+
+    def dump(title, rows, show_unbound):
+        blocking = sum(1 for r in rows if r[0] == 0)
+        reachable = sum(1 for r in rows if r[0] == 1)
+        print(
+            f"{title} - {len(rows)} gaps: {blocking} blocking, {reachable} "
+            f"reachable, {len(rows) - blocking - reachable} latent\n"
+        )
+        if show_unbound:
+            print(f"  {'demand':>7} {'front':>6} {'unbnd':>6} {'surv':>5}  verdict     name")
+        else:
+            print(f"  {'demand':>7} {'front':>6} {'surv':>5}  verdict     name")
+        for tier, demand, f, u, s, verdict, name in rows[: args.top]:
+            if show_unbound:
+                print(f"  {demand:7d} {f:6d} {u:6d} {s:5d}  {verdict:10s}  {name}")
+            else:
+                print(f"  {demand:7d} {f:6d} {s:5d}  {verdict:10s}  {name}")
+        print()
+
+    symbol_rows = rank(
+        result["functions"], evidence["frontier_symbol"], evidence["unbound"]
+    )
+    class_rows = rank(result["classes"], evidence["frontier_class"])
+    selector_rows = rank(result["selectors"], evidence["frontier_selector"])
+
+    dump("SYMBOLS", symbol_rows, True)
+    dump("CLASSES", class_rows, False)
+    if not args.no_selectors:
+        dump(
+            "SELECTORS (softest signal - see this script's docstring)",
+            [r for r in selector_rows if r[0] < 2 or r[1] >= 3],
+            False,
+        )
+
+    # How much of the frontier this static list actually accounts for. A low
+    # number is not a defect: most apps stop on a panic or a guest fault, which
+    # is a bug rather than a missing import and has no entry here by design.
+    explained = set()
+    for rows_, frontier in (
+        (symbol_rows, evidence["frontier_symbol"]),
+        (class_rows, evidence["frontier_class"]),
+        (selector_rows, evidence["frontier_selector"]),
+    ):
+        for _t, _d, _f, _u, _s, _v, name in rows_:
+            explained |= frontier.get(name, set())
+    broken = evidence["broken"] & shared
+    print(
+        f"{len(explained & broken)} of {len(broken)} apps that broke stopped on a "
+        f"gap listed above; the rest stopped on a panic, a guest fault, or "
+        f"something already implemented."
+    )
 
 
 def cmd_show(args):
@@ -947,6 +1177,21 @@ def main():
         help="count weak imports, which apps null-check and usually do not need",
     )
     todo.set_defaults(func=cmd_todo)
+
+    cross = sub.add_parser(
+        "cross", help="rank gaps by whether the frontier survey saw them block"
+    )
+    cross.add_argument("--survey", default=str(DEFAULT_SURVEY))
+    cross.add_argument("--top", type=int, default=25)
+    cross.add_argument(
+        "--sort",
+        choices=("priority", "demand", "frontier"),
+        default="priority",
+        help="priority puts proven blockers first, then reachable, then latent",
+    )
+    cross.add_argument("--no-selectors", action="store_true")
+    cross.add_argument("--include-weak", action="store_true")
+    cross.set_defaults(func=cmd_cross)
 
     show = sub.add_parser("show", help="which apps reference one symbol or selector")
     show.add_argument("name")
