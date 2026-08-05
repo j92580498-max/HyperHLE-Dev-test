@@ -231,6 +231,16 @@ snapshot of a specific revision, so the series is the app's history; skipping
 one deletes the evidence that a particular commit is what moved the app, which
 is the thing a later regression hunt needs.
 
+**Stop at the boundary. Do not chain the next fix.** The default way this rule
+gets broken is not forgetfulness, it is iteration: the moment a fix works the
+worktree is dirty, a dirty-worktree result may not enter the database, and the
+obvious next move is the next blocker. Do that twice and the boundary is behind
+you with nothing to cite. So when a rerun shows a new rating, treat it as a stop
+point — commit the fix, rebuild from the clean revision, re-verify the milestone
+on it, submit the report, and only then look at what is blocking the next one.
+The extra build is the price of the evidence. Crafted lost its 1★ → 2★ report
+exactly this way on 2026-08-05, and the loss is permanent.
+
 A boundary that was passed without a report cannot be recovered afterwards. Do
 not compose one from memory, from an app note, or from a rerun on a later
 revision: a report asserts that an artifact was run at that revision and rated
@@ -465,6 +475,14 @@ cargo test -- --skip test_app
 cargo build --release
 python dev-scripts/compatibility.py check
 ```
+
+**Run the checks on the merge result, not only on the branch.** A clean
+auto-merge is not evidence that the result compiles. Two branches can each
+build, test and lint green and still produce a broken tree, because Git resolves
+"both sides appended the same `use` line" as no conflict at all and hands back a
+file neither branch ever had. That is how a red `trunk` was pushed on
+2026-08-05, with every contributing branch verified. Build and lint after the
+merge and before the push.
 
 Observe every check's exit status. In PowerShell, do not place several checks
 in one semicolon-separated command and trust only the final process exit code;

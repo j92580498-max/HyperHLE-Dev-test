@@ -4,8 +4,32 @@
 - Identity, read from `tapHLE --info` and not from the filename: display name
   `Crafted`, bundle `com.Pickl.Crafted`, version `1.0.1`, minimum OS `4.0`,
   device family iPhone, requires `accelerometer` and `opengles-1`.
-- Local copy from the maintainer's collection, not Archive-backed. No public
-  report has been filed.
+- Local copy from the maintainer's collection, not Archive-backed.
+- tapHLEdb: app 33, version 34, report 65 (2026-08-05, tapHLE `10075dc6`,
+  ★★★☆☆).
+
+## The 1★ → 2★ boundary was never reported, and cannot be
+
+Recorded because the guide requires the omission to be written down rather than
+papered over, and because the cause is reusable.
+
+This app crossed 1★ → 2★ (a stable main menu) partway through the same session
+that took it to 3★. It was never filed, and it cannot be filed now: a report
+asserts that an artifact was run and rated at a specific revision, and
+reconstructing that afterwards from an app note would be asserting something
+nobody did.
+
+**The cause was chaining fixes across the boundary on a dirty worktree.** Two
+fixes were applied, the app was rerun, and it reached a stable menu — but the
+build was `-dirty`, and a dirty-worktree result is barred from the database. The
+obvious next move was the next blocker, so the tree stayed dirty through three
+more fixes, and by the time there was a clean revision to cite, the app was
+already at 3★ and the 2★ moment had passed.
+
+That is not a slip; it is what happens by default when an agent iterates. The
+moment a fix works is exactly the moment the tree is dirty. The remedy is in
+`AGENTS.md`: stop at a boundary, commit, rebuild clean, re-verify, publish, and
+only then start the next blocker.
 
 ## 2026-08-05: three stars on `10075dc6`
 
