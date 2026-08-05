@@ -10,6 +10,8 @@
 
 mod path_algorithms;
 
+use super::ns_error::NSFileWriteUnknownError;
+use super::ns_file_manager::write_error;
 use super::ns_keyed_archiver::set_value_to_encode_for_current_key;
 use super::{ns_array, ns_keyed_unarchiver};
 use super::{
@@ -1369,8 +1371,11 @@ pub const CLASSES: ClassExports = objc_classes! {
 
     // TODO: write extended attributes about text encoding
     let success: bool = msg![env; data writeToFile:path atomically:use_aux_file];
-    if !success && !error.is_null() {
-        todo!(); // TODO: create an NSError if requested
+    if !success {
+        // Writing into a directory that does not exist is the ordinary way this
+        // fails, and an app that asked for an NSError** wants to be told so
+        // rather than have the emulator stop.
+        write_error(env, error, NSFileWriteUnknownError);
     }
     success
 }
