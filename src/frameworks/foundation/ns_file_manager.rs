@@ -221,7 +221,12 @@ pub const CLASSES: ClassExports = objc_classes! {
         // TODO: mutualize with fileExistsAtPath:
         let path = ns_string::to_rust_string(env, path); // TODO: avoid copy
         let guest_path = GuestPath::new(&path);
-        (env.fs.exists(guest_path), !env.fs.is_file(guest_path))
+        // Ask whether it *is* a directory, not whether it fails to be a file.
+        // `!is_file` is true for a path that does not exist at all, so a first
+        // launch was told every missing folder was already a directory. An app
+        // that trusts the out-parameter then never creates its save folder, and
+        // fails much later with a nonexistent parent directory.
+        (env.fs.exists(guest_path), env.fs.is_dir(guest_path))
     };
 
     if !is_dir.is_null() {
