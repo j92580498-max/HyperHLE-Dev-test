@@ -716,13 +716,23 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 - (())addSubview:(id)view {
     if crate::log::debug_enabled_for(module_path!()) {
-        let name = |o: id| -> String {
-            if o == nil { "nil".to_string() } else {
-                let c = ObjC::read_isa(o, &env.mem);
-                env.objc.get_class_name(c).to_string()
+        fn describe(env: &Environment, o: id) -> String {
+            if o == nil {
+                return "nil".to_string();
             }
-        };
-        log_dbg!("MOUNT [{} {:?} addSubview:{} {:?}]", name(this), this, name(view), view);
+            let class = ObjC::read_isa(o, &env.mem);
+            let name = env.objc.get_class_name(class);
+            let layer = env.objc.borrow::<UIViewHostObject>(o).layer;
+            if layer == nil {
+                return format!("{name} {o:?} (no layer)");
+            }
+            let layer_class = ObjC::read_isa(layer, &env.mem);
+            let layer_name = env.objc.get_class_name(layer_class);
+            format!("{name} {o:?} (layer {layer_name} {layer:?})")
+        }
+        let this_desc = describe(env, this);
+        let view_desc = describe(env, view);
+        log_dbg!("MOUNT [{this_desc} addSubview:{view_desc}]");
     }
     log_dbg!("[(UIView*){:?} addSubview:{:?}] => ()", this, view);
 

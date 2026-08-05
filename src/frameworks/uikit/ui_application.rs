@@ -12,7 +12,7 @@ use crate::frameworks::foundation::ns_string::{from_rust_string, get_static_str}
 use crate::frameworks::foundation::{ns_array, ns_string, NSInteger, NSUInteger};
 use crate::mem::{ConstVoidPtr, MutPtr};
 use crate::objc::{
-    autorelease, id, msg, msg_class, nil, objc_classes, release, retain, todo_objc_setter,
+    autorelease, id, msg, msg_class, nil, objc_classes, release, retain, todo_objc_setter, Class,
     ClassExports, HostObject, NSZonePtr,
 };
 use crate::window::DeviceOrientation;
@@ -33,6 +33,15 @@ pub struct State {
 struct UIApplicationHostObject {
     delegate: id,
     delegate_is_retained: bool,
+    /// Retained. The main nib's top-level objects, kept alive for the lifetime
+    /// of the application.
+    ///
+    /// A nib's top-level objects are returned to the loader at +1 and the
+    /// loader owns them; nothing else does. For the main nib that loader is
+    /// `UIApplicationMain`, and dropping them means the window an app got from
+    /// its nib is deallocated at the first autorelease pool drain — see the
+    /// comment where this is set.
+    main_nib_top_level_objects: id,
 }
 impl HostObject for UIApplicationHostObject {}
 
@@ -50,6 +59,48 @@ pub const UIInterfaceOrientationLandscapeRight: UIInterfaceOrientation =
     UIDeviceOrientationLandscapeLeft;
 
 const STATUS_BAR_HEIGHT: f32 = 20.0;
+
+/// Make the window that came from the main nib the key, visible window, as
+/// launching does on a device.
+///
+/// A window built in code is made key by the app itself, but a window that
+/// arrives in the main nib is already key by the time the delegate hears that
+/// launching finished, and apps written that way never call
+/// `-makeKeyAndVisible`. They only *ask*: the usual shape is
+/// `[[[UIApplication sharedApplication] keyWindow] addSubview:someView]`.
+///
+/// With no key window that is a message to nil, which is silent — the view is
+/// simply dropped and the app runs on with nothing on screen. The Jim and Frank
+/// Mysteries HD loses its entire OpenGL view that way: it asks for the key
+/// window, asks its view controller for the `EAGLView` holding the game's
+/// `CAEAGLLayer`, adds one to the other, and both calls succeed while nothing
+/// is mounted.
+///
+/// Only the first window is taken, and only when no window is key already, so
+/// an app that does make its own window key keeps it.
+fn make_main_nib_window_key(env: &mut Environment, top_level_objects: id) {
+    if env
+        .framework_state
+        .uikit
+        .ui_view
+        .ui_window
+        .key_window
+        .is_some()
+    {
+        return;
+    }
+    let window_class: Class = msg_class![env; UIWindow class];
+    let count: NSUInteger = msg![env; top_level_objects count];
+    for i in 0..count {
+        let object: id = msg![env; top_level_objects objectAtIndex:i];
+        let is_window: bool = msg![env; object isKindOfClass:window_class];
+        if is_window {
+            log_dbg!("Making the main nib's window {:?} key and visible", object);
+            () = msg![env; object makeKeyAndVisible];
+            return;
+        }
+    }
+}
 
 fn status_bar_frame(
     portrait_width: f32,
@@ -114,6 +165,7 @@ pub const CLASSES: ClassExports = objc_classes! {
     let host_object = Box::new(UIApplicationHostObject {
         delegate: nil,
         delegate_is_retained: false,
+        main_nib_top_level_objects: nil,
     });
     env.objc.alloc_static_object(this, host_object, &mut env.mem)
 }
@@ -372,8 +424,24 @@ pub(super) fn UIApplicationMain(
             if res != nil {
                 let nib: id = msg_class![env; UINib nibWithNibName:ns_main_nib_filename bundle:nil];
                 release(env, ns_main_nib_filename);
-                let _: id = msg![env; nib instantiateWithOwner:ui_application
-                                               options:nil];
+                let top_level_objects: id = msg![env; nib instantiateWithOwner:ui_application
+                                                                       options:nil];
+                // The loader owns a nib's top-level objects. Discarding the
+                // array left them owned by nothing but the autorelease pool, so
+                // an app whose window comes from its main nib — rather than
+                // building one in code — lost that window at the first drain,
+                // taking its registration in `ui_view::ui_window::windows` with
+                // it. Composition then found no windows and presented nothing
+                // for the rest of the run, and every touch was discarded for
+                // want of a window to hit-test. The Jim and Frank Mysteries is
+                // one such app, and this is not a rare shape: it is what every
+                // Xcode template produced for years.
+                retain(env, top_level_objects);
+                env.objc
+                    .borrow_mut::<UIApplicationHostObject>(ui_application)
+                    .main_nib_top_level_objects = top_level_objects;
+
+                make_main_nib_window_key(env, top_level_objects);
             } else {
                 log!(
                     "Warning: couldn't load main nib file {:?}",
