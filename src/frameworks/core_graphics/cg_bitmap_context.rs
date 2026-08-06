@@ -7,7 +7,8 @@
 
 use super::cg_affine_transform::{CGAffineTransform, CGAffineTransformIdentity};
 use super::cg_color_space::{
-    kCGColorSpaceGenericGray, kCGColorSpaceGenericRGB, CGColorSpaceHostObject, CGColorSpaceRef,
+    kCGColorSpaceGenericGray, kCGColorSpaceGenericRGB, kCGColorSpaceModelMonochrome,
+    CGColorSpaceHostObject, CGColorSpaceRef,
 };
 use super::cg_context::{
     kCGBlendModeCopy, kCGBlendModeDarken, kCGBlendModeLighten, kCGBlendModeMultiply,
@@ -85,6 +86,11 @@ pub fn CGBitmapContextCreate(
             color_space,
             alpha_info: bitmap_info & kCGBitmapAlphaInfoMask,
         }),
+        // A new context's fill and stroke colour space is device grey, which is
+        // what CGContextSetFillColor reads a component array in if the caller
+        // never sets one. It is unrelated to the bitmap's own colour space.
+        fill_color_space: kCGColorSpaceModelMonochrome,
+        stroke_color_space: kCGColorSpaceModelMonochrome,
         // TODO: is this the correct default?
         rgb_fill_color: (0.0, 0.0, 0.0, 0.0),
         font: Ptr::null(),

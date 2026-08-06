@@ -10,7 +10,7 @@ use std::ops::{Add, Mul, Sub};
 use crate::dyld::{export_c_func, FunctionExports};
 use crate::frameworks::core_foundation::{CFRelease, CFRetain, CFTypeRef};
 use crate::frameworks::core_graphics::cg_color_space::{
-    kCGColorSpaceGenericRGB, CGColorSpaceHostObject, CGColorSpaceRef,
+    self as cg_color_space, kCGColorSpaceGenericRGB, CGColorSpaceHostObject, CGColorSpaceRef,
 };
 use crate::frameworks::core_graphics::CGFloat;
 use crate::mem::{guest_size_of, ConstPtr, GuestUSize, MutPtr, Ptr};
@@ -34,6 +34,12 @@ pub const CLASSES: ClassExports = objc_classes! {
     if !components.is_null() {
         env.mem.free(components.cast());
     }
+    // Same reasoning for the colour space CGColorGetColorSpace may have
+    // materialised: the colour owns it, so its last reference goes here.
+    let color_space = env.objc.borrow::<CGColorHostObject>(this).color_space;
+    if !color_space.is_null() {
+        crate::frameworks::core_foundation::CFRelease(env, color_space);
+    }
     env.objc.dealloc_object(this, &mut env.mem)
 }
 
@@ -47,6 +53,9 @@ pub struct CGColorHostObject {
     /// Guest-visible component array, created on demand by
     /// `CGColorGetComponents` and owned by this colour. Null until asked for.
     pub components: MutPtr<CGFloat>,
+    /// Guest-visible colour space object, created on demand by
+    /// `CGColorGetColorSpace` and owned by this colour, for the same reason.
+    pub color_space: CGColorSpaceRef,
     // this assumes usage of CGColorSpaceGenericRGB
     // TODO: support other color spaces
     pub r: CGFloat,
@@ -63,6 +72,7 @@ impl Mul<f32> for CGColorHostObject {
     fn mul(self, rhs: f32) -> Self::Output {
         CGColorHostObject {
             components: Ptr::null(),
+            color_space: Ptr::null(),
             color_space_name: self.color_space_name,
             r: self.r * rhs,
             g: self.g * rhs,
@@ -77,6 +87,7 @@ impl Add<CGColorHostObject> for CGColorHostObject {
     fn add(self, rhs: CGColorHostObject) -> Self::Output {
         CGColorHostObject {
             components: Ptr::null(),
+            color_space: Ptr::null(),
             color_space_name: self.color_space_name,
             r: self.r + rhs.r,
             g: self.g + rhs.g,
@@ -91,6 +102,7 @@ impl Sub<CGColorHostObject> for CGColorHostObject {
     fn sub(self, rhs: CGColorHostObject) -> Self::Output {
         CGColorHostObject {
             components: Ptr::null(),
+            color_space: Ptr::null(),
             color_space_name: self.color_space_name,
             r: self.r - rhs.r,
             g: self.g - rhs.g,
@@ -169,8 +181,32 @@ fn CGColorGetComponents(env: &mut Environment, color: CGColorRef) -> ConstPtr<CG
     components.cast_const()
 }
 
+/// `CGColorGetColorSpace` — the colour space the colour was created in.
+///
+/// The real function returns a space the colour owns; the caller does not
+/// retain it and must not release it. tapHLE's colours store their space as a
+/// name rather than as an object, so one is created on first ask and cached on
+/// the colour, exactly as [CGColorGetComponents] handles the same problem: the
+/// same pointer every time, alive as long as the colour, released with it.
+fn CGColorGetColorSpace(env: &mut Environment, color: CGColorRef) -> CGColorSpaceRef {
+    if color.is_null() {
+        return Ptr::null();
+    }
+    let existing = env.objc.borrow::<CGColorHostObject>(color).color_space;
+    if !existing.is_null() {
+        return existing;
+    }
+    let name = env.objc.borrow::<CGColorHostObject>(color).color_space_name;
+    let space = cg_color_space::from_name(env, name);
+    env.objc.borrow_mut::<CGColorHostObject>(color).color_space = space;
+    space
+}
+
 /// The number of components, which is four for every colour space tapHLE
 /// models.
+///
+/// Note that this counts alpha, unlike `CGColorSpaceGetNumberOfComponents`,
+/// which does not.
 fn CGColorGetNumberOfComponents(_env: &mut Environment, color: CGColorRef) -> GuestUSize {
     if color.is_null() {
         0
@@ -188,6 +224,7 @@ fn CGColorGetAlpha(env: &mut Environment, color: CGColorRef) -> CGFloat {
 
 pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(CGColorGetComponents(_)),
+    export_c_func!(CGColorGetColorSpace(_)),
     export_c_func!(CGColorGetNumberOfComponents(_)),
     export_c_func!(CGColorGetAlpha(_)),
     export_c_func!(CGColorRetain(_)),
@@ -203,6 +240,7 @@ pub fn from_rgba(env: &mut Environment, rgba: (CGFloat, CGFloat, CGFloat, CGFloa
     let (r, g, b, a) = rgba;
     let host_obj = Box::new(CGColorHostObject {
         components: Ptr::null(),
+        color_space: Ptr::null(),
         color_space_name: kCGColorSpaceGenericRGB,
         r,
         g,
