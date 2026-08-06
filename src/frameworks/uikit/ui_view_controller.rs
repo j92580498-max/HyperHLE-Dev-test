@@ -314,6 +314,45 @@ pub const CLASSES: ClassExports = objc_classes! {
     log_dbg!("[(UIViewController*){:?} viewDidDisappear:{}]", this, animated);
 }
 
+// `didReceiveMemoryWarning` is the most-sent selector no tapHLE class
+// implemented: 863 of the 1192 distinct apps in the import-demand catalogue
+// send it. Almost none of them are *delivering* a memory warning — they are
+// overriding it and calling `[super didReceiveMemoryWarning]`, and it is that
+// super-send that had nowhere to go. The same is true of `viewDidUnload` (606).
+//
+// Nothing in tapHLE currently originates a memory warning, so this is reached
+// only through such an override. The unload behaviour is implemented anyway
+// rather than left as a log line, because the app's override runs around it and
+// expects it to have happened: an app that nils its outlets in `viewDidUnload`
+// is relying on the base class to be what triggers that.
+- (())didReceiveMemoryWarning {
+    log_dbg!("[(UIViewController*){:?} didReceiveMemoryWarning]", this);
+    let view = env.objc.borrow::<UIViewControllerHostObject>(this).view;
+    if view == nil {
+        return;
+    }
+    // UIKit only unloads a view that is not on screen, and that condition is
+    // the whole safety of this: discarding the view a game is currently drawing
+    // into would be far worse than using more memory. A view with no window is
+    // in no view hierarchy that is being displayed.
+    let window: id = msg![env; view window];
+    if window != nil {
+        log_dbg!("...view is on screen, keeping it");
+        return;
+    }
+    log_dbg!("...unloading the off-screen view");
+    // setView:nil also re-arms viewDidLoad, so the next -view reloads and
+    // reports properly.
+    () = msg![env; this setView:nil];
+    () = msg![env; this viewDidUnload];
+}
+
+// Usually overridden by the application, to release what it retained in
+// -viewDidLoad.
+- (())viewDidUnload {
+    log_dbg!("[(UIViewController*){:?} viewDidUnload]", this);
+}
+
 - (())setTitle:(id)title { // NSString *
     todo_objc_setter!(this, to_rust_string(env, title));
 }
