@@ -93,6 +93,20 @@ repeat it:
    (`iPadIndigo_004.crystaltheme`, 157 `.ctd` descriptors) does not contain
    those strings either.
 
+7. The paths themselves come from `Schemas/Odyssey_MainMenu.plist`, which
+   stores them **bundle-relative**: `Images/MainMenu/MainMenu_Crystal_btn12x203.png`.
+   Correct resolution is `<bundle>/Images/MainMenu/...`; the app joined them
+   onto a base that already ended in `Images`.
+8. That base did not come from tapHLE giving a wrong answer. A probe on
+   `path_for_resource_helper` showed `resourcePath` is exactly
+   `/var/mobile/Applications/.../J & F HD.app`, and that the eleven
+   `pathForResource:` lookups the app makes are all well-formed
+   (`name="99GamesSplash" dir="Images/About" ext="png"`). The two failing
+   images are not among them: the app builds those paths itself.
+
+So every tapHLE surface involved has been checked and is correct. What remains
+is the SDK's own path arithmetic, which would need disassembly to follow.
+
 **Do not resume by assuming the touch coordinates are wrong.** They were tested
 and they are right. A mirrored click appears to "work" only because the mirror
 of Play Game is where the Crystal gem icon actually sits, and that icon is a
