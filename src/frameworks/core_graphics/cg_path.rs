@@ -112,6 +112,53 @@ impl Path {
         self.close();
     }
 
+    /// The ellipse inscribed in `rect`, as a closed subpath.
+    ///
+    /// Sampled parametrically rather than built from the four Bézier arcs the
+    /// real implementation uses, because everything here is flattened to line
+    /// segments anyway — going via curves would only add a conversion whose
+    /// output is the same polygon.
+    ///
+    /// A negative width or height is fine: the ellipse fits the rectangle the
+    /// numbers describe, and normalising a rectangle is not this function's
+    /// job.
+    pub fn add_ellipse_in_rect(&mut self, rect: CGRect) {
+        let radius_x = rect.size.width / 2.0;
+        let radius_y = rect.size.height / 2.0;
+        let center = CGPoint {
+            x: rect.origin.x + radius_x,
+            y: rect.origin.y + radius_y,
+        };
+        let steps = ARC_SEGMENTS_PER_QUARTER_TURN * 4;
+        for i in 0..steps {
+            let angle = std::f32::consts::TAU * (i as f32 / steps as f32);
+            let point = CGPoint {
+                x: center.x + radius_x * angle.cos(),
+                y: center.y + radius_y * angle.sin(),
+            };
+            if i == 0 {
+                self.move_to(point);
+            } else {
+                self.line_to(point);
+            }
+        }
+        self.close();
+    }
+
+    /// A polyline: a move to the first point, then a line to each of the rest.
+    ///
+    /// An empty slice adds nothing at all rather than an empty subpath, which
+    /// keeps [Self::is_empty] honest.
+    pub fn add_lines(&mut self, points: &[CGPoint]) {
+        let Some((&first, rest)) = points.split_first() else {
+            return;
+        };
+        self.move_to(first);
+        for &point in rest {
+            self.line_to(point);
+        }
+    }
+
     /// A centred arc, flattened.
     pub fn add_arc(
         &mut self,
@@ -387,3 +434,63 @@ pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(CGPathCloseSubpath(_)),
     export_c_func!(CGPathIsEmpty(_)),
 ];
+
+#[cfg(test)]
+mod tests {
+    use super::{CGPoint, CGRect, Path};
+    use crate::frameworks::core_graphics::CGSize;
+
+    fn rect(x: f32, y: f32, width: f32, height: f32) -> CGRect {
+        CGRect {
+            origin: CGPoint { x, y },
+            size: CGSize { width, height },
+        }
+    }
+
+    #[test]
+    fn an_ellipse_is_one_closed_subpath_inside_its_rectangle() {
+        let mut path = Path::default();
+        path.add_ellipse_in_rect(rect(10.0, 20.0, 100.0, 50.0));
+        assert_eq!(path.subpaths.len(), 1);
+        assert!(path.subpaths[0].closed);
+        for point in &path.subpaths[0].points {
+            // Allowing a hair of floating-point slack at the extremes.
+            assert!(point.x >= 9.99 && point.x <= 110.01, "{:?}", point);
+            assert!(point.y >= 19.99 && point.y <= 70.01, "{:?}", point);
+        }
+    }
+
+    #[test]
+    fn an_ellipse_reaches_all_four_extremes_of_its_rectangle() {
+        let mut path = Path::default();
+        path.add_ellipse_in_rect(rect(0.0, 0.0, 100.0, 100.0));
+        let points = &path.subpaths[0].points;
+        let max_x = points.iter().fold(f32::MIN, |a, p| a.max(p.x));
+        let min_x = points.iter().fold(f32::MAX, |a, p| a.min(p.x));
+        let max_y = points.iter().fold(f32::MIN, |a, p| a.max(p.y));
+        let min_y = points.iter().fold(f32::MAX, |a, p| a.min(p.y));
+        assert!(max_x > 99.9 && min_x < 0.1);
+        assert!(max_y > 99.9 && min_y < 0.1);
+    }
+
+    #[test]
+    fn adding_no_lines_leaves_no_subpath() {
+        let mut path = Path::default();
+        path.add_lines(&[]);
+        assert!(path.subpaths.is_empty());
+        assert!(path.is_empty());
+    }
+
+    #[test]
+    fn adding_lines_makes_one_open_polyline() {
+        let mut path = Path::default();
+        path.add_lines(&[
+            CGPoint { x: 0.0, y: 0.0 },
+            CGPoint { x: 1.0, y: 1.0 },
+            CGPoint { x: 2.0, y: 0.0 },
+        ]);
+        assert_eq!(path.subpaths.len(), 1);
+        assert_eq!(path.subpaths[0].points.len(), 3);
+        assert!(!path.subpaths[0].closed);
+    }
+}
