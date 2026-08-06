@@ -186,6 +186,15 @@ impl super::ObjC {
         mem.read(object).isa
     }
 
+    /// Overwrite the `isa`, which is what isa-swizzling is.
+    ///
+    /// Deliberately not paired with any layout check: see [object_setClass],
+    /// whose caller is entitled to do this and is responsible for the
+    /// consequences.
+    pub fn write_isa(object: id, class: Class, mem: &mut Mem) {
+        mem.write(object, objc_object { isa: class });
+    }
+
     fn alloc_object_inner(
         &mut self,
         isa: Class,
@@ -536,6 +545,21 @@ mod tests {
 /// The name of an object's class, as a C string.
 ///
 /// Shares `class_getName`'s cache, so repeated calls do not allocate.
+/// `object_setClass` — repoint an object's `isa`, returning its previous class.
+///
+/// This is how isa-swizzling works, and it is deliberately blunt: the runtime
+/// does not check that the new class has a compatible instance layout, and
+/// neither does this. A caller that swaps in a class with different ivars gets
+/// the mess it asked for, on a device as here.
+pub(super) fn object_setClass(env: &mut Environment, obj: id, cls: Class) -> Class {
+    if obj == nil {
+        return nil;
+    }
+    let previous = super::ObjC::read_isa(obj, &env.mem);
+    super::ObjC::write_isa(obj, cls, &mut env.mem);
+    previous
+}
+
 pub(super) fn object_getClassName(env: &mut Environment, obj: id) -> ConstPtr<u8> {
     let class = object_getClass(env, obj);
     super::classes::class_getName(env, class)

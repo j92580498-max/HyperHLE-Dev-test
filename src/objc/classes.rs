@@ -1394,6 +1394,66 @@ pub(super) fn objc_getClass(env: &mut Environment, name: ConstPtr<u8>) -> id {
     }
 }
 
+/// `objc_getMetaClass` — the metaclass of the named class.
+///
+/// A class object's `isa` is its metaclass, so this is `objc_getClass` followed
+/// by one hop. Apps use it to add or inspect class methods, which live on the
+/// metaclass rather than the class.
+pub(super) fn objc_getMetaClass(env: &mut Environment, name: ConstPtr<u8>) -> id {
+    let Ok(name_str) = env.mem.cstr_at_utf8(name) else {
+        return nil;
+    };
+    match env.objc.get_class(name_str, true, &env.mem) {
+        Some(metaclass) => metaclass,
+        None => {
+            log!(
+                "objc_getMetaClass({:?}) -> nil: no such class in tapHLE",
+                name_str
+            );
+            nil
+        }
+    }
+}
+
+/// `objc_getClassList` — fill `buffer` with up to `buffer_count` registered
+/// classes and return how many there are in total.
+///
+/// The two-call protocol is the point: a caller passes null first to learn the
+/// count, allocates, then calls again. Returning the true total even when the
+/// buffer is smaller is what makes that work, so the count is not clamped.
+///
+/// **The list is what tapHLE has registered, which is not every class the
+/// system would have.** Every class defined by the app's own binaries is there,
+/// registered when the image loads. tapHLE's own framework classes appear only
+/// once something has caused them to be materialised. An app enumerating
+/// classes is almost always looking for its own subclasses of something, which
+/// this answers correctly; an app looking for framework classes it never
+/// mentions will see fewer than a device would.
+pub(super) fn objc_getClassList(
+    env: &mut Environment,
+    buffer: MutPtr<Class>,
+    buffer_count: i32,
+) -> i32 {
+    // Sorted for the same reason class_copyMethodList sorts: the registry is a
+    // hash map, so an unsorted answer would differ between runs of the same
+    // app.
+    let mut names: Vec<&String> = env.objc.classes.keys().collect();
+    names.sort();
+    let total = names.len() as i32;
+    if buffer.is_null() || buffer_count <= 0 {
+        return total;
+    }
+    let classes: Vec<Class> = names
+        .into_iter()
+        .take(buffer_count as usize)
+        .map(|name| env.objc.classes[name])
+        .collect();
+    for (index, class) in classes.into_iter().enumerate() {
+        env.mem.write(buffer + index as GuestUSize, class);
+    }
+    total
+}
+
 /// `objc_lookUpClass` — the same lookup as `objc_getClass`, except that a class
 /// the runtime does not know is reported as nil instead of being an error.
 ///

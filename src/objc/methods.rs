@@ -416,6 +416,63 @@ pub(super) fn class_getInstanceMethod(env: &mut Environment, cls: Class, sel: SE
     method_ptr
 }
 
+/// `class_copyMethodList` — every instance method the class itself defines,
+/// as a freshly allocated array of `Method` the caller must `free`.
+///
+/// Only the class's own methods: inherited ones are not included, which is what
+/// makes this the function for walking a class hierarchy one level at a time.
+/// A class with no methods of its own gives a count of zero and a null pointer,
+/// which the documentation specifies and which callers loop over safely.
+///
+/// The order is by selector name. The real runtime's order is unspecified and
+/// tapHLE's own storage is a hash map whose iteration order changes between
+/// runs, so sorting is what keeps a swizzling app that walks this list doing
+/// the same thing twice in a row.
+pub(super) fn class_copyMethodList(
+    env: &mut Environment,
+    cls: Class,
+    out_count: MutPtr<u32>,
+) -> MutPtr<MutVoidPtr> {
+    let mut selectors: Vec<SEL> = match env.objc.class_host_object(cls) {
+        Some(host) => host.methods.keys().copied().collect(),
+        None => Vec::new(),
+    };
+    selectors.sort_by_key(|sel| sel.as_str(&env.mem).to_string());
+
+    if !out_count.is_null() {
+        env.mem.write(out_count, selectors.len() as u32);
+    }
+    if selectors.is_empty() {
+        return Ptr::null();
+    }
+
+    let list: MutPtr<MutVoidPtr> = env
+        .mem
+        .alloc(guest_size_of::<MutVoidPtr>() * selectors.len() as GuestUSize)
+        .cast();
+    for (index, sel) in selectors.into_iter().enumerate() {
+        // Goes through the same cache as class_getInstanceMethod, so a Method
+        // obtained here and one obtained there are the same pointer - which is
+        // what a caller comparing them expects, and what makes swizzling
+        // through either of them consistent.
+        let method = class_getInstanceMethod(env, cls, sel);
+        env.mem.write(list + index as GuestUSize, method);
+    }
+    list
+}
+
+/// `class_getIvarLayout` — the layout string saying which of a class's ivars
+/// hold strong references.
+///
+/// Null is the real answer here, not a placeholder. The layout exists for
+/// garbage collection and for ARC's scanning; a class compiled without either -
+/// which is every class in a binary of this era - has no layout emitted, and
+/// Apple's runtime returns null for it. Callers, typically object-copying and
+/// key-value-observing libraries, take null as "nothing to scan".
+pub(super) fn class_getIvarLayout(_env: &mut Environment, _cls: Class) -> ConstPtr<u8> {
+    Ptr::null()
+}
+
 /// `class_getClassMethod` — the class-method counterpart of
 /// `class_getInstanceMethod`.
 ///
