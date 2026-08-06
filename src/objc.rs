@@ -27,6 +27,7 @@ use std::collections::HashMap;
 mod arc;
 mod blocks;
 mod classes;
+mod fast_enumeration;
 mod messages;
 mod methods;
 mod objects;
@@ -152,6 +153,7 @@ pub const DYLIB: HostDylib = HostDylib {
         FUNCTIONS,
         arc::FUNCTIONS,
         blocks::FUNCTIONS,
+        fast_enumeration::FUNCTIONS,
         properties::FUNCTIONS,
     ],
 };
