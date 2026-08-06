@@ -1020,6 +1020,76 @@ pub const CLASSES: ClassExports = objc_classes! {
     autorelease(env, res)
 }
 
+- (id)stringByReplacingCharactersInRange:(NSRange)range
+                              withString:(id)replacement { // NSString*
+    // 425 of the 1192 distinct apps in the import-demand catalogue send this.
+    // Built from the three substring primitives rather than by splicing UTF-16
+    // directly, so it inherits their code-unit indexing: the range is in UTF-16
+    // code units, which is what the caller's -length and -rangeOfString: gave
+    // it.
+    let length: NSUInteger = msg![env; this length];
+    let end = range.location.checked_add(range.length).unwrap();
+    assert!(end <= length, "range {:?} is outside a string of {}", range, length);
+
+    let before: id = msg![env; this substringToIndex:(range.location)];
+    let after: id = msg![env; this substringFromIndex:end];
+    // A nil replacement is a deletion. Cocoa raises for it, but the range work
+    // is already done and returning the receiver minus the range is closer to
+    // what the caller meant than ending the app.
+    let joined: id = if replacement == nil {
+        log!("Warning: -[NSString stringByReplacingCharactersInRange:withString:nil], deleting the range");
+        msg![env; before stringByAppendingString:after]
+    } else {
+        let with_replacement: id = msg![env; before stringByAppendingString:replacement];
+        msg![env; with_replacement stringByAppendingString:after]
+    };
+    autorelease(env, joined)
+}
+
+- (id)stringByPaddingToLength:(NSUInteger)new_length
+                   withString:(id)pad_string // NSString*
+                  startingAtIndex:(NSUInteger)pad_index {
+    // 487 apps send this. It both pads and truncates: a new length shorter than
+    // the receiver is a truncation, which is how it gets used to fit a string
+    // into a fixed-width field.
+    let length: NSUInteger = msg![env; this length];
+    if new_length <= length {
+        let truncated: id = msg![env; this substringToIndex:new_length];
+        return autorelease(env, truncated);
+    }
+
+    // The pad string is repeated, and `pad_index` says where in it to start -
+    // not where in the receiver. Getting that backwards is the obvious mistake
+    // here, and it is why the parameter is named for the pad.
+    let pad_length: NSUInteger = if pad_string == nil {
+        0
+    } else {
+        msg![env; pad_string length]
+    };
+    assert!(
+        pad_length > 0,
+        "-[NSString stringByPaddingToLength:withString:startingAtIndex:] needs a \
+         non-empty pad string to reach {}",
+        new_length
+    );
+    assert!(pad_index < pad_length);
+
+    let mut padded: Utf16String = Vec::with_capacity(new_length as usize);
+    for_each_code_unit(env, this, |_idx, c| padded.push(c));
+    let mut pad_units: Utf16String = Vec::with_capacity(pad_length as usize);
+    for_each_code_unit(env, pad_string, |_idx, c| pad_units.push(c));
+
+    let mut cursor = pad_index as usize;
+    while (padded.len() as NSUInteger) < new_length {
+        padded.push(pad_units[cursor]);
+        cursor = (cursor + 1) % pad_units.len();
+    }
+
+    let res = msg_class![env; _tapHLE_NSString alloc];
+    *env.objc.borrow_mut(res) = StringHostObject::Utf16(padded);
+    autorelease(env, res)
+}
+
 - (id)stringByTrimmingCharactersInSet:(id)set { // NSCharacterSet*
     let initial_length: NSUInteger = msg![env; this length];
 
