@@ -6,7 +6,7 @@
 //! `Mach-O` related functions.
 
 use crate::dyld::{export_c_func, FunctionExports};
-use crate::mem::{GuestUSize, MutPtr};
+use crate::mem::{ConstVoidPtr, GuestUSize, MutPtr, Ptr};
 use crate::Environment;
 
 fn get_end(env: &mut Environment) -> u32 {
@@ -55,6 +55,29 @@ fn _NSGetExecutablePath(env: &mut Environment, buf: MutPtr<u8>, bufsize: MutPtr<
     0
 }
 
+/// `_dyld_image_count` — how many Mach-O images are loaded.
+///
+/// tapHLE loads the executable and its dylibs into one list, which is exactly
+/// what dyld reports, so this is that list's length.
+fn _dyld_image_count(env: &mut Environment) -> u32 {
+    env.bins.len().try_into().unwrap()
+}
+
+/// `_dyld_get_image_header` — the `mach_header` of the image at `image_index`.
+///
+/// The header is the first thing in the `__TEXT` segment, so the segment's load
+/// address is the header's address. Callers use it to walk load commands, most
+/// often to find a section or read the UUID.
+///
+/// An out-of-range index returns NULL, which is what dyld does and what a
+/// caller looping until NULL depends on.
+fn _dyld_get_image_header(env: &mut Environment, image_index: u32) -> ConstVoidPtr {
+    match env.bins.get(image_index as usize) {
+        Some(bin) => Ptr::from_bits(bin.text_segment_base),
+        None => Ptr::null(),
+    }
+}
+
 /// `_dyld_get_image_vmaddr_slide` — how far an image was moved from its
 /// preferred load address by ASLR.
 ///
@@ -68,6 +91,8 @@ fn _dyld_get_image_vmaddr_slide(_env: &mut Environment, _image_index: u32) -> Gu
 
 pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(_dyld_get_image_vmaddr_slide(_)),
+    export_c_func!(_dyld_image_count()),
+    export_c_func!(_dyld_get_image_header(_)),
     export_c_func!(get_end()),
     export_c_func!(get_etext()),
     export_c_func!(_NSGetExecutablePath(_, _)),
