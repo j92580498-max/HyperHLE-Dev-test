@@ -20,6 +20,7 @@ use crate::mem::{
     guest_size_of, ConstPtr, ConstVoidPtr, GuestISize, GuestUSize, Mem, MutPtr, MutVoidPtr, Ptr,
     SafeRead,
 };
+
 use crate::Environment;
 
 /// The layout of a property list in an app binary.
@@ -61,11 +62,16 @@ unsafe impl SafeRead for objc_property {}
 #[allow(non_camel_case_types)]
 pub(super) type objc_property_t = ConstPtr<objc_property>;
 
-/// The layout of a property in an app binary.
+/// The layout of an instance variable in an app binary.
 ///
 /// The name, field names and field layout are based on what Ghidra outputs.
+///
+/// This *is* the referent of the runtime's opaque `Ivar` handle, just as
+/// [objc_property] is `objc_property_t`'s: `ivar_getName` and friends only read
+/// these fields. So tapHLE hands out the binary's own pointers rather than
+/// synthesising anything.
 #[repr(C, packed)]
-struct ivar_t {
+pub(super) struct ivar_t {
     offset: ConstPtr<GuestUSize>,
     name: ConstPtr<u8>,
     type_: ConstPtr<u8>,
@@ -73,6 +79,26 @@ struct ivar_t {
     size: u32,
 }
 unsafe impl SafeRead for ivar_t {}
+
+/// What a class knows about one of its instance variables.
+///
+/// This was a `(ConstPtr<GuestUSize>, u32)` tuple of offset and alignment. The
+/// descriptor pointer is the addition: without it there is nothing to hand out
+/// as an `Ivar`, so `class_getInstanceVariable` and everything downstream of it
+/// were impossible rather than merely unwritten.
+#[derive(Copy, Clone)]
+pub(super) struct IvarInfo {
+    /// This ivar's entry in the binary's ivar table, which is what the runtime
+    /// calls an `Ivar`.
+    pub(super) descriptor: ConstPtr<ivar_t>,
+    /// Pointer to the offset *global* the compiler emitted, not the offset
+    /// itself. Ivar reconciliation rewrites what it points at, so reading it
+    /// early would capture a value that later moves.
+    pub(super) offset: ConstPtr<GuestUSize>,
+    /// Log2 of the required alignment, except that [u32::MAX] means the guest
+    /// word size. Used only during reconciliation.
+    pub(super) alignment: u32,
+}
 
 impl ClassHostObject {
     pub(super) fn add_properties_from_bin(
@@ -115,20 +141,26 @@ impl ClassHostObject {
             } = mem.read(ivar_ptr);
 
             let name_string = mem.cstr_at_utf8(name).unwrap().into();
-            self.ivars.insert(name_string, (offset, alignment));
+            self.ivars.insert(
+                name_string,
+                IvarInfo {
+                    descriptor: ivar_ptr,
+                    offset,
+                    alignment,
+                },
+            );
         }
     }
 }
 
-/// `Ivar`, the runtime's opaque handle for an instance variable.
+/// `Ivar`, the runtime's opaque handle for an instance variable: a pointer to
+/// the class's entry for it in the binary's ivar table.
 ///
-/// The real runtime hands back a pointer to the class's `ivar_t` descriptor.
-/// tapHLE parses those into a [ClassHostObject]'s map and does not keep the
-/// descriptor's address, so what is returned here is the address of the ivar
-/// *within the object*. Callers use the result as a found/not-found flag, which
-/// this serves exactly; it is not usable with `ivar_getOffset` and friends, and
-/// none of those exist to receive it.
-type Ivar = MutVoidPtr;
+/// This used to be the address of the ivar *within the object*, which served
+/// the found-or-not check its callers did but could not be passed to
+/// `ivar_getOffset` or `ivar_getName`. Those now exist, so it is the real
+/// handle.
+pub(super) type Ivar = ConstPtr<ivar_t>;
 
 /// Read an instance variable by name, the reflective way.
 ///
@@ -156,7 +188,18 @@ fn object_getInstanceVariable(
         let value: MutVoidPtr = env.mem.read(ivar_ptr.cast());
         env.mem.write(out_value, value);
     }
-    ivar_ptr.cast()
+    object_ivar_descriptor(env, object, &name)
+}
+
+/// The `Ivar` handle for a named ivar of an object's class, or null.
+fn object_ivar_descriptor(env: &Environment, object: id, name: &str) -> Ivar {
+    if object == nil {
+        return Ptr::null();
+    }
+    let class = ObjC::read_isa(object, &env.mem);
+    env.objc
+        .class_lookup_ivar(class, name)
+        .map_or(Ptr::null(), |info| info.descriptor)
 }
 
 /// The setter half. Provided alongside the getter rather than speculatively:
@@ -177,24 +220,111 @@ fn object_setInstanceVariable(
         return Ptr::null();
     };
     env.mem.write(ivar_ptr.cast(), value);
-    ivar_ptr.cast()
+    object_ivar_descriptor(env, object, &name)
+}
+
+/// `class_getInstanceVariable` — find an ivar by name, searching superclasses.
+///
+/// The superclass search is part of the specification, not an extra: a category
+/// or a runtime-generated accessor asks the leaf class for an ivar its base
+/// declared, and answering "no" would send the caller down a fallback path.
+fn class_getInstanceVariable(env: &mut Environment, cls: Class, name: ConstPtr<u8>) -> Ivar {
+    if cls == nil {
+        return Ptr::null();
+    }
+    let name = env.mem.cstr_at_utf8(name).unwrap().to_string();
+    env.objc
+        .class_lookup_ivar(cls, &name)
+        .map_or(Ptr::null(), |info| info.descriptor)
+}
+
+/// `ivar_getName`.
+///
+/// The pointer returned is the one the compiler emitted into the binary, so it
+/// stays valid for as long as the image is loaded — which is what a caller that
+/// keeps the string expects.
+fn ivar_getName(env: &mut Environment, ivar: Ivar) -> ConstPtr<u8> {
+    if ivar.is_null() {
+        return Ptr::null();
+    }
+    env.mem.read(ivar).name
+}
+
+/// `ivar_getTypeEncoding`.
+fn ivar_getTypeEncoding(env: &mut Environment, ivar: Ivar) -> ConstPtr<u8> {
+    if ivar.is_null() {
+        return Ptr::null();
+    }
+    env.mem.read(ivar).type_
+}
+
+/// `ivar_getOffset` — the ivar's byte offset within an instance.
+///
+/// Read through the offset global rather than cached, because tapHLE moves
+/// guest ivars: a guest class whose superclass is one of tapHLE's own gets its
+/// offsets reconciled at load time, and the reconciliation rewrites the value
+/// this pointer addresses. A cached copy would be the pre-move offset and would
+/// have the caller reading the wrong field.
+fn ivar_getOffset(env: &mut Environment, ivar: Ivar) -> GuestISize {
+    if ivar.is_null() {
+        return 0;
+    }
+    let offset_ptr = env.mem.read(ivar).offset;
+    if offset_ptr.is_null() {
+        // An anonymous bitfield has no offset global.
+        return 0;
+    }
+    env.mem.read(offset_ptr) as GuestISize
+}
+
+/// The address of `ivar` within `object`, or [None] for nil or a null handle.
+fn ivar_address(env: &Environment, object: id, ivar: Ivar) -> Option<MutPtr<id>> {
+    if object == nil || ivar.is_null() {
+        return None;
+    }
+    let offset_ptr = env.mem.read(ivar).offset;
+    if offset_ptr.is_null() {
+        return None;
+    }
+    let offset = env.mem.read(offset_ptr);
+    Some(Ptr::from_bits(object.to_bits() + offset))
+}
+
+/// `object_getIvar` — read an object-typed ivar through its handle.
+fn object_getIvar(env: &mut Environment, object: id, ivar: Ivar) -> id {
+    match ivar_address(env, object, ivar) {
+        Some(address) => env.mem.read(address),
+        None => nil,
+    }
+}
+
+/// `object_setIvar` — write an object-typed ivar through its handle.
+///
+/// No retain and no release, matching the real function: unlike
+/// `objc_setProperty` this is a raw store, so what is written here is not owned
+/// by the receiver.
+fn object_setIvar(env: &mut Environment, object: id, ivar: Ivar, value: id) {
+    if let Some(address) = ivar_address(env, object, ivar) {
+        env.mem.write(address, value);
+    }
 }
 
 pub(super) const FUNCTIONS: FunctionExports = &[
     export_c_func!(object_getInstanceVariable(_, _, _)),
     export_c_func!(object_setInstanceVariable(_, _, _)),
+    export_c_func!(class_getInstanceVariable(_, _)),
+    export_c_func!(ivar_getName(_)),
+    export_c_func!(ivar_getTypeEncoding(_)),
+    export_c_func!(ivar_getOffset(_)),
+    export_c_func!(object_getIvar(_, _)),
+    export_c_func!(object_setIvar(_, _, _)),
 ];
 
 impl ObjC {
     /// Checks if the object's class has an ivar in its class chain with the
     /// provided name and returns the pointer to the object's ivar, if any,
     /// or None if the object's class doesn't have an ivar with that name.
-    pub fn object_lookup_ivar(
-        &self,
-        mem: &Mem,
-        obj: id,
-        name: &String,
-    ) -> Option<MutPtr<GuestUSize>> {
+    pub fn object_lookup_ivar(&self, mem: &Mem, obj: id, name: &str) -> Option<MutPtr<GuestUSize>> {
         // nil has no ivars, and in particular has no isa to read. Every caller
         // reaching here from the runtime's reflective entry points can be
         // handed a nil object by ordinary guest code, so this is the specified
@@ -202,17 +332,26 @@ impl ObjC {
         if obj == nil {
             return None;
         }
-        let mut class = ObjC::read_isa(obj, mem);
+        let class = ObjC::read_isa(obj, mem);
+        let info = self.class_lookup_ivar(class, name)?;
+        let ivar_offset = mem.read(info.offset);
+        Some(MutVoidPtr::from_bits(obj.to_bits() + ivar_offset).cast())
+    }
+
+    /// Find a class's own or inherited ivar by name.
+    ///
+    /// Walking the superclass chain is what the runtime does, and it is why an
+    /// ivar declared on a base class is reachable through a subclass.
+    pub(super) fn class_lookup_ivar(&self, class: Class, name: &str) -> Option<IvarInfo> {
+        let mut class = class;
         loop {
             let &ClassHostObject {
                 superclass,
                 ref ivars,
                 ..
             } = self.borrow(class);
-            if let Some((ivar_offset_ptr, _)) = ivars.get(name) {
-                let ivar_offset = mem.read(*ivar_offset_ptr);
-                let ivar_ptr = MutVoidPtr::from_bits(obj.to_bits() + ivar_offset);
-                return Some(ivar_ptr.cast());
+            if let Some(info) = ivars.get(name) {
+                return Some(*info);
             } else if superclass == nil {
                 return None;
             } else {

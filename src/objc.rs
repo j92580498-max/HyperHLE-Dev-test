@@ -67,7 +67,7 @@ use objects::{objc_object, object_getClass, object_getClassName, HostObjectEntry
 use properties::{
     ivar_list_t, objc_copyStruct, objc_getProperty, objc_property_t, objc_setProperty,
     objc_setProperty_atomic, objc_setProperty_atomic_copy, objc_setProperty_nonatomic,
-    objc_setProperty_nonatomic_copy, property_list_t,
+    objc_setProperty_nonatomic_copy, property_list_t, IvarInfo,
 };
 use selectors::{sel_getName, sel_getUid, sel_registerName};
 use synchronization::{objc_sync_enter, objc_sync_exit};

@@ -12,7 +12,7 @@
 
 use super::{
     id, ivar_list_t, method_list_t, nil, objc_object, objc_property_t, property_list_t,
-    AnyHostObject, HostIMP, HostObject, ObjC, IMP, SEL,
+    AnyHostObject, HostIMP, HostObject, IvarInfo, ObjC, IMP, SEL,
 };
 use crate::mach_o::MachO;
 use crate::mem::{guest_size_of, ConstPtr, ConstVoidPtr, GuestUSize, Mem, MutPtr, Ptr, SafeRead};
@@ -38,9 +38,9 @@ pub(super) struct ClassHostObject {
     pub(super) superclass: Class,
     pub(super) methods: HashMap<SEL, IMP>,
     pub(super) guest_method_signatures: HashMap<SEL, ConstPtr<u8>>,
-    /// Maps ivar name to a tuple of an offset (as pointer) and an alignment.
-    /// (Alignment is used during ivar reconciliation.)
-    pub(super) ivars: HashMap<String, (ConstPtr<GuestUSize>, u32)>,
+    /// Maps ivar name to what the class knows about it: the binary's descriptor
+    /// for it, its offset global, and its alignment.
+    pub(super) ivars: HashMap<String, IvarInfo>,
     /// Declared properties, in declaration order, each paired with a pointer to
     /// its entry in the binary's property table. Only the class's own
     /// properties; the superclass chain is walked at lookup time.
@@ -66,11 +66,16 @@ pub(super) enum InitializationStatus {
 
 fn reconcile_ivar_offsets(
     mem: &mut Mem,
-    ivars: &HashMap<String, (ConstPtr<GuestUSize>, u32)>,
+    ivars: &HashMap<String, IvarInfo>,
     mut diff: GuestUSize,
 ) -> GuestUSize {
     let mut max_alignment: GuestUSize = 1;
-    for (offset, alignment_raw) in ivars.values() {
+    for &IvarInfo {
+        offset,
+        alignment: alignment_raw,
+        ..
+    } in ivars.values()
+    {
         if offset.is_null() {
             // Anonymous bitfield.
             continue;
@@ -78,11 +83,11 @@ fn reconcile_ivar_offsets(
         // Objective-C metadata stores log2(alignment), except that UINT32_MAX
         // means the guest word size. This matches ivar_t::alignment() in
         // Apple's runtime.
-        let alignment = if *alignment_raw == u32::MAX {
+        let alignment = if alignment_raw == u32::MAX {
             guest_size_of::<GuestUSize>()
         } else {
             1_u32
-                .checked_shl(*alignment_raw)
+                .checked_shl(alignment_raw)
                 .expect("Invalid Objective-C ivar alignment")
         };
         max_alignment = max_alignment.max(alignment);
@@ -91,7 +96,7 @@ fn reconcile_ivar_offsets(
     let align_mask = max_alignment - 1;
     diff = (diff + align_mask) & !align_mask;
 
-    for (offset, _) in ivars.values() {
+    for &IvarInfo { offset, .. } in ivars.values() {
         if offset.is_null() {
             continue;
         }
@@ -100,7 +105,7 @@ fn reconcile_ivar_offsets(
         // pointer, so reconciliation must update the pointed-to value. Moving
         // our bookkeeping pointer instead leaves guest code using the stale
         // offset.
-        let old_offset = mem.read(*offset);
+        let old_offset = mem.read(offset);
         let new_offset = old_offset
             .checked_add(diff)
             .expect("Objective-C ivar offset overflow");
@@ -1175,6 +1180,16 @@ impl ObjC {
 mod tests {
     use super::*;
 
+    /// An [IvarInfo] for reconciliation tests, which never look at the
+    /// descriptor pointer.
+    fn test_ivar(offset: ConstPtr<GuestUSize>, alignment: u32) -> IvarInfo {
+        IvarInfo {
+            descriptor: Ptr::null(),
+            offset,
+            alignment,
+        }
+    }
+
     #[test]
     fn ivar_reconciliation_updates_offset_values_and_preserves_alignment() {
         let mut mem = Mem::new();
@@ -1186,8 +1201,11 @@ mod tests {
         mem.write(second_offset, 8);
 
         let mut ivars = HashMap::new();
-        ivars.insert("first".to_string(), (first_offset.cast_const(), 2));
-        ivars.insert("second".to_string(), (second_offset.cast_const(), 3));
+        ivars.insert("first".to_string(), test_ivar(first_offset.cast_const(), 2));
+        ivars.insert(
+            "second".to_string(),
+            test_ivar(second_offset.cast_const(), 3),
+        );
 
         // Raw alignment values are log2 encoded, so a five-byte displacement
         // must round up to eight before the stored values move.
@@ -1196,8 +1214,8 @@ mod tests {
         assert_eq!(diff, 8);
         assert_eq!(mem.read(first_offset), 12);
         assert_eq!(mem.read(second_offset), 16);
-        assert_eq!(ivars["first"].0, first_offset.cast_const());
-        assert_eq!(ivars["second"].0, second_offset.cast_const());
+        assert_eq!(ivars["first"].offset, first_offset.cast_const());
+        assert_eq!(ivars["second"].offset, second_offset.cast_const());
     }
 
     #[test]
@@ -1211,7 +1229,7 @@ mod tests {
         let mut ivars = HashMap::new();
         // u32::MAX encodes "guest word size" (4 bytes here), matching Apple's
         // ivar_t::alignment(), rather than 1 << u32::MAX.
-        ivars.insert("word".to_string(), (offset.cast_const(), u32::MAX));
+        ivars.insert("word".to_string(), test_ivar(offset.cast_const(), u32::MAX));
 
         let diff = reconcile_ivar_offsets(&mut mem, &ivars, 5);
 
@@ -1234,8 +1252,8 @@ mod tests {
         // in both the alignment scan and the rewrite, so its large raw
         // alignment does not inflate the displacement and its null pointer is
         // never dereferenced.
-        ivars.insert("bitfield".to_string(), (null_offset, 31));
-        ivars.insert("real".to_string(), (real_offset.cast_const(), 0));
+        ivars.insert("bitfield".to_string(), test_ivar(null_offset, 31));
+        ivars.insert("real".to_string(), test_ivar(real_offset.cast_const(), 0));
 
         let diff = reconcile_ivar_offsets(&mut mem, &ivars, 3);
 
