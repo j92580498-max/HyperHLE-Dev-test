@@ -29,6 +29,13 @@ use crate::Environment;
 
 type CGInterpolationQuality = i32;
 
+type CGPathDrawingMode = i32;
+const kCGPathFill: CGPathDrawingMode = 0;
+const kCGPathEOFill: CGPathDrawingMode = 1;
+const kCGPathStroke: CGPathDrawingMode = 2;
+const kCGPathFillStroke: CGPathDrawingMode = 3;
+const kCGPathEOFillStroke: CGPathDrawingMode = 4;
+
 type CGTextDrawingMode = i32;
 const kCGTextFill: CGTextDrawingMode = 0;
 const kCGTextFillStroke: CGTextDrawingMode = 2;
@@ -608,19 +615,31 @@ fn CGContextShowGlyphsAtPositions(
     }
 }
 
+/// What [rasterise_path] should do with the path.
+#[derive(Copy, Clone, PartialEq, Eq)]
+enum PathRaster {
+    /// Fill by the non-zero winding rule, CoreGraphics' default and what
+    /// `CGContextFillPath` selects.
+    FillNonZero,
+    /// Fill by the even-odd rule, which `CGContextEOFillPath` selects. The two
+    /// differ only where a path overlaps itself: a shape drawn inside another
+    /// in the same direction is solid under the non-zero rule and a hole under
+    /// even-odd.
+    FillEvenOdd,
+    Stroke,
+}
+
 /// Fill or stroke the current path into a bitmap context.
 ///
-/// Filling uses the non-zero winding rule, CoreGraphics' default for
-/// `CGContextFillPath`. Each scanline is sampled at its centre and the winding
-/// number accumulated from the signed crossings of every edge. That is exact
-/// for a polygon, and since curves are flattened to polygons when they are
-/// added, exact for everything a path here can hold.
+/// Each scanline is sampled at its centre and the crossings of every edge
+/// collected. That is exact for a polygon, and since curves are flattened to
+/// polygons when they are added, exact for everything a path here can hold.
 ///
 /// There is no anti-aliasing, matching the rest of tapHLE's CoreGraphics
 /// rasterisation, so a diagonal or curved edge comes out visibly stepped. That
 /// is the main quality limitation and it is worth knowing before blaming a
 /// game's own artwork.
-fn rasterise_path(env: &mut Environment, context: CGContextRef, stroke: bool) {
+fn rasterise_path(env: &mut Environment, context: CGContextRef, mode: PathRaster) {
     let host_obj = env.objc.borrow::<CGContextHostObject>(context);
     let transform = host_obj.transform;
     let line_width = host_obj.line_width;
@@ -647,14 +666,16 @@ fn rasterise_path(env: &mut Environment, context: CGContextRef, stroke: bool) {
     }
 
     let mut drawer = CGBitmapContextDrawer::new(&env.objc, &mut env.mem, context);
-    // The drawer only knows the fill colour, so a stroke supplies its own.
-    let color = if stroke {
-        stroke_color
+    // The drawer only knows the fill colour, so a stroke supplies its own. It
+    // still needs the same gamma and premultiply treatment the fill colour
+    // gets, which is what prepare_color does.
+    let color = if mode == PathRaster::Stroke {
+        drawer.prepare_color(stroke_color)
     } else {
         drawer.rgb_fill_color()
     };
 
-    if stroke {
+    if mode == PathRaster::Stroke {
         let half = ((line_width.max(1.0) - 1.0) / 2.0).round() as i32;
         for points in &subpaths {
             for pair in points.windows(2) {
@@ -701,7 +722,7 @@ fn rasterise_path(env: &mut Environment, context: CGContextRef, stroke: bool) {
         let mut winding = 0;
         for pair in 0..crossings.len() - 1 {
             winding += crossings[pair].1;
-            if winding == 0 {
+            if !span_is_inside(mode, pair, winding) {
                 continue;
             }
             let x_from = crossings[pair].0.ceil().max(0.0) as i32;
@@ -712,6 +733,20 @@ fn rasterise_path(env: &mut Environment, context: CGContextRef, stroke: bool) {
                 }
             }
         }
+    }
+}
+
+/// Whether the span between crossing `index` and the next one is inside the
+/// path, under the fill rule in force.
+///
+/// `winding` is the running signed sum up to and including crossing `index`.
+/// The even-odd rule ignores direction and counts instead: `index + 1` edges
+/// have been crossed to reach this span, so it is inside when that count is
+/// odd, which is when `index` is even.
+fn span_is_inside(mode: PathRaster, index: usize, winding: i32) -> bool {
+    match mode {
+        PathRaster::FillEvenOdd => index.is_multiple_of(2),
+        _ => winding != 0,
     }
 }
 
@@ -827,19 +862,174 @@ fn CGContextAddPath(env: &mut Environment, context: CGContextRef, path: CGPathRe
 }
 
 fn CGContextFillPath(env: &mut Environment, context: CGContextRef) {
-    rasterise_path(env, context, /* stroke: */ false);
+    draw_current_path(
+        env,
+        context,
+        PathRaster::FillNonZero,
+        /* stroke: */ false,
+    );
+}
+
+/// `CGContextEOFillPath` - the same fill under the even-odd rule.
+fn CGContextEOFillPath(env: &mut Environment, context: CGContextRef) {
+    draw_current_path(
+        env,
+        context,
+        PathRaster::FillEvenOdd,
+        /* stroke: */ false,
+    );
+}
+
+fn CGContextStrokePath(env: &mut Environment, context: CGContextRef) {
+    draw_current_path(env, context, PathRaster::Stroke, /* stroke: */ false);
+}
+
+/// Paint the current path and then consume it, which every path-painting
+/// function in CoreGraphics does.
+///
+/// `fill` says how, or whether, to fill; `stroke` adds a stroke on top, in that
+/// order, which is the order `CGContextDrawPath`'s combined modes specify.
+fn draw_current_path(env: &mut Environment, context: CGContextRef, fill: PathRaster, stroke: bool) {
+    if fill != PathRaster::Stroke {
+        rasterise_path(env, context, fill);
+    }
+    if stroke || fill == PathRaster::Stroke {
+        rasterise_path(env, context, PathRaster::Stroke);
+    }
     env.objc
         .borrow_mut::<CGContextHostObject>(context)
         .path
         .clear();
 }
 
-fn CGContextStrokePath(env: &mut Environment, context: CGContextRef) {
-    rasterise_path(env, context, /* stroke: */ true);
+/// `CGContextDrawPath` - paint the current path in whichever of the five
+/// combinations of fill rule and stroke the caller names.
+fn CGContextDrawPath(env: &mut Environment, context: CGContextRef, mode: CGPathDrawingMode) {
+    let (fill, stroke) = match mode {
+        kCGPathFill => (PathRaster::FillNonZero, false),
+        kCGPathEOFill => (PathRaster::FillEvenOdd, false),
+        kCGPathStroke => (PathRaster::Stroke, false),
+        kCGPathFillStroke => (PathRaster::FillNonZero, true),
+        kCGPathEOFillStroke => (PathRaster::FillEvenOdd, true),
+        _ => {
+            // An unrecognised mode is the app's mistake, not a reason to end
+            // the app: consume the path and draw nothing.
+            log!(
+                "CGContextDrawPath() with unknown mode {}; drawing nothing",
+                mode
+            );
+            env.objc
+                .borrow_mut::<CGContextHostObject>(context)
+                .path
+                .clear();
+            return;
+        }
+    };
+    draw_current_path(env, context, fill, stroke);
+}
+
+/// `CGContextStrokeLineSegments` - stroke `count / 2` disconnected segments.
+///
+/// `count` is the number of *points*, and consecutive pairs are independent
+/// segments rather than a polyline: this is the function for drawing a grid or
+/// a set of tick marks, and treating it as [CGContextAddLines] would join them
+/// all together. An odd count leaves a trailing point with no partner, which is
+/// dropped.
+fn CGContextStrokeLineSegments(
+    env: &mut Environment,
+    context: CGContextRef,
+    points: ConstPtr<CGPoint>,
+    count: GuestUSize,
+) {
+    let read: Vec<CGPoint> = (0..count).map(|i| env.mem.read(points + i)).collect();
+    let path = &mut env.objc.borrow_mut::<CGContextHostObject>(context).path;
+    path.clear();
+    for pair in read.chunks_exact(2) {
+        path.move_to(pair[0]);
+        path.line_to(pair[1]);
+    }
+    draw_current_path(env, context, PathRaster::Stroke, /* stroke: */ false);
+}
+
+/// `CGContextAddLines` - a polyline appended to the current path.
+fn CGContextAddLines(
+    env: &mut Environment,
+    context: CGContextRef,
+    points: ConstPtr<CGPoint>,
+    count: GuestUSize,
+) {
+    let read: Vec<CGPoint> = (0..count).map(|i| env.mem.read(points + i)).collect();
     env.objc
         .borrow_mut::<CGContextHostObject>(context)
         .path
-        .clear();
+        .add_lines(&read);
+}
+
+fn CGContextAddEllipseInRect(env: &mut Environment, context: CGContextRef, rect: CGRect) {
+    env.objc
+        .borrow_mut::<CGContextHostObject>(context)
+        .path
+        .add_ellipse_in_rect(rect);
+}
+
+/// Replace the current path with one shape and paint it.
+///
+/// The convenience painting functions begin a new path rather than adding to
+/// whatever was there, so a half-built path is discarded rather than painted
+/// along with the shape.
+fn draw_shape(
+    env: &mut Environment,
+    context: CGContextRef,
+    fill: PathRaster,
+    build: impl FnOnce(&mut Path),
+) {
+    let path = &mut env.objc.borrow_mut::<CGContextHostObject>(context).path;
+    path.clear();
+    build(path);
+    draw_current_path(env, context, fill, /* stroke: */ false);
+}
+
+fn CGContextFillEllipseInRect(env: &mut Environment, context: CGContextRef, rect: CGRect) {
+    draw_shape(env, context, PathRaster::FillNonZero, |path| {
+        path.add_ellipse_in_rect(rect)
+    });
+}
+
+fn CGContextStrokeEllipseInRect(env: &mut Environment, context: CGContextRef, rect: CGRect) {
+    draw_shape(env, context, PathRaster::Stroke, |path| {
+        path.add_ellipse_in_rect(rect)
+    });
+}
+
+fn CGContextStrokeRect(env: &mut Environment, context: CGContextRef, rect: CGRect) {
+    draw_shape(env, context, PathRaster::Stroke, |path| path.add_rect(rect));
+}
+
+/// `CGContextStrokeRectWithWidth`.
+///
+/// The width change is not scoped to this call: the documentation is explicit
+/// that it sets the context's line width, so a later stroke uses it too.
+fn CGContextStrokeRectWithWidth(
+    env: &mut Environment,
+    context: CGContextRef,
+    rect: CGRect,
+    width: CGFloat,
+) {
+    CGContextSetLineWidth(env, context, width);
+    CGContextStrokeRect(env, context, rect);
+}
+
+/// `CGContextFillRects` - fill an array of rectangles.
+fn CGContextFillRects(
+    env: &mut Environment,
+    context: CGContextRef,
+    rects: ConstPtr<CGRect>,
+    count: GuestUSize,
+) {
+    for i in 0..count {
+        let rect = env.mem.read(rects + i);
+        CGContextFillRect(env, context, rect);
+    }
 }
 
 /// The text pen position.
@@ -884,7 +1074,17 @@ pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(CGContextClosePath(_)),
     export_c_func!(CGContextAddPath(_, _)),
     export_c_func!(CGContextFillPath(_)),
+    export_c_func!(CGContextEOFillPath(_)),
     export_c_func!(CGContextStrokePath(_)),
+    export_c_func!(CGContextDrawPath(_, _)),
+    export_c_func!(CGContextStrokeLineSegments(_, _, _)),
+    export_c_func!(CGContextAddLines(_, _, _)),
+    export_c_func!(CGContextAddEllipseInRect(_, _)),
+    export_c_func!(CGContextFillEllipseInRect(_, _)),
+    export_c_func!(CGContextStrokeEllipseInRect(_, _)),
+    export_c_func!(CGContextStrokeRect(_, _)),
+    export_c_func!(CGContextStrokeRectWithWidth(_, _, _)),
+    export_c_func!(CGContextFillRects(_, _, _)),
     export_c_func!(CGContextSetLineWidth(_, _)),
     export_c_func!(CGContextGetTextPosition(_)),
     export_c_func!(CGContextSetTextPosition(_, _, _)),
@@ -924,3 +1124,27 @@ pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(CGContextShowGlyphsAtPoint(_, _, _, _, _)),
     export_c_func!(CGContextShowGlyphsAtPositions(_, _, _, _)),
 ];
+
+#[cfg(test)]
+mod tests {
+    use super::{span_is_inside, PathRaster};
+
+    #[test]
+    fn the_even_odd_rule_alternates_regardless_of_direction() {
+        // Four crossings from two nested shapes wound the same way: even-odd
+        // makes the inner one a hole, and the winding number does not.
+        for (index, winding) in [(0, 1), (1, 2), (2, 1)] {
+            let even_odd = span_is_inside(PathRaster::FillEvenOdd, index, winding);
+            assert_eq!(even_odd, index.is_multiple_of(2));
+            assert!(span_is_inside(PathRaster::FillNonZero, index, winding));
+        }
+    }
+
+    #[test]
+    fn the_non_zero_rule_is_outside_only_where_the_winding_cancels() {
+        // Two shapes wound opposite ways: the overlap sums to zero and drops
+        // out under the winding rule.
+        assert!(!span_is_inside(PathRaster::FillNonZero, 1, 0));
+        assert!(span_is_inside(PathRaster::FillNonZero, 1, -1));
+    }
+}
