@@ -327,7 +327,7 @@ impl ObjC {
     /// Find the class in `class`'s chain that actually defines `sel`, i.e. the
     /// class whose own method table holds it. Mirrors what the real runtime's
     /// `class_getInstanceMethod` returns a `Method` from.
-    fn class_defining_method(&self, class: Class, sel: SEL) -> Option<Class> {
+    pub(super) fn class_defining_method(&self, class: Class, sel: SEL) -> Option<Class> {
         let mut class = class;
         loop {
             let host = self.class_host_object(class)?;
