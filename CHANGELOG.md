@@ -2,6 +2,11 @@
 
 ## Unreleased for 0.3.0-alpha.1
 
+- Say which of a game's own internal checks failed. When a game's built-in
+  assertion fires it names the file, line and condition that gave up; tapHLE
+  used to throw all of that away and stop with a message about itself instead,
+  so a game that had diagnosed its own problem looked like an emulator bug.
+  Games that shut themselves down by signalling now report which signal too.
 - Stop games quitting on a handful of common system calls they were entitled to
   make: asking an object or method for its name, asking what thread priorities
   are available, setting up a thread's stack, and the bounds-checked string
