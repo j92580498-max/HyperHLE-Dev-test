@@ -58,6 +58,11 @@ struct UITableViewHostObject {
     data_source: id,
     delegate: id,
     row_height: f32,
+    /// Remembered so a getter returns what was set; no header or footer is
+    /// drawn. UIKit's defaults for both are 22 points in a grouped table and
+    /// 0 in a plain one, and tapHLE lays out neither, so 0 is the honest start.
+    section_header_height: f32,
+    section_footer_height: f32,
     /// The cells currently built, in display order, each retained.
     cells: Vec<id>,
     /// Parallel to `cells`: the index path each was built for, each retained.
@@ -71,6 +76,8 @@ impl Default for UITableViewHostObject {
             data_source: nil,
             delegate: nil,
             row_height: DEFAULT_ROW_HEIGHT,
+            section_header_height: 0.0,
+            section_footer_height: 0.0,
             cells: Vec::new(),
             index_paths: Vec::new(),
         }
@@ -359,6 +366,25 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 - (f32)rowHeight {
     env.objc.borrow::<UITableViewHostObject>(this).row_height
+}
+
+// Section header and footer heights. tapHLE lays out a table as a flat list of
+// rows and draws no section headers or footers, so these only have to be
+// remembered accurately enough that an app reading back what it set gets the
+// same number. Storing rather than ignoring matters because a table that sizes
+// itself from these will otherwise compute a content height that disagrees with
+// what it asked for.
+- (())setSectionHeaderHeight:(f32)height {
+    env.objc.borrow_mut::<UITableViewHostObject>(this).section_header_height = height;
+}
+- (f32)sectionHeaderHeight {
+    env.objc.borrow::<UITableViewHostObject>(this).section_header_height
+}
+- (())setSectionFooterHeight:(f32)height {
+    env.objc.borrow_mut::<UITableViewHostObject>(this).section_footer_height = height;
+}
+- (f32)sectionFooterHeight {
+    env.objc.borrow::<UITableViewHostObject>(this).section_footer_height
 }
 
 // Separators are not drawn at all, so both the style and the colour are
