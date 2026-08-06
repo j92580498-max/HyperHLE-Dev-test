@@ -104,6 +104,15 @@ repeat it:
    (`name="99GamesSplash" dir="Images/About" ext="png"`). The two failing
    images are not among them: the app builds those paths itself.
 
+9. Its handler is not failing to read the touches, either. Disassembling
+   `-[CCSkinnedView touchesBegan:withEvent:]` (imp `0xe0509`, Thumb) shows it
+   opens with `countByEnumeratingWithState:objects:count:` over the touches set
+   and branches to the end if the count is zero — which would have explained
+   everything. It does not: an `objc::messages` trace shows the enumeration
+   running on `_tapHLE_NSMutableSet`, reaching `allObjects`, `count` and
+   `objectAtIndex:`, so the loop body executes with the touch in hand. The
+   handler processes the touch and *decides* not to act on it.
+
 So every tapHLE surface involved has been checked and is correct. What remains
 is the SDK's own path arithmetic, which would need disassembly to follow.
 
