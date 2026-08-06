@@ -450,22 +450,38 @@ impl CGBitmapContextDrawer<'_> {
     pub fn height(&self) -> GuestUSize {
         self.bitmap_info.height
     }
-    /// Get the current fill color. The returned color is linear RGB, not sRGB.
-    /// It has premultiplied alpha if the context does.
-    pub fn rgb_fill_color(&self) -> (CGFloat, CGFloat, CGFloat, CGFloat) {
+    /// The context's current transform, for host code that needs to place its
+    /// own geometry in device space rather than going through
+    /// [Self::iter_transformed_pixels].
+    pub fn transform(&self) -> CGAffineTransform {
+        self.transform
+    }
+    /// Convert an sRGB colour with straight alpha into what [Self::put_pixel]
+    /// wants: linear RGB, premultiplied if this context's format is.
+    ///
+    /// Any host code that computes a colour rather than taking the fill colour
+    /// needs this — a gradient, for instance — and getting it wrong shows up as
+    /// washed-out or over-dark output rather than as an error.
+    pub fn prepare_color(
+        &self,
+        color: (CGFloat, CGFloat, CGFloat, CGFloat),
+    ) -> (CGFloat, CGFloat, CGFloat, CGFloat) {
         let multiply_by = match self.bitmap_info.alpha_info {
-            kCGImageAlphaPremultipliedLast | kCGImageAlphaPremultipliedFirst => {
-                self.rgb_fill_color.3
-            }
+            kCGImageAlphaPremultipliedLast | kCGImageAlphaPremultipliedFirst => color.3,
             _ => 1.0,
         };
         // Multiplying before decoding matches the Simulator's output.
         (
-            gamma_decode(self.rgb_fill_color.0 * multiply_by),
-            gamma_decode(self.rgb_fill_color.1 * multiply_by),
-            gamma_decode(self.rgb_fill_color.2 * multiply_by),
-            self.rgb_fill_color.3, // alpha is always linear
+            gamma_decode(color.0 * multiply_by),
+            gamma_decode(color.1 * multiply_by),
+            gamma_decode(color.2 * multiply_by),
+            color.3, // alpha is always linear
         )
+    }
+    /// Get the current fill color. The returned color is linear RGB, not sRGB.
+    /// It has premultiplied alpha if the context does.
+    pub fn rgb_fill_color(&self) -> (CGFloat, CGFloat, CGFloat, CGFloat) {
+        self.prepare_color(self.rgb_fill_color)
     }
     /// Set the pixel at `coords` to `color`. `color` must be linear RGB, not
     /// sRGB! Note that `coords` are absolute: you must do transformation
