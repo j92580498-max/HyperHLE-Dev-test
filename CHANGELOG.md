@@ -9,6 +9,8 @@
   game outright, usually during start-up. Chosen by measuring which missing
   pieces stopped the most games rather than whichever turned up next.
 - Show lists that set their own section spacing, instead of quitting.
+- Let games inspect their own loaded code, which some do at startup to find
+  their resources. Previously that ended the game.
 - Start landscape games the right way round. A game that only says which way up
   it goes in its code, rather than in its bundle information, used to open
   sideways in a portrait window with its edges cut off, and needed
