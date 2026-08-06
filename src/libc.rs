@@ -12,6 +12,7 @@
 mod generic_char;
 
 pub mod arpa;
+pub mod assert;
 pub mod clocale;
 pub mod compiler_rt;
 pub mod crypto;
@@ -64,6 +65,7 @@ pub const DYLIB: crate::dyld::HostDylib = crate::dyld::HostDylib {
     ],
     function_exports: &[
         arpa::inet::FUNCTIONS,
+        assert::FUNCTIONS,
         clocale::FUNCTIONS,
         compiler_rt::FUNCTIONS,
         ctype::FUNCTIONS,
