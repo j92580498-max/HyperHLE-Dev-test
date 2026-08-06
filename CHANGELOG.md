@@ -2,6 +2,13 @@
 
 ## Unreleased for 0.3.0-alpha.1
 
+- Draw gradients. Games of this era used them for almost every background,
+  button and title bar that was not an image, and asking for one used to end the
+  game on the spot — so a game that drew a gradient anywhere during start-up
+  could not run at all. Both the straight-line and the circular kind now draw,
+  and the options that say whether the colour continues past each end are
+  honoured. The one visible limit: tapHLE still cannot clip, so a gradient meant
+  for a small rounded shape spreads sideways across the whole view.
 - Say which of a game's own internal checks failed. When a game's built-in
   assertion fires it names the file, line and condition that gave up; tapHLE
   used to throw all of that away and stop with a message about itself instead,

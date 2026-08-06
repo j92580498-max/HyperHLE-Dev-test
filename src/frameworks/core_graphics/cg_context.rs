@@ -15,9 +15,10 @@ use super::cg_color_space::{
 };
 use super::cg_font::{CGFontHostObject, CGFontRef, CGFontRelease, CGFontRetain, CGGlyph};
 use super::cg_geometry::CGPointZero;
+use super::cg_gradient::{CGGradientDrawingOptions, CGGradientRef};
 use super::cg_image::CGImageRef;
 use super::cg_path::{borrow_path, CGPathRef, Path};
-use super::{cg_bitmap_context, cg_color, CGFloat, CGPoint, CGRect, CGSize};
+use super::{cg_bitmap_context, cg_color, cg_gradient, CGFloat, CGPoint, CGRect, CGSize};
 use crate::dyld::{export_c_func, FunctionExports};
 use crate::frameworks::core_foundation::{CFRelease, CFRetain, CFTypeRef};
 use crate::frameworks::uikit;
@@ -298,6 +299,45 @@ pub fn CGContextDrawImage(
     image: CGImageRef,
 ) {
     cg_bitmap_context::draw_image(env, context, rect, image);
+}
+
+fn CGContextDrawLinearGradient(
+    env: &mut Environment,
+    context: CGContextRef,
+    gradient: CGGradientRef,
+    start_point: CGPoint,
+    end_point: CGPoint,
+    options: CGGradientDrawingOptions,
+) {
+    if gradient.is_null() {
+        return;
+    }
+    cg_gradient::draw_linear_gradient(env, context, gradient, start_point, end_point, options);
+}
+
+fn CGContextDrawRadialGradient(
+    env: &mut Environment,
+    context: CGContextRef,
+    gradient: CGGradientRef,
+    start_center: CGPoint,
+    start_radius: CGFloat,
+    end_center: CGPoint,
+    end_radius: CGFloat,
+    options: CGGradientDrawingOptions,
+) {
+    if gradient.is_null() {
+        return;
+    }
+    cg_gradient::draw_radial_gradient(
+        env,
+        context,
+        gradient,
+        start_center,
+        start_radius,
+        end_center,
+        end_radius,
+        options,
+    );
 }
 
 fn CGContextSaveGState(env: &mut Environment, context: CGContextRef) {
@@ -766,6 +806,8 @@ pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(CGContextScaleCTM(_, _, _)),
     export_c_func!(CGContextTranslateCTM(_, _, _)),
     export_c_func!(CGContextDrawImage(_, _, _)),
+    export_c_func!(CGContextDrawLinearGradient(_, _, _, _, _)),
+    export_c_func!(CGContextDrawRadialGradient(_, _, _, _, _, _, _)),
     export_c_func!(CGContextSaveGState(_)),
     export_c_func!(CGContextRestoreGState(_)),
     export_c_func!(CGContextSetInterpolationQuality(_, _)),
