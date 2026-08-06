@@ -11,7 +11,8 @@ use super::cg_bitmap_context::{
 };
 use super::cg_color::CGColorRef;
 use super::cg_color_space::{
-    kCGColorSpaceModelMonochrome, kCGColorSpaceModelRGB, CGColorSpaceGetModel, CGColorSpaceRef,
+    components_in_model, kCGColorSpaceModelMonochrome, kCGColorSpaceModelRGB, CGColorSpaceGetModel,
+    CGColorSpaceModel, CGColorSpaceRef,
 };
 use super::cg_font::{CGFontHostObject, CGFontRef, CGFontRelease, CGFontRetain, CGGlyph};
 use super::cg_geometry::CGPointZero;
@@ -66,17 +67,35 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 };
 
-// TODO: keep more states saved once they are implemented
-type ContextState = (
-    (CGFloat, CGFloat, CGFloat, CGFloat), // RGB fill color
-    CGAffineTransform,                    // transform
-    CGFontRef,                            // font
-    CGFloat,                              // font size
-    CGBlendMode,                          // blend mode
-);
+/// The part of a context's graphics state that `CGContextSaveGState` keeps.
+///
+/// **The line width and the current path are still not saved**, and that is a
+/// gap rather than a design: a caller that saves, changes the line width, and
+/// restores will find the new width still in force. Adding them means deciding
+/// what a saved path should do on restore, which is why they are named here
+/// instead of being quietly absent.
+///
+/// This was a positional tuple, which is exactly the shape a field gets added
+/// to wrongly — every `state.3` after the insertion point silently means
+/// something else.
+pub(super) struct ContextState {
+    rgb_fill_color: (CGFloat, CGFloat, CGFloat, CGFloat),
+    rgb_stroke_color: (CGFloat, CGFloat, CGFloat, CGFloat),
+    fill_color_space: CGColorSpaceModel,
+    stroke_color_space: CGColorSpaceModel,
+    transform: CGAffineTransform,
+    font: CGFontRef,
+    font_size: CGFloat,
+    blend_mode: CGBlendMode,
+}
 
 pub(super) struct CGContextHostObject {
     pub(super) subclass: CGContextSubclass,
+    /// The colour space a component array handed to [CGContextSetFillColor] is
+    /// read in. Not the same thing as the bitmap's colour space: an RGB bitmap
+    /// can perfectly well be filled with a grey colour.
+    pub(super) fill_color_space: CGColorSpaceModel,
+    pub(super) stroke_color_space: CGColorSpaceModel,
     pub(super) rgb_fill_color: (CGFloat, CGFloat, CGFloat, CGFloat),
     pub(super) font: CGFontRef,
     pub(super) font_size: CGFloat,
@@ -122,14 +141,90 @@ fn CGContextSetBlendMode(env: &mut Environment, context: CGContextRef, blend_mod
         .blend_mode = blend_mode;
 }
 
+/// Read a colour from a component array in `model`'s colour space, as RGBA.
+///
+/// The array carries one entry per component of the space and then one for
+/// alpha, so the component count has to come from the space rather than being
+/// assumed: reading four entries out of a two-entry grey colour picks up
+/// whatever follows it.
+fn read_color_components(
+    env: &mut Environment,
+    model: CGColorSpaceModel,
+    components: ConstPtr<CGFloat>,
+) -> (CGFloat, CGFloat, CGFloat, CGFloat) {
+    let count = components_in_model(model);
+    let alpha = env.mem.read(components + count);
+    match model {
+        kCGColorSpaceModelMonochrome => {
+            let gray = env.mem.read(components);
+            (gray, gray, gray, alpha)
+        }
+        kCGColorSpaceModelRGB => (
+            env.mem.read(components),
+            env.mem.read(components + 1),
+            env.mem.read(components + 2),
+            alpha,
+        ),
+        _ => unimplemented!("colour space model {}", model),
+    }
+}
+
 fn CGContextSetFillColorSpace(
     env: &mut Environment,
-    _context: CGContextRef,
+    context: CGContextRef,
     space: CGColorSpaceRef,
 ) {
     let color_model = CGColorSpaceGetModel(env, space);
     assert!(color_model == kCGColorSpaceModelMonochrome || color_model == kCGColorSpaceModelRGB);
-    // TODO
+    env.objc
+        .borrow_mut::<CGContextHostObject>(context)
+        .fill_color_space = color_model;
+}
+
+fn CGContextSetStrokeColorSpace(
+    env: &mut Environment,
+    context: CGContextRef,
+    space: CGColorSpaceRef,
+) {
+    let color_model = CGColorSpaceGetModel(env, space);
+    assert!(color_model == kCGColorSpaceModelMonochrome || color_model == kCGColorSpaceModelRGB);
+    env.objc
+        .borrow_mut::<CGContextHostObject>(context)
+        .stroke_color_space = color_model;
+}
+
+/// `CGContextSetFillColor` — the colour space-relative fill setter.
+///
+/// The array is interpreted in whatever colour space
+/// [CGContextSetFillColorSpace] last set, which is why that function had to
+/// stop discarding its argument for this one to be possible at all. A caller is
+/// required to set the space first; the documented default if it does not is
+/// device grey, and that is what a fresh context reports here.
+fn CGContextSetFillColor(
+    env: &mut Environment,
+    context: CGContextRef,
+    components: ConstPtr<CGFloat>,
+) {
+    let model = env
+        .objc
+        .borrow::<CGContextHostObject>(context)
+        .fill_color_space;
+    let (r, g, b, a) = read_color_components(env, model, components);
+    CGContextSetRGBFillColor(env, context, r, g, b, a)
+}
+
+/// `CGContextSetStrokeColor`, the stroke half of [CGContextSetFillColor].
+fn CGContextSetStrokeColor(
+    env: &mut Environment,
+    context: CGContextRef,
+    components: ConstPtr<CGFloat>,
+) {
+    let model = env
+        .objc
+        .borrow::<CGContextHostObject>(context)
+        .stroke_color_space;
+    let (r, g, b, a) = read_color_components(env, model, components);
+    CGContextSetRGBStrokeColor(env, context, r, g, b, a)
 }
 
 fn CGContextSetFillColorWithColor(env: &mut Environment, context: CGContextRef, color: CGColorRef) {
@@ -342,13 +437,16 @@ fn CGContextDrawRadialGradient(
 
 fn CGContextSaveGState(env: &mut Environment, context: CGContextRef) {
     let host_obj = env.objc.borrow_mut::<CGContextHostObject>(context);
-    host_obj.state_stack.push((
-        host_obj.rgb_fill_color,
-        host_obj.transform,
-        host_obj.font,
-        host_obj.font_size,
-        host_obj.blend_mode,
-    ));
+    host_obj.state_stack.push(ContextState {
+        rgb_fill_color: host_obj.rgb_fill_color,
+        rgb_stroke_color: host_obj.rgb_stroke_color,
+        fill_color_space: host_obj.fill_color_space,
+        stroke_color_space: host_obj.stroke_color_space,
+        transform: host_obj.transform,
+        font: host_obj.font,
+        font_size: host_obj.font_size,
+        blend_mode: host_obj.blend_mode,
+    });
     CGFontRetain(env, env.objc.borrow::<CGContextHostObject>(context).font);
 }
 
@@ -361,11 +459,14 @@ fn CGContextRestoreGState(env: &mut Environment, context: CGContextRef) {
     CGFontRelease(env, env.objc.borrow::<CGContextHostObject>(context).font);
     let host_obj = env.objc.borrow_mut::<CGContextHostObject>(context);
     let state = host_obj.state_stack.pop().unwrap();
-    host_obj.rgb_fill_color = state.0;
-    host_obj.transform = state.1;
-    host_obj.font = state.2;
-    host_obj.font_size = state.3;
-    host_obj.blend_mode = state.4;
+    host_obj.rgb_fill_color = state.rgb_fill_color;
+    host_obj.rgb_stroke_color = state.rgb_stroke_color;
+    host_obj.fill_color_space = state.fill_color_space;
+    host_obj.stroke_color_space = state.stroke_color_space;
+    host_obj.transform = state.transform;
+    host_obj.font = state.font;
+    host_obj.font_size = state.font_size;
+    host_obj.blend_mode = state.blend_mode;
 }
 
 fn CGContextSetInterpolationQuality(
@@ -791,6 +892,9 @@ pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(CGContextRelease(_)),
     export_c_func!(CGContextSetBlendMode(_, _)),
     export_c_func!(CGContextSetFillColorSpace(_, _)),
+    export_c_func!(CGContextSetStrokeColorSpace(_, _)),
+    export_c_func!(CGContextSetFillColor(_, _)),
+    export_c_func!(CGContextSetStrokeColor(_, _)),
     export_c_func!(CGContextSetFillColorWithColor(_, _)),
     export_c_func!(CGContextSetRGBFillColor(_, _, _, _, _)),
     export_c_func!(CGContextSetGrayFillColor(_, _, _)),
