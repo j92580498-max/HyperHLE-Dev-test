@@ -12,7 +12,7 @@ use std::ops::{Add, Mul, Sub};
 use super::CGFloat;
 use crate::abi::{impl_GuestRet_for_large_struct, GuestArg};
 use crate::dyld::{export_c_func, ConstantExports, FunctionExports, HostConstant};
-use crate::mem::SafeRead;
+use crate::mem::{MutPtr, SafeRead};
 use crate::Environment;
 
 fn parse_tuple(s: &str) -> Result<(f32, f32), ()> {
@@ -403,6 +403,155 @@ fn CGRectInset(_env: &mut Environment, rect: CGRect, dx: CGFloat, dy: CGFloat) -
     res
 }
 
+/// Whether a rectangle encloses no area.
+///
+/// A zero *or negative* width or height is empty, and so is the null rectangle,
+/// which this reports through the same size test rather than as a special case.
+/// The distinction from `CGRectIsNull` is worth keeping straight: null is one
+/// specific rectangle, empty is a property many rectangles have.
+fn CGRectIsEmpty(_env: &mut Environment, rect: CGRect) -> bool {
+    rect_is_empty(rect)
+}
+
+fn rect_is_empty(rect: CGRect) -> bool {
+    // Tested for being positive rather than for being non-positive so that a NaN
+    // extent counts as empty. A rectangle whose size has picked up a NaN from
+    // guest arithmetic encloses nothing anyone can draw, and calling it
+    // non-empty would send it on to code that then divides by it.
+    let positive = |v: CGFloat| v.partial_cmp(&0.0) == Some(std::cmp::Ordering::Greater);
+    !(positive(rect.size.width) && positive(rect.size.height))
+}
+
+/// Turn a rectangle with a negative width or height into the equivalent one with
+/// positive extents.
+///
+/// Guest code produces these constantly by subtracting two points in whichever
+/// order they arrived, and most of Core Graphics is specified in terms of the
+/// standardised form, so this is what makes such a rectangle usable rather than
+/// a special case at every call site.
+fn CGRectStandardize(_env: &mut Environment, rect: CGRect) -> CGRect {
+    standardize(rect)
+}
+
+fn standardize(rect: CGRect) -> CGRect {
+    let (x, width) = if rect.size.width < 0.0 {
+        (rect.origin.x + rect.size.width, -rect.size.width)
+    } else {
+        (rect.origin.x, rect.size.width)
+    };
+    let (y, height) = if rect.size.height < 0.0 {
+        (rect.origin.y + rect.size.height, -rect.size.height)
+    } else {
+        (rect.origin.y, rect.size.height)
+    };
+    CGRect {
+        origin: CGPoint { x, y },
+        size: CGSize { width, height },
+    }
+}
+
+/// The smallest rectangle containing both arguments.
+///
+/// An empty rectangle contributes nothing, which is the specified behaviour and
+/// not a shortcut: unioning with `CGRectZero` would otherwise drag the result
+/// out to include the origin, which is a classic source of views sized to reach
+/// the top-left corner of the screen.
+fn CGRectUnion(_env: &mut Environment, rect1: CGRect, rect2: CGRect) -> CGRect {
+    if rect_is_empty(rect1) {
+        return standardize(rect2);
+    }
+    if rect_is_empty(rect2) {
+        return standardize(rect1);
+    }
+    let (a, b) = (standardize(rect1), standardize(rect2));
+    let min_x = a.origin.x.min(b.origin.x);
+    let min_y = a.origin.y.min(b.origin.y);
+    let max_x = (a.origin.x + a.size.width).max(b.origin.x + b.size.width);
+    let max_y = (a.origin.y + a.size.height).max(b.origin.y + b.size.height);
+    CGRect {
+        origin: CGPoint { x: min_x, y: min_y },
+        size: CGSize {
+            width: max_x - min_x,
+            height: max_y - min_y,
+        },
+    }
+}
+
+/// Which edge `CGRectDivide` cuts from.
+type CGRectEdge = u32;
+const CGRectMinXEdge: CGRectEdge = 0;
+const CGRectMinYEdge: CGRectEdge = 1;
+const CGRectMaxXEdge: CGRectEdge = 2;
+const CGRectMaxYEdge: CGRectEdge = 3;
+
+/// Split a rectangle into a slice of the given thickness taken off one edge, and
+/// the remainder.
+///
+/// The two out-parameters are what makes this awkward to use and easy to get
+/// wrong: `slice` is the piece cut off, `remainder` is what is left, and either
+/// pointer may be null. An amount larger than the rectangle gives the whole
+/// rectangle as the slice and an empty remainder pinned to the far edge, which
+/// is the specified result rather than an error.
+fn CGRectDivide(
+    env: &mut Environment,
+    rect: CGRect,
+    slice: MutPtr<CGRect>,
+    remainder: MutPtr<CGRect>,
+    amount: CGFloat,
+    edge: CGRectEdge,
+) {
+    let (slice_rect, remainder_rect) = divide(rect, amount, edge);
+    if !slice.is_null() {
+        env.mem.write(slice, slice_rect);
+    }
+    if !remainder.is_null() {
+        env.mem.write(remainder, remainder_rect);
+    }
+}
+
+fn divide(rect: CGRect, amount: CGFloat, edge: CGRectEdge) -> (CGRect, CGRect) {
+    let rect = standardize(rect);
+    let CGRect { origin, size } = rect;
+    // A negative amount cuts nothing; the specification clamps into the
+    // rectangle at both ends. Written as max-then-min rather than with `clamp`
+    // because `clamp` panics on a NaN bound, and the extent comes from the
+    // guest.
+    let along_x = edge == CGRectMinXEdge || edge == CGRectMaxXEdge;
+    let extent = if along_x { size.width } else { size.height };
+    let cut = amount.max(0.0).min(extent);
+    let rest = extent - cut;
+
+    let sized = |x: CGFloat, y: CGFloat, width: CGFloat, height: CGFloat| CGRect {
+        origin: CGPoint { x, y },
+        size: CGSize { width, height },
+    };
+    match edge {
+        CGRectMinXEdge => (
+            sized(origin.x, origin.y, cut, size.height),
+            sized(origin.x + cut, origin.y, rest, size.height),
+        ),
+        CGRectMaxXEdge => (
+            sized(origin.x + rest, origin.y, cut, size.height),
+            sized(origin.x, origin.y, rest, size.height),
+        ),
+        CGRectMinYEdge => (
+            sized(origin.x, origin.y, size.width, cut),
+            sized(origin.x, origin.y + cut, size.width, rest),
+        ),
+        CGRectMaxYEdge => (
+            sized(origin.x, origin.y + rest, size.width, cut),
+            sized(origin.x, origin.y, size.width, rest),
+        ),
+        // Not one of the four edges. Core Graphics has no defined answer and an
+        // app that gets here has passed uninitialised memory, so the whole
+        // rectangle comes back as the remainder and nothing is cut.
+        _ => {
+            log!("CGRectDivide() with unknown edge {}; cutting nothing", edge);
+            (CGRectZero, rect)
+        }
+    }
+}
+
 pub(super) fn CGRectIntegral(_env: &mut Environment, rect: CGRect) -> CGRect {
     if rect == CGRectNull {
         return rect;
@@ -443,6 +592,10 @@ pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(CGRectGetWidth(_)),
     export_c_func!(CGRectMake(_, _, _, _)),
     export_c_func!(CGRectIsNull(_)),
+    export_c_func!(CGRectIsEmpty(_)),
+    export_c_func!(CGRectStandardize(_)),
+    export_c_func!(CGRectUnion(_, _)),
+    export_c_func!(CGRectDivide(_, _, _, _, _)),
     export_c_func!(CGRectOffset(_, _, _)),
     export_c_func!(CGRectInset(_, _, _)),
     export_c_func!(CGRectIntegral(_)),
@@ -466,3 +619,76 @@ pub const CONSTANTS: ConstantExports = &[
         HostConstant::Custom(|env| env.mem.alloc_and_write(CGRectNull).cast().cast_const()),
     ),
 ];
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        divide, rect_is_empty, standardize, CGPoint, CGRect, CGRectMaxXEdge, CGRectMaxYEdge,
+        CGRectMinXEdge, CGRectMinYEdge, CGRectNull, CGRectZero, CGSize,
+    };
+
+    fn rect(x: f32, y: f32, width: f32, height: f32) -> CGRect {
+        CGRect {
+            origin: CGPoint { x, y },
+            size: CGSize { width, height },
+        }
+    }
+
+    #[test]
+    fn emptiness_covers_zero_negative_and_null() {
+        assert!(!rect_is_empty(rect(0.0, 0.0, 1.0, 1.0)));
+        assert!(rect_is_empty(CGRectZero));
+        assert!(rect_is_empty(rect(5.0, 5.0, 0.0, 10.0)));
+        assert!(rect_is_empty(rect(5.0, 5.0, 10.0, 0.0)));
+        assert!(rect_is_empty(rect(5.0, 5.0, -10.0, 10.0)));
+        // The null rectangle has a zero size, so it falls out of the same test
+        // rather than needing its own.
+        assert!(rect_is_empty(CGRectNull));
+    }
+
+    #[test]
+    fn standardizing_moves_the_origin_to_the_smaller_corner() {
+        assert_eq!(
+            standardize(rect(10.0, 20.0, -4.0, -6.0)),
+            rect(6.0, 14.0, 4.0, 6.0)
+        );
+        // Already positive: unchanged.
+        assert_eq!(
+            standardize(rect(1.0, 2.0, 3.0, 4.0)),
+            rect(1.0, 2.0, 3.0, 4.0)
+        );
+    }
+
+    #[test]
+    fn dividing_off_the_low_edge_puts_the_slice_first() {
+        let (slice, remainder) = divide(rect(0.0, 0.0, 100.0, 50.0), 30.0, CGRectMinXEdge);
+        assert_eq!(slice, rect(0.0, 0.0, 30.0, 50.0));
+        assert_eq!(remainder, rect(30.0, 0.0, 70.0, 50.0));
+
+        let (slice, remainder) = divide(rect(0.0, 0.0, 100.0, 50.0), 20.0, CGRectMinYEdge);
+        assert_eq!(slice, rect(0.0, 0.0, 100.0, 20.0));
+        assert_eq!(remainder, rect(0.0, 20.0, 100.0, 30.0));
+    }
+
+    #[test]
+    fn dividing_off_the_high_edge_puts_the_slice_at_the_far_end() {
+        let (slice, remainder) = divide(rect(0.0, 0.0, 100.0, 50.0), 30.0, CGRectMaxXEdge);
+        assert_eq!(slice, rect(70.0, 0.0, 30.0, 50.0));
+        assert_eq!(remainder, rect(0.0, 0.0, 70.0, 50.0));
+
+        let (slice, remainder) = divide(rect(0.0, 0.0, 100.0, 50.0), 20.0, CGRectMaxYEdge);
+        assert_eq!(slice, rect(0.0, 30.0, 100.0, 20.0));
+        assert_eq!(remainder, rect(0.0, 0.0, 100.0, 30.0));
+    }
+
+    #[test]
+    fn dividing_by_more_than_the_rectangle_holds_gives_it_all_away() {
+        let (slice, remainder) = divide(rect(0.0, 0.0, 100.0, 50.0), 500.0, CGRectMinXEdge);
+        assert_eq!(slice, rect(0.0, 0.0, 100.0, 50.0));
+        assert_eq!(remainder, rect(100.0, 0.0, 0.0, 50.0));
+        // And a negative amount cuts nothing at all.
+        let (slice, remainder) = divide(rect(0.0, 0.0, 100.0, 50.0), -5.0, CGRectMinXEdge);
+        assert_eq!(slice, rect(0.0, 0.0, 0.0, 50.0));
+        assert_eq!(remainder, rect(0.0, 0.0, 100.0, 50.0));
+    }
+}
