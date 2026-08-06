@@ -113,6 +113,13 @@ repeat it:
    return the bundle path, as iOS does for an app bundle, and all eleven
    `pathForResource:` calls the app makes are well-formed.
 
+9. `userInteractionEnabled` is not the explanation either, which is worth
+   stating because it is the obvious last candidate: tapHLE's `hitTest:` does
+   skip a subview whose value is false, the property is implemented and stored
+   correctly on `UIViewHostObject`, and a message trace shows the app never
+   sends `setUserInteractionEnabled:` to anything. The view is interactive
+   because UIKit's default is interactive, which is also true on a device.
+
 So the emulator side is exhausted: touch coordinates, hit-test order, responder
 forwarding, layer transforms, resource paths, the touches set, `NSSet` fast
 enumeration, the handler's execution, and the view's geometry have each been
