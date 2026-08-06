@@ -1502,3 +1502,50 @@ pub(super) fn property_getAttributes(
     }
     env.mem.read(property).attributes
 }
+
+/// The class's name, as a C string in guest memory.
+///
+/// The string is made once per class and kept, because a class stores its name
+/// as a Rust `String` and the caller wants a `const char*` that stays valid.
+/// Apps log class names, sometimes every frame, so allocating per call would
+/// leak steadily.
+pub(super) fn class_getName(env: &mut Environment, cls: Class) -> ConstPtr<u8> {
+    // Apple's runtime answers "nil" for a null class rather than crashing, and
+    // code that prints a class name is often doing so precisely because it is
+    // not sure it has one.
+    if cls == nil {
+        if let Some(&existing) = env.objc.class_name_strings.get(&nil) {
+            return existing;
+        }
+        let ptr = env.mem.alloc_and_write_cstr(b"nil").cast_const();
+        env.objc.class_name_strings.insert(nil, ptr);
+        return ptr;
+    }
+
+    if let Some(&existing) = env.objc.class_name_strings.get(&cls) {
+        return existing;
+    }
+    let name = env.objc.get_class_name(cls).to_string();
+    let ptr = env.mem.alloc_and_write_cstr(name.as_bytes()).cast_const();
+    env.objc.class_name_strings.insert(cls, ptr);
+    ptr
+}
+
+/// Whether this class object is a metaclass.
+pub(super) fn class_isMetaClass(env: &mut Environment, cls: Class) -> bool {
+    if cls == nil {
+        return false;
+    }
+    env.objc.borrow::<ClassHostObject>(cls).is_metaclass
+}
+
+/// Whether instances of the class respond to a selector.
+///
+/// This asks the same lookup `objc_msgSend` uses, so a class answering yes here
+/// really can be sent that message.
+pub(super) fn class_respondsToSelector(env: &mut Environment, cls: Class, sel: SEL) -> bool {
+    if cls == nil || sel.is_null() {
+        return false;
+    }
+    env.objc.class_defining_method(cls, sel).is_some()
+}

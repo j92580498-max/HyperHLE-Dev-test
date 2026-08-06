@@ -21,7 +21,7 @@
 //! See also: [crate::frameworks::foundation::ns_object].
 
 use super::{Class, ClassHostObject};
-use crate::mem::{guest_size_of, GuestUSize, Mem, MutPtr, Ptr, SafeRead};
+use crate::mem::{guest_size_of, ConstPtr, GuestUSize, Mem, MutPtr, Ptr, SafeRead};
 use crate::Environment;
 use std::any::Any;
 use std::num::NonZeroU32;
@@ -531,4 +531,12 @@ mod tests {
         assert!(!objc.decrement_refcount(object));
         assert!(objc.decrement_refcount(object));
     }
+}
+
+/// The name of an object's class, as a C string.
+///
+/// Shares `class_getName`'s cache, so repeated calls do not allocate.
+pub(super) fn object_getClassName(env: &mut Environment, obj: id) -> ConstPtr<u8> {
+    let class = object_getClass(env, obj);
+    super::classes::class_getName(env, class)
 }
