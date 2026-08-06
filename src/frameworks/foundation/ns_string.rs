@@ -1175,6 +1175,32 @@ pub const CLASSES: ClassExports = objc_classes! {
     autorelease(env, new)
 }
 
+- (id)stringByReplacingPercentEscapesUsingEncoding:(NSStringEncoding)encoding {
+    // The inverse of -stringByAddingPercentEscapesUsingEncoding: above, and by
+    // some distance the most-sent selector no tapHLE class implemented: 653
+    // of the 1192 distinct apps in the import-demand catalogue send it,
+    // because any app reading a value back out of a URL needs it.
+    assert!(encoding == NSASCIIStringEncoding || encoding == NSUTF8StringEncoding); // TODO: other encodings
+    let str = to_rust_string(env, this);
+    match unescape_percent_escapes(&str) {
+        Some(decoded) => {
+            let new = from_rust_string(env, decoded);
+            autorelease(env, new)
+        }
+        None => {
+            // Cocoa returns nil when the escapes do not decode in the requested
+            // encoding, and callers check for it, so this is the specified
+            // answer rather than a failure to handle the input.
+            log_dbg!(
+                "-[NSString stringByReplacingPercentEscapesUsingEncoding:] => nil, \
+                 {:?} does not decode",
+                str
+            );
+            nil
+        }
+    }
+}
+
 - (id)stringByAppendingPathComponent:(id)component { // NSString*
     // Cocoa raises NSInvalidArgumentException for a nil component. tapHLE
     // cannot raise into guest code, and aborting the emulator is a far worse
@@ -2447,4 +2473,89 @@ fn string_by_replacing_occurrences_inner(
     let result_ns_string = msg_class![env; _tapHLE_NSString alloc];
     *env.objc.borrow_mut(result_ns_string) = StringHostObject::Utf16(result);
     (autorelease(env, result_ns_string), replacements)
+}
+
+/// Decode `%XX` escapes, or [None] if the result is not valid text.
+///
+/// Two behaviours here are not guesses and both matter:
+///
+/// A `%` that is not followed by two hexadecimal digits is passed through
+/// literally rather than treated as an error. Strings containing a bare percent
+/// sign are common - "100% complete" - and Cocoa returns them unchanged.
+///
+/// A `+` is left alone. Converting it to a space is form encoding, a different
+/// specification, and doing it here would corrupt every base64 payload that
+/// travels through a URL.
+///
+/// [None] is returned when the decoded bytes are not valid UTF-8, which is what
+/// makes the Objective-C method return nil. That is a real answer callers test
+/// for, not a shortcut.
+pub fn unescape_percent_escapes(escaped: &str) -> Option<String> {
+    let bytes = escaped.as_bytes();
+    let mut decoded = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%' && i + 2 < bytes.len() {
+            let high = (bytes[i + 1] as char).to_digit(16);
+            let low = (bytes[i + 2] as char).to_digit(16);
+            if let (Some(high), Some(low)) = (high, low) {
+                decoded.push((high * 16 + low) as u8);
+                i += 3;
+                continue;
+            }
+        }
+        decoded.push(bytes[i]);
+        i += 1;
+    }
+    String::from_utf8(decoded).ok()
+}
+
+#[cfg(test)]
+mod percent_escape_tests {
+    use super::unescape_percent_escapes;
+
+    #[test]
+    fn escapes_decode_to_their_bytes() {
+        assert_eq!(
+            unescape_percent_escapes("a%20b%2Fc").as_deref(),
+            Some("a b/c")
+        );
+        // Lower-case hex digits are as valid as upper-case ones.
+        assert_eq!(unescape_percent_escapes("%2f").as_deref(), Some("/"));
+    }
+
+    #[test]
+    fn multibyte_sequences_reassemble() {
+        assert_eq!(
+            unescape_percent_escapes("%C3%A9").as_deref(),
+            Some("\u{e9}")
+        );
+    }
+
+    #[test]
+    fn a_bare_percent_sign_survives() {
+        // "100% complete" is the case this protects: Cocoa passes a percent
+        // that is not followed by two hex digits through unchanged.
+        assert_eq!(
+            unescape_percent_escapes("100% complete").as_deref(),
+            Some("100% complete")
+        );
+        assert_eq!(unescape_percent_escapes("%").as_deref(), Some("%"));
+        assert_eq!(unescape_percent_escapes("%2").as_deref(), Some("%2"));
+        assert_eq!(unescape_percent_escapes("%zz").as_deref(), Some("%zz"));
+    }
+
+    #[test]
+    fn a_plus_is_not_a_space() {
+        // Converting it would be form encoding, and would corrupt base64.
+        assert_eq!(unescape_percent_escapes("a+b").as_deref(), Some("a+b"));
+    }
+
+    #[test]
+    fn undecodable_bytes_give_nothing() {
+        // A lone continuation byte is not valid UTF-8, and the Objective-C
+        // method returns nil for it.
+        assert_eq!(unescape_percent_escapes("%80"), None);
+        assert_eq!(unescape_percent_escapes("%C3"), None);
+    }
 }
