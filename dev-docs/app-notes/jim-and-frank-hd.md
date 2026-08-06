@@ -66,6 +66,45 @@ app 20 and version 20. Re-verified on that revision before submitting rather
 than filed from the earlier `1c22d176` run, so the report cites what was
 actually tested.
 
+### 2026-08-06: three stars is blocked on the Crystal SDK, not on tapHLE
+
+Play Game does nothing. Established, in order, so the next person does not
+repeat it:
+
+1. Touches arrive correctly. `ui_touch` shows `touchesBegan:`/`touchesEnded:`
+   delivered at the right guest coordinate.
+2. They go to `CCSkinnedView` — Chillingo's Crystal skinning view — which is
+   mounted **last** on the window and so is frontmost, with a full-screen frame.
+3. That class **does** implement `touchesBegan:`, read straight out of the
+   binary's `__objc_classlist`. Its own handler runs and passes the touch up the
+   responder chain, so it has decided the tap is not on its content. The
+   cocos2d menu behind it never sees it.
+4. tapHLE is not at fault in the obvious places: hit-test order is front-to-back
+   as UIKit's is, `UIResponder` forwards unhandled touches correctly, and
+   `superlayer_to_layer_transform` does include the affine transform.
+5. `CCSkinnedView` sizes itself with `updateFrameForContent`/`sizeThatFits:`,
+   is created `0x0`, and ends up 768x1024. Two of its skin images fail to load
+   at `Images/Images/MainMenu/{start,MainMenu_Crystal_btn12x203}.png` — a
+   doubled directory; both files exist one level up.
+6. The doubled path is the app's own. An instrumented build proved
+   `-[UIImage imageNamed:]` is never called for them: the app builds the path
+   and calls `-initWithContentsOfFile:` directly. tapHLE's `pathForResource:`
+   follows iOS semantics, and the theme archive
+   (`iPadIndigo_004.crystaltheme`, 157 `.ctd` descriptors) does not contain
+   those strings either.
+
+**Do not resume by assuming the touch coordinates are wrong.** They were tested
+and they are right. A mirrored click appears to "work" only because the mirror
+of Play Game is where the Crystal gem icon actually sits, and that icon is a
+real button — it opens Crystal's networking path, which then asserts
+(`CCServerDataHTTP: no GET connection constructed`) and passes nil to
+`to_rust_string`.
+
+So the remaining work is Crystal SDK behaviour, not an identified tapHLE gap,
+and it needs someone who can watch the overlay respond to real taps. `UITableView`
+section metrics were implemented along the way because Crystal's list needed
+them, and that is on `trunk`.
+
 ### What is not yet known
 
 Nobody has pressed a button. Two stars is "reaches a stable screen"; three
