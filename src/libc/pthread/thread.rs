@@ -137,6 +137,35 @@ pub fn pthread_attr_setstacksize(
     env.mem.write(attr, attr_copy);
     0 // success
 }
+/// Set the stack a thread will run on, both where it is and how big.
+///
+/// tapHLE allocates guest thread stacks itself, so the address cannot be
+/// honoured: a caller-chosen region is not where the thread will actually run.
+/// The size is real and is stored, exactly as `pthread_attr_setstacksize` does.
+///
+/// Accepting the call rather than refusing it is the point. Apps that set a
+/// stack do it once during start-up and check only the return code, and the
+/// alternative was aborting on a missing symbol before the app drew anything.
+/// The address is logged so a thread that does depend on its own stack region
+/// leaves a trace rather than failing silently.
+fn pthread_attr_setstack(
+    env: &mut Environment,
+    attr: MutPtr<pthread_attr_t>,
+    stackaddr: MutVoidPtr,
+    stacksize: GuestUSize,
+) -> i32 {
+    if attr.is_null() || stackaddr.is_null() {
+        return EINVAL;
+    }
+    log!(
+        "TODO: pthread_attr_setstack({:?}, {:?}, {:#x}): tapHLE allocates the          stack itself, so the address is ignored and only the size is kept",
+        attr,
+        stackaddr,
+        stacksize
+    );
+    pthread_attr_setstacksize(env, attr, stacksize)
+}
+
 fn pthread_attr_setinheritsched(
     env: &mut Environment,
     attr: MutPtr<pthread_attr_t>,
@@ -433,6 +462,7 @@ pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(pthread_attr_setdetachstate(_, _)),
     export_c_func!(pthread_attr_getstacksize(_, _)),
     export_c_func!(pthread_attr_setstacksize(_, _)),
+    export_c_func!(pthread_attr_setstack(_, _, _)),
     export_c_func!(pthread_attr_setinheritsched(_, _)),
     export_c_func!(pthread_attr_setschedpolicy(_, _)),
     export_c_func!(pthread_attr_setschedparam(_, _)),

@@ -700,6 +700,35 @@ fn __sprintf_chk(
     sprintf(env, dest, format, args)
 }
 
+/// The fortified `snprintf`, which the compiler emits in place of the plain one
+/// when it can see the destination's size.
+///
+/// `slen` is what the compiler worked out that size to be, and a real
+/// implementation aborts when the formatted result would exceed it. `snprintf`
+/// already truncates at `maxlen`, so the bound the caller actually asked for is
+/// enforced; this adds the compiler's cross-check as a warning rather than an
+/// abort, because a false positive here would kill an app that is not doing
+/// anything wrong.
+fn __snprintf_chk(
+    env: &mut Environment,
+    dest: MutPtr<u8>,
+    maxlen: GuestUSize,
+    _flags: i32,
+    slen: GuestUSize,
+    format: ConstPtr<u8>,
+    args: DotDotDot,
+) -> i32 {
+    if slen < maxlen {
+        log!(
+            "Warning: __snprintf_chk() called with a {} byte buffer but a limit              of {}; the object size wins, as it would on a real device",
+            slen,
+            maxlen
+        );
+    }
+    // TODO: respect flags level
+    snprintf(env, dest, maxlen.min(slen), format, args)
+}
+
 fn sprintf(env: &mut Environment, dest: MutPtr<u8>, format: ConstPtr<u8>, args: DotDotDot) -> i32 {
     // TODO: handle errno properly
     set_errno(env, 0);
@@ -1378,6 +1407,7 @@ pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(vsnprintf(_, _, _, _)),
     export_c_func!(vsprintf(_, _, _)),
     export_c_func!(__sprintf_chk(_, _, _, _, _)),
+    export_c_func!(__snprintf_chk(_, _, _, _, _, _)),
     export_c_func!(sprintf(_, _, _)),
     export_c_func!(swprintf(_, _, _, _)),
     export_c_func!(vswprintf(_, _, _, _)),
