@@ -83,38 +83,43 @@ repeat it:
    as UIKit's is, `UIResponder` forwards unhandled touches correctly, and
    `superlayer_to_layer_transform` does include the affine transform.
 5. `CCSkinnedView` sizes itself with `updateFrameForContent`/`sizeThatFits:`,
-   is created `0x0`, and ends up 768x1024. Two of its skin images fail to load
-   at `Images/Images/MainMenu/{start,MainMenu_Crystal_btn12x203}.png` — a
-   doubled directory; both files exist one level up.
-6. The doubled path is the app's own. An instrumented build proved
-   `-[UIImage imageNamed:]` is never called for them: the app builds the path
-   and calls `-initWithContentsOfFile:` directly. tapHLE's `pathForResource:`
-   follows iOS semantics, and the theme archive
-   (`iPadIndigo_004.crystaltheme`, 157 `.ctd` descriptors) does not contain
-   those strings either.
+   is created `0x0`, and ends up 768x1024 — and **the app does that itself**.
+   A message trace shows the app calling
+   `initWithUIElement:skinDescription:frame:formModel:shouldCache:` ->
+   `initWithFrame:` -> `setFrame:`. tapHLE does not resize it: the autorotation
+   path that could have is skipped, because the controller answers `false` to
+   `shouldAutorotateToInterfaceOrientation:`.
 
-7. The paths themselves come from `Schemas/Odyssey_MainMenu.plist`, which
-   stores them **bundle-relative**: `Images/MainMenu/MainMenu_Crystal_btn12x203.png`.
-   Correct resolution is `<bundle>/Images/MainMenu/...`; the app joined them
-   onto a base that already ended in `Images`.
-8. That base did not come from tapHLE giving a wrong answer. A probe on
-   `path_for_resource_helper` showed `resourcePath` is exactly
-   `/var/mobile/Applications/.../J & F HD.app`, and that the eleven
-   `pathForResource:` lookups the app makes are all well-formed
-   (`name="99GamesSplash" dir="Images/About" ext="png"`). The two failing
-   images are not among them: the app builds those paths itself.
+6. **The "missing" skin images are not missing. This was my own false lead and
+   it is recorded so nobody follows it again.** The warning
+   `couldn't read image file at .../Images/Images/MainMenu/start.png` is real,
+   but it is the app's *first* of two attempts. With
+   `TAPHLE_LOG_MODULES=tapHLE::frameworks::foundation::ns_string` the very next
+   line shows it retrying `Images/MainMenu/start.png` and succeeding. Same for
+   `MainMenu_Crystal_btn12x203.png`. tapHLE logs the failed attempt at warning
+   level and the successful retry only under module logging, which is what made
+   it look like a failure. The skin loads.
 
-9. Its handler is not failing to read the touches, either. Disassembling
+7. Its handler is not failing to read the touch either. Disassembling
    `-[CCSkinnedView touchesBegan:withEvent:]` (imp `0xe0509`, Thumb) shows it
    opens with `countByEnumeratingWithState:objects:count:` over the touches set
-   and branches to the end if the count is zero — which would have explained
-   everything. It does not: an `objc::messages` trace shows the enumeration
-   running on `_tapHLE_NSMutableSet`, reaching `allObjects`, `count` and
-   `objectAtIndex:`, so the loop body executes with the touch in hand. The
-   handler processes the touch and *decides* not to act on it.
+   and branches to the end when the count is zero — which would have explained
+   everything and would have been tapHLE's fault. It is not what happens: a
+   message trace shows the enumeration running on `_tapHLE_NSMutableSet` and
+   going on through `allObjects`, `count` and `objectAtIndex:`. The loop body
+   runs with the touch in hand, and the handler decides not to act on it.
 
-So every tapHLE surface involved has been checked and is correct. What remains
-is the SDK's own path arithmetic, which would need disassembly to follow.
+8. tapHLE's resource lookup is correct. `resourcePath` and `bundlePath` both
+   return the bundle path, as iOS does for an app bundle, and all eleven
+   `pathForResource:` calls the app makes are well-formed.
+
+So the emulator side is exhausted: touch coordinates, hit-test order, responder
+forwarding, layer transforms, resource paths, the touches set, `NSSet` fast
+enumeration, the handler's execution, and the view's geometry have each been
+measured and are each correct. What remains is that `CCSkinnedView` legitimately
+covers the screen, legitimately receives the tap, and its own logic declines it —
+so the cocos2d signposts behind it never see it. Why that differs on a real
+device is a question about the Crystal SDK's internal state, not about tapHLE.
 
 **Do not resume by assuming the touch coordinates are wrong.** They were tested
 and they are right. A mirrored click appears to "work" only because the mirror
