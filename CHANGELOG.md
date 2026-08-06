@@ -2,6 +2,50 @@
 
 ## Unreleased for 0.3.0-alpha.1
 
+- Draw the shapes and outlines games ask for directly instead of quitting:
+  circles and ovals, rectangle outlines, sets of separate lines such as
+  grids and tick marks, and the "cut out the overlap" style of filling.
+  Games used these for meters, buttons, minimaps and score panels, and any
+  one of them ended the game where it was called.
+- Get rectangle arithmetic right where games rely on it: asking whether a
+  rectangle is empty, tidying up one that came out backwards, combining two
+  into the box that holds both, and slicing a strip off one edge — the
+  standard way a screen is divided into a bar and a content area. All four
+  used to end the game.
+- Remember a drawing colour set as a list of numbers rather than as a colour
+  object. This is the older of the two ways to choose a colour and games use
+  it constantly; tapHLE could not, because it was discarding the colour
+  space that says how to read the list. Saving and restoring drawing state
+  also used to lose the outline colour, so a game that changed it
+  temporarily kept the change.
+- Let games inspect and adjust their own classes while running: finding an
+  instance variable by name and reading or writing it, listing a class's
+  methods, walking the list of loaded classes, and swapping an object's
+  class. Libraries games bundle — JSON parsers, key-value observers,
+  analytics — do this routinely, and each call ended the game.
+- Tell a game when it has modified a collection while looping over it,
+  instead of quitting on the check itself. This is the most widely
+  referenced piece of system support tapHLE was missing: every game
+  containing a `for...in` loop refers to it.
+- Decode the escaped characters in a web address. Games needed this to read
+  any value back out of a URL — a score, a name, a setting — and it was the
+  single most commonly used method tapHLE did not have. Padding and
+  truncating a string to a fixed width, and replacing part of one, are in
+  too.
+- Stop games quitting when a screen is told the system is running low on
+  memory, or when it releases its view. Games override both to free artwork
+  and then call through to the system, and it was that call through that had
+  nowhere to go.
+- Support the 3-D transform type games use for flip and card-turn effects,
+  so building one no longer ends the game. Note that a transform handed to a
+  layer still does not change what is drawn; this is the arithmetic, not the
+  display.
+- Report the device's network addresses, and let a game release the list
+  afterwards. The release step is in Apple's own sample code for finding
+  your own address, so it ran in a great many games and ended every one of
+  them.
+- Add more standard C that games expect: bounded string searching and
+  joining, parsing large numbers, and the older byte-copy spelling.
 - Draw gradients. Games of this era used them for almost every background,
   button and title bar that was not an image, and asking for one used to end the
   game on the spot — so a game that drew a gradient anywhere during start-up
