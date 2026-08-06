@@ -50,8 +50,9 @@ pub(crate) use blocks::block_invoke_function;
 use classes::{
     class_copyPropertyList, class_getInstanceSize, class_getName, class_getProperty,
     class_getSuperclass, class_isMetaClass, class_respondsToSelector, objc_allocateClassPair,
-    objc_disposeClassPair, objc_getClass, objc_lookUpClass, objc_registerClassPair,
-    property_getAttributes, property_getName, ClassHostObject, FakeClass, UnimplementedClass,
+    objc_disposeClassPair, objc_getClass, objc_getClassList, objc_getMetaClass, objc_lookUpClass,
+    objc_registerClassPair, property_getAttributes, property_getName, ClassHostObject, FakeClass,
+    UnimplementedClass,
 };
 pub(crate) use messages::objc_msgSend;
 use messages::{
@@ -59,11 +60,14 @@ use messages::{
     MsgSendSuperSignature,
 };
 use methods::{
-    class_addMethod, class_getClassMethod, class_getInstanceMethod, class_getMethodImplementation,
-    class_replaceMethod, method_exchangeImplementations, method_getImplementation, method_getName,
+    class_addMethod, class_copyMethodList, class_getClassMethod, class_getInstanceMethod,
+    class_getIvarLayout, class_getMethodImplementation, class_replaceMethod,
+    method_exchangeImplementations, method_getImplementation, method_getName,
     method_getTypeEncoding, method_list_t, method_setImplementation,
 };
-use objects::{objc_object, object_getClass, object_getClassName, HostObjectEntry};
+use objects::{
+    objc_object, object_getClass, object_getClassName, object_setClass, HostObjectEntry,
+};
 use properties::{
     ivar_list_t, objc_copyStruct, objc_getProperty, objc_property_t, objc_setProperty,
     objc_setProperty_atomic, objc_setProperty_atomic_copy, objc_setProperty_nonatomic,
@@ -173,6 +177,8 @@ const FUNCTIONS: FunctionExports = &[
     export_c_func!(property_getName(_)),
     export_c_func!(property_getAttributes(_)),
     export_c_func!(class_getInstanceMethod(_, _)),
+    export_c_func!(class_copyMethodList(_, _)),
+    export_c_func!(class_getIvarLayout(_)),
     export_c_func!(class_getClassMethod(_, _)),
     export_c_func!(class_getMethodImplementation(_, _)),
     export_c_func!(class_addMethod(_, _, _, _)),
@@ -195,12 +201,15 @@ const FUNCTIONS: FunctionExports = &[
     export_c_func!(objc_msgSendSuper2(_, _)),
     export_c_func!(objc_msgSendSuper2_stret(_, _, _)),
     export_c_func!(objc_getClass(_)),
+    export_c_func!(objc_getMetaClass(_)),
+    export_c_func!(objc_getClassList(_, _)),
     export_c_func!(objc_getProperty(_, _, _, _)),
     export_c_func!(objc_setProperty(_, _, _, _, _, _)),
     export_c_func!(objc_copyStruct(_, _, _, _, _)),
     export_c_func!(objc_sync_enter(_)),
     export_c_func!(objc_sync_exit(_)),
     export_c_func!(object_getClass(_)),
+    export_c_func!(object_setClass(_, _)),
     export_c_func!(sel_registerName(_)),
     export_c_func!(sel_getUid(_)),
 ];
