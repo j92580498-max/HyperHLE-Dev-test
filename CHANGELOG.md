@@ -2,6 +2,13 @@
 
 ## Unreleased for 0.3.0-alpha.1
 
+- Stop games quitting on a handful of common system calls they were entitled to
+  make: asking an object or method for its name, asking what thread priorities
+  are available, setting up a thread's stack, and the bounds-checked string
+  formatting that newer compilers emit automatically. Each of these ended the
+  game outright, usually during start-up. Chosen by measuring which missing
+  pieces stopped the most games rather than whichever turned up next.
+- Show lists that set their own section spacing, instead of quitting.
 - Start landscape games the right way round. A game that only says which way up
   it goes in its code, rather than in its bundle information, used to open
   sideways in a portrait window with its edges cut off, and needed
