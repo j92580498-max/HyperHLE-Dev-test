@@ -10,7 +10,13 @@
   quit outright. The request is now built normally and the connection reports
   that there is no internet connection, which is the failure games already
   know how to handle. Mr. Oops!! was quitting during startup on its Twitter
-  sign-in and now reaches its title screen.
+  sign-in, which this gets it through.
+- Stop games quitting on startup when they watch the clipboard for changes.
+  The names a game needs to ask for those notifications were missing, and a
+  missing name is not an error a game can see — it reads as empty and the
+  game quits on the spot, nowhere near anything to do with copy and paste.
+  Together with the network fix above, this is what gets Mr. Oops!! to its
+  title screen.
 - Draw the shapes and outlines games ask for directly instead of quitting:
   circles and ovals, rectangle outlines, sets of separate lines such as
   grids and tick marks, and the "cut out the overlap" style of filling.
