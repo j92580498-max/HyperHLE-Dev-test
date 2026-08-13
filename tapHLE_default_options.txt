@@ -103,6 +103,11 @@ com.darxun: --landscape-right --y-tilt-offset=24
 # Jackpot Casino
 com.chillingo.jackpotcasino: --landscape-right
 
+# The Jim and Frank Mysteries HD
+# The app declares landscape and tapHLE rotates on its own; the entry only
+# spares the player the portrait frames at startup.
+com.chillingo.thejimandfrankmysterieshd: --landscape-left
+
 # MotoRacing GP
 # A = wheelie, B = restore
 com.darxun.motoracinggp: --landscape-right --button-to-touch=A,25,295 --button-to-touch=B,115,295
