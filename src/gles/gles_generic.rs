@@ -765,7 +765,7 @@ pub trait GLES {
     // object's geometry, so a backend that inherits these must not let
     // `GL_OES_vertex_array_object` be advertised — see `EXTENSIONS` in
     // `crate::frameworks::opengles::gles_guest`, which is where the extension
-    // string is decided and where the Cubed Rally Redline case is written up.
+    // string is decided and where the measured case is written up.
     unsafe fn GenVertexArraysOES(&mut self, n: GLsizei, arrays: *mut GLuint) {
         for i in 0..n {
             arrays.add(i as usize).write((i + 1) as GLuint);

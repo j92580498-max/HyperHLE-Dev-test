@@ -100,7 +100,7 @@ pub const kCFCoreFoundationVersionNumber_iPhoneOS_3_2: f64 = 478.61;
 /// The `kCFCoreFoundationVersionNumber` symbol is the *address of* that double,
 /// so we back it with a real guest allocation and point the symbol at it. This
 /// was previously an unhandled non-lazy symbol left null, which crashed any app
-/// that dereferenced it (e.g. SPY mouse HD's startup version check).
+/// that dereferenced it (a startup version check, typically).
 pub const CONSTANTS: ConstantExports = &[(
     "_kCFCoreFoundationVersionNumber",
     HostConstant::Custom(|env| {

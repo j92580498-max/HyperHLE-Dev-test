@@ -236,10 +236,10 @@ pub const CLASSES: ClassExports = objc_classes! {
     if view == nil {
         // Loading the view is what viewDidLoad reports, so it is sent here and
         // only here. A controller whose view the app assigned with -setView:
-        // never loaded one, and must not be told that it did: Tap Tap Revenge
-        // 2 builds its OpenGL view by hand, hands it over, and implements
-        // viewDidLoad as a teardown — sending it there destroyed the game view
-        // immediately after it was created.
+        // never loaded one, and must not be told that it did: an app that
+        // builds its OpenGL view by hand, hands it over, and implements
+        // viewDidLoad as a teardown has its game view destroyed immediately
+        // after it is created.
         () = msg![env; this loadView];
         send_view_did_load_if_needed(env, this);
     }

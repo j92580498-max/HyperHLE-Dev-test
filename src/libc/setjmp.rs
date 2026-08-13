@@ -95,7 +95,7 @@ fn longjmp(env: &mut Environment, jmp_buf: MutPtr<JmpBuf>, status: u32) {
 /// They delegate rather than differing, because tapHLE has no signal mask to
 /// save — which is also why `setjmp` above never saved one. The distinction is
 /// real on a Unix but empty here, and an app picks whichever its headers
-/// declared; Ragdoll Blaster Lite links `__setjmp`.
+/// declared; apps link `__setjmp`.
 #[allow(non_snake_case)]
 fn _setjmp(env: &mut Environment, jmp_buf: MutPtr<JmpBuf>) -> i32 {
     setjmp(env, jmp_buf)

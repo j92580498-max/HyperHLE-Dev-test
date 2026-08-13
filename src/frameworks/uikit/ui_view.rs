@@ -33,7 +33,10 @@ use crate::frameworks::core_animation::CACurrentMediaTime;
 use crate::frameworks::core_foundation::time::CFTimeInterval;
 use crate::frameworks::core_graphics::cg_affine_transform::CGAffineTransform;
 use crate::frameworks::core_graphics::cg_color::CGColorRef;
-use crate::frameworks::core_graphics::cg_context::{CGContextClearRect, CGContextRef};
+use crate::frameworks::core_graphics::cg_context::{
+    CGContextClearRect, CGContextRef, CGContextRestoreGState, CGContextSaveGState, CGContextScaleCTM,
+    CGContextTranslateCTM,
+};
 use crate::frameworks::core_graphics::{CGFloat, CGPoint, CGRect, CGSize};
 use crate::frameworks::foundation::ns_string::{from_rust_string, get_static_str, to_rust_string};
 use crate::frameworks::foundation::{ns_array, NSInteger, NSTimeInterval, NSUInteger};
@@ -193,10 +196,10 @@ fn init_common(env: &mut Environment, this: id) -> id {
     // it for some other reason. Nothing in UIKit's contract makes an app do
     // that, so most never did.
     //
-    // The Jim and Frank Mysteries HD is the measured case: Chillingo's Crystal
-    // presents a full-screen `CCSkinnedView` over the game, that view's buttons
-    // are drawn in `-drawRect:`, and across a whole startup `-drawRect:` was
-    // never called even once. The splash therefore had no button to press, and
+    // The measured case: a bundled social SDK presents a full-screen view over
+    // the game, that view's buttons are drawn in `-drawRect:`, and across a
+    // whole startup `-drawRect:` was never called even once. The panel
+    // therefore had no button to press, and
     // pressing one is the only thing that dismisses it.
     //
     // Restricted to classes that override `-drawRect:`, because displaying a
@@ -221,10 +224,10 @@ fn init_common(env: &mut Environment, this: id) -> id {
 /// without it presents every frame into no drawable.
 ///
 /// Doing it **synchronously** here, which is what this did first, breaks apps
-/// outright: JellyCar 2 faulted during startup because its layout ran while the
-/// view hierarchy was still being built, a moment the app never expects. Merely
+/// outright: an app faulted during startup because its layout ran while the
+/// view hierarchy was still being built, a moment no app expects. Merely
 /// flagging it, and letting `handle_pending_layout` service it on the next run
-/// loop turn, is both what UIKit does and what both apps survive.
+/// loop turn, is both what UIKit does and what apps survive.
 ///
 /// A view not yet in a window is flagged anyway; `handle_pending_layout` skips
 /// it until it is mounted, so it is laid out once it has a real size rather
@@ -233,7 +236,7 @@ pub(super) fn mark_needs_layout_on_mount(env: &mut Environment, view: id) {
     env.objc.borrow_mut::<UIViewHostObject>(view).needs_layout = true;
 
     // During launch, leave it at the flag. The app is still assembling its view
-    // hierarchy and running its layout code now is what killed JellyCar 2.
+    // hierarchy, and running its layout code now is what kills it.
     if !env.framework_state.uikit.ui_application.finished_launching {
         return;
     }
@@ -241,8 +244,8 @@ pub(super) fn mark_needs_layout_on_mount(env: &mut Environment, view: id) {
     // Afterwards, lay out immediately if the view is already in a window.
     // Waiting for the next run loop turn is closer to UIKit, but it costs a
     // frame — and for an EAGLView that frame is presented into no drawable,
-    // which is how Tap Tap Revenge 2 lost its background: the first frames of
-    // its game screen were drawn before the layout that creates the surface.
+    // which is how an app loses its background: the first frames of its game
+    // screen are drawn before the layout that creates the surface.
     let window: id = msg![env; view window];
     if window == nil {
         return;
@@ -1088,7 +1091,21 @@ pub const CLASSES: ClassExports = objc_classes! {
         CGContextClearRect(env, context, bounds);
     }
     UIGraphicsPushContext(env, context);
+    // UIKit hands -drawRect: a context whose origin is the top-left corner and
+    // whose y grows downward, which is the opposite of the Core Graphics
+    // context underneath it. A view draws to those coordinates, so without the
+    // flip everything it paints lands mirrored top to bottom -- and a
+    // full-screen view drawn that way is not obviously mirrored, it just looks
+    // wrong in a way that is easy to blame on the compositor.
+    //
+    // Only this path gets the flip. A plain CALayer delegate that implements
+    // drawLayer:inContext: itself is drawing in Core Graphics' coordinates and
+    // must not be flipped, which is why this is here and not in CALayer.
+    CGContextSaveGState(env, context);
+    CGContextTranslateCTM(env, context, 0.0, bounds.size.height);
+    CGContextScaleCTM(env, context, 1.0, -1.0);
     () = msg![env; this drawRect:bounds];
+    CGContextRestoreGState(env, context);
     UIGraphicsPopContext(env);
 }
 

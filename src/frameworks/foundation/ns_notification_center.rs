@@ -279,7 +279,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 
         // In some cases, observer could be removed during the
         // processing of the notification, effectively releasing it.
-        // (This is happening with Spore Origins)
+        // (This has been observed in a shipped app)
         // We need to retain it for correctness.
         retain(env, observer);
         match selector {

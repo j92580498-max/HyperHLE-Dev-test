@@ -442,7 +442,7 @@ fn CGContextDrawRadialGradient(
     );
 }
 
-fn CGContextSaveGState(env: &mut Environment, context: CGContextRef) {
+pub fn CGContextSaveGState(env: &mut Environment, context: CGContextRef) {
     let host_obj = env.objc.borrow_mut::<CGContextHostObject>(context);
     host_obj.state_stack.push(ContextState {
         rgb_fill_color: host_obj.rgb_fill_color,
@@ -457,7 +457,7 @@ fn CGContextSaveGState(env: &mut Environment, context: CGContextRef) {
     CGFontRetain(env, env.objc.borrow::<CGContextHostObject>(context).font);
 }
 
-fn CGContextRestoreGState(env: &mut Environment, context: CGContextRef) {
+pub fn CGContextRestoreGState(env: &mut Environment, context: CGContextRef) {
     // We need to release _old_ font, there are 2 cases:
     // - font hasn't been set between save/restore -> this release corresponds
     // the font retain from save

@@ -24,7 +24,7 @@ pub const SECS_FROM_UNIX_TO_APPLE_EPOCHS: u64 = 978_307_200;
 /// straight out of `__DATA,__nl_symbol_ptr`. An unbound slot there is a null
 /// pointer, and the guest dereferences it without checking, so a missing
 /// constant of this kind shows up as an opaque guest `MemoryError` a long way
-/// from anything named. JellyCar 1 died on exactly this, in the standard
+/// from anything named. Apps die on exactly this, in the standard
 /// `CFAbsoluteTimeGetCurrent() + kCFAbsoluteTimeIntervalSince1970` conversion
 /// to a Unix timestamp.
 fn kCFAbsoluteTimeIntervalSince1970(env: &mut Environment) -> ConstVoidPtr {

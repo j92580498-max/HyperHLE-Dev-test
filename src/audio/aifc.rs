@@ -6,10 +6,10 @@
 //! Narrow fallback for AIFF-C containers holding Apple IMA4 ADPCM.
 //!
 //! `afconvert -f AIFC -d ima4` is what Apple's own tooling produced for game
-//! audio of this era, so it is a common shape: The Jim and Frank Mysteries HD
-//! ships 267 sounds and every one of them is AIFC/`ima4`, from its menu clicks
-//! to the voice-over its opening cutscene waits on. Symphonia reads AIFF but
-//! rejects the compressed AIFC variant, so none of them decoded and the app
+//! audio of this era, so it is a common shape: a game can easily ship every
+//! one of its several hundred sounds this way, from menu clicks to the
+//! voice-over an opening cutscene waits on. Symphonia reads AIFF but rejects
+//! the compressed AIFC variant, so none of them decoded and the app
 //! stalled in its introduction waiting for narration that could never play.
 //!
 //! tapHLE already decodes IMA4 — see [super::ima4] — but only at playback, once

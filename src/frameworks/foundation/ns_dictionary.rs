@@ -318,7 +318,7 @@ pub fn init_with_objects_and_keys(
 /// Helper function to share `initWithDictionary:` implementations
 fn init_with_dictionary_common(env: &mut Environment, this: id, other_dict: id) -> id {
     // Foundation tolerates a nil source dictionary, producing an empty
-    // dictionary instead of raising. Baby Monkey's Cocos2D command dispatch
+    // dictionary instead of raising. A Cocos2D command dispatch
     // (`onCommandDispatch:` for kCCInitializeUserModelNotification) relies on
     // `[[NSMutableDictionary alloc] initWithDictionary:nil]` returning an empty
     // dictionary; sending count/getObjects to a nil dictionary on-device yields
