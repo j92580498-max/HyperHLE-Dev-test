@@ -99,6 +99,22 @@ fn SCNetworkReachabilityCreateWithAddress(
     res
 }
 
+/// Answer a reachability query the way a device with no network answers it.
+///
+/// The return value and the flags mean different things. `false` is "the query
+/// failed, I do not know", and it leaves the caller's `flags` untouched —
+/// uninitialized stack, usually. `true` with no `Reachable` bit is "I do know,
+/// and you are offline". A real device in airplane mode gives the second
+/// answer, never the first.
+///
+/// This mattered because reporting failure hangs SDKs rather than failing them.
+/// Chillingo's Crystal asks whether it is online before starting a session; on
+/// "I do not know" it neither proceeds nor gives up, so the splash screen it
+/// presents over the game is never dismissed, and being a full-screen modal it
+/// swallows every touch. That is what stopped The Jim and Frank Mysteries HD at
+/// its main menu, and a game-specific hack in
+/// [SCNetworkReachabilityCreateWithName] was already papering over the same
+/// hang in Cut the Rope.
 fn SCNetworkReachabilityGetFlags(
     env: &mut Environment,
     target: SCNetworkReachabilityRef,
@@ -106,11 +122,12 @@ fn SCNetworkReachabilityGetFlags(
 ) -> bool {
     if !env.options.network_access {
         log_dbg!(
-            "Network access is disabled, SCNetworkReachabilityGetFlags({:?}, {:?}) -> false",
+            "Network access is disabled, SCNetworkReachabilityGetFlags({:?}, {:?}) -> true, not reachable",
             target,
             flags
         );
-        return false;
+        env.mem.write(flags, 0);
+        return true;
     }
 
     let target_class: Class = msg![env; target class];
@@ -144,6 +161,16 @@ fn SCNetworkReachabilityGetFlags(
     false
 }
 
+/// Accept a reachability callback registration, which is never called back.
+///
+/// Refusing the registration is the wrong answer for the same reason returning
+/// failure from [SCNetworkReachabilityGetFlags] is. An SDK that cannot read the
+/// state synchronously will wait to be told when it changes, so a refusal here
+/// closes the second door after the first, and it waits forever.
+///
+/// Accepting and never calling back is not a stub: on a device whose
+/// reachability never changes, a correct implementation delivers nothing
+/// either. The callback fires on transitions, and tapHLE has none to report.
 fn SCNetworkReachabilitySetCallback(
     env: &mut Environment,
     target: SCNetworkReachabilityRef,
@@ -156,13 +183,13 @@ fn SCNetworkReachabilitySetCallback(
         env.objc
             .get_known_class("_tapHLE_SCNetworkReachability", &mut env.mem)
     );
-    log!(
-        "TODO: SCNetworkReachabilitySetCallback({:?}, {:?}, {:?}) -> FALSE",
+    log_dbg!(
+        "SCNetworkReachabilitySetCallback({:?}, {:?}, {:?}) -> TRUE, never called back",
         target,
         callout,
         context
     );
-    false
+    true
 }
 
 fn SCNetworkReachabilityScheduleWithRunLoop(
