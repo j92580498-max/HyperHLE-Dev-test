@@ -608,16 +608,14 @@ unsafe fn present_renderbuffer_es2(
         gles2::TEXTURE_MAG_FILTER,
         gles2::LINEAR as _,
     );
-    gles.TexParameteri(
-        gles2::TEXTURE_2D,
-        gles2::TEXTURE_WRAP_S,
-        gles2::CLAMP_TO_EDGE as _,
-    );
-    gles.TexParameteri(
-        gles2::TEXTURE_2D,
-        gles2::TEXTURE_WRAP_T,
-        gles2::CLAMP_TO_EDGE as _,
-    );
+    // The rotation below is applied to texture coordinates that run 0..1, and
+    // it rotates them about the origin rather than about the middle of the
+    // texture. A quarter turn therefore lands them outside the texture, in
+    // [-1,0] x [0,1], and only wrapping brings them back onto it. Clamping
+    // instead gives every row the same edge texel: the frame comes out as
+    // horizontal bands of flat colour with the vertical gradient intact.
+    gles.TexParameteri(gles2::TEXTURE_2D, gles2::TEXTURE_WRAP_S, gles2::REPEAT as _);
+    gles.TexParameteri(gles2::TEXTURE_2D, gles2::TEXTURE_WRAP_T, gles2::REPEAT as _);
 
     gles.BindFramebuffer(gles2::FRAMEBUFFER, 0);
     gles.DeleteFramebuffers(1, &src_fb);
@@ -1046,15 +1044,20 @@ unsafe fn present_renderbuffer(env: &mut Environment) {
         gles11::TEXTURE_MIN_FILTER,
         gles11::LINEAR as _,
     );
+    // Wrapping, not clamping: [crate::gles::present::present_frame] rotates
+    // texture coordinates that run 0..1 about the origin, so a quarter turn
+    // puts them outside the texture and only wrapping brings them back. Clamp
+    // here and every row samples one edge texel, which presents the frame as
+    // horizontal bands of flat colour.
     gles.TexParameteri(
         gles11::TEXTURE_2D,
         gles11::TEXTURE_WRAP_S,
-        gles11::CLAMP_TO_EDGE as _,
+        gles11::REPEAT as _,
     );
     gles.TexParameteri(
         gles11::TEXTURE_2D,
         gles11::TEXTURE_WRAP_T,
-        gles11::CLAMP_TO_EDGE as _,
+        gles11::REPEAT as _,
     );
 
     // Clean up the framebuffer object since we no longer need it.
