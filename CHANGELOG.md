@@ -2,6 +2,11 @@
 
 ## Unreleased for 0.3.0-alpha.1
 
+- Copy a game's data templates properly instead of ending the game. Games read
+  a layout or a set of properties once and then take a private copy for each
+  thing they build from it. The call that makes such a copy did not exist, so
+  the game quit the moment it was used.
+
 - Read the positions and sizes games store as text without insisting on one
   exact spelling. Games keep the layout of a screen — where each picture and
   button goes — in data files, written as text like `{{0,0},{1024,768}}`.
