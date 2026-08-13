@@ -712,7 +712,7 @@ impl ObjC {
     /// instances have nowhere to put elements. Before this, such a class either
     /// tripped an assertion in `+allocWithZone:` or was quietly handed a plain
     /// concrete array, losing its own identity and its own methods — which is
-    /// how SPY mouse HD's `AS_NSArrayJSONSerializable` died on `-serialize`.
+    /// how a JSON-serialisation category dies on `-serialize`.
     ///
     /// Splicing the concrete class into the chain fixes both halves at once:
     /// the subclass keeps its identity and its methods, and inherits real

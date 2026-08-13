@@ -70,10 +70,10 @@ const STATUS_BAR_HEIGHT: f32 = 20.0;
 /// `[[[UIApplication sharedApplication] keyWindow] addSubview:someView]`.
 ///
 /// With no key window that is a message to nil, which is silent — the view is
-/// simply dropped and the app runs on with nothing on screen. The Jim and Frank
-/// Mysteries HD loses its entire OpenGL view that way: it asks for the key
-/// window, asks its view controller for the `EAGLView` holding the game's
-/// `CAEAGLLayer`, adds one to the other, and both calls succeed while nothing
+/// simply dropped and the app runs on with nothing on screen. An app loses its
+/// entire OpenGL view that way: it asks for the key window, asks its view
+/// controller for the `EAGLView` holding the game's `CAEAGLLayer`, adds one to
+/// the other, and both calls succeed while nothing
 /// is mounted.
 ///
 /// Only the first window is taken, and only when no window is key already, so
@@ -433,9 +433,8 @@ pub(super) fn UIApplicationMain(
                 // taking its registration in `ui_view::ui_window::windows` with
                 // it. Composition then found no windows and presented nothing
                 // for the rest of the run, and every touch was discarded for
-                // want of a window to hit-test. The Jim and Frank Mysteries is
-                // one such app, and this is not a rare shape: it is what every
-                // Xcode template produced for years.
+                // want of a window to hit-test. This is not a rare shape: it
+                // is what every Xcode template produced for years.
                 retain(env, top_level_objects);
                 env.objc
                     .borrow_mut::<UIApplicationHostObject>(ui_application)

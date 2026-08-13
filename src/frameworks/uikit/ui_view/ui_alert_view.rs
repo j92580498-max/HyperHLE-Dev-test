@@ -90,13 +90,13 @@ fn cancel_button_index(has_cancel_button: bool) -> NSInteger {
 /// thing on it, and a user who wants to keep playing has one option. Reporting
 /// -1 for that alert says it was dismissed without any button, which UIKit says
 /// only when the app dismissed it itself, so an app waiting to be told its
-/// single button was pressed waits forever. Mr. Oops!! stalls on its own
-/// mission briefing that way — one "OK", added with `addButtonWithTitle:` after
-/// a nil `cancelButtonTitle:`.
+/// single button was pressed waits forever. A game stalls on its own mission
+/// briefing that way — one "OK", added with `addButtonWithTitle:` after a nil
+/// `cancelButtonTitle:`.
 ///
 /// Two or more buttons with no cancel button stay -1. That is the case where
-/// picking one is picking *for* the user, and it is the case the Jim and Frank
-/// rate prompt described above falls into.
+/// picking one is picking *for* the user, and it is the case the rate prompt
+/// described above falls into.
 fn dismissal_button_index(has_cancel_button: bool, button_count: usize) -> NSInteger {
     // Index 0 is the cancel button when there is one, and the lone button when
     // there is not; the two cases coincide because a cancel button is always
@@ -291,8 +291,8 @@ mod tests {
         assert_eq!(dismissal_button_index(false, 1), 0);
     }
 
-    /// The case it must not touch. Jim and Frank's rate prompt is three buttons
-    /// and no cancel; reporting 0 there presses "Rate Now" for the user.
+    /// The case it must not touch. A rate prompt is three buttons and no
+    /// cancel; reporting 0 there presses "Rate Now" for the user.
     #[test]
     fn several_buttons_and_no_cancel_still_press_nothing() {
         assert_eq!(dismissal_button_index(false, 3), -1);

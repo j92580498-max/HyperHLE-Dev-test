@@ -19,7 +19,7 @@ use std::collections::HashMap;
 // changes it, so an app that also observes the change learns nothing it did not
 // already know. They are exported because an app reads the name to subscribe,
 // and an unbound one is a null pointer it dereferences without checking —
-// which is how Mr. Oops!! died during startup, long before any pasteboard was
+// which is how an app dies during startup, long before any pasteboard is
 // involved.
 const UIPasteboardChangedNotification: &str = "UIPasteboardChangedNotification";
 const UIPasteboardRemovedNotification: &str = "UIPasteboardRemovedNotification";

@@ -276,8 +276,8 @@ fn pthread_exit(env: &mut Environment, return_value: MutVoidPtr) {
     // Preserve r0 and leave the top-level host call around this secondary
     // thread's start routine. Set LR as well as PC because a four-byte lazy
     // symbol stub branches to LR after the host implementation returns.
-    // Ricky's Mono wrapper calls pthread_exit from this supported top-level
-    // path. Cleanup handlers and thread-specific-data destructors are not yet
+    // A Mono wrapper calls pthread_exit from this supported top-level path.
+    // Cleanup handlers and thread-specific-data destructors are not yet
     // implemented.
     let thread_exit_routine = env.dyld.thread_exit_routine();
     env.cpu.regs_mut()[crate::cpu::Cpu::LR] = thread_exit_routine.addr_with_thumb_bit();

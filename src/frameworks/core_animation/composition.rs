@@ -498,8 +498,8 @@ unsafe fn composite_layer_recursive(
 
     // What each layer contributes. A blank screen and a correct one are
     // otherwise indistinguishable from the outside, and this is what showed
-    // that The Jim & Frank Mysteries HD composites only a white window and two
-    // fade overlays — white x (1 - 0.4) = the exact grey seen on screen.
+    // that an apparently blank screen was compositing only a white window and
+    // two fade overlays — white x (1 - 0.4) = the exact grey seen on screen.
     if crate::log::debug_enabled_for(module_path!()) {
         let class_name = {
             let class = crate::objc::ObjC::read_isa(layer, &env.mem);

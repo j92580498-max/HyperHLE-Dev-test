@@ -1676,7 +1676,7 @@ mod tests {
     };
     use crate::mem::guest_size_of;
 
-    fn ricky_mp3_format() -> AudioStreamBasicDescription {
+    fn mono_game_mp3_format() -> AudioStreamBasicDescription {
         AudioStreamBasicDescription {
             sample_rate: 44_100.0,
             format_id: kAudioFormatMPEGLayer3,
@@ -1729,7 +1729,7 @@ mod tests {
 
     #[test]
     fn mp3_support_is_limited_to_coherent_audio_queues() {
-        let format = ricky_mp3_format();
+        let format = mono_game_mp3_format();
         assert!(is_supported_audio_queue_format(&format));
         assert!(!is_supported_audio_format(&format));
 
@@ -1761,13 +1761,13 @@ mod tests {
             },
         ];
         assert_eq!(
-            audio_queue_buffer_frame_count(&ricky_mp3_format(), 835, &descriptions),
+            audio_queue_buffer_frame_count(&mono_game_mp3_format(), 835, &descriptions),
             2304
         );
 
         descriptions[1].variable_frames_in_packet = 576;
         assert_eq!(
-            audio_queue_buffer_frame_count(&ricky_mp3_format(), 835, &descriptions),
+            audio_queue_buffer_frame_count(&mono_game_mp3_format(), 835, &descriptions),
             1728
         );
     }

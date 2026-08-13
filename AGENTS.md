@@ -519,6 +519,57 @@ that exact game version.
 - AI assistance is welcomed and expected. Its output still needs review,
   provenance discipline, and evidence-based validation.
 
+### No app is named in the emulator's source
+
+Code under `src/` must not name a specific app — not in a comment, not in a
+identifier, not in a log message, and above all not in a condition. Describe
+the behaviour instead: what an app did, what iPhone OS guarantees, what shape
+of call arrives. "A game that keeps its scene layout in a property list stores
+rectangles as strings" belongs in the source; the title of the game that made
+you look does not.
+
+This is not a style preference. Three things go wrong when a name gets in:
+
+- It reads as permission to branch on the app. Once one function knows which
+  game is running, the emulator stops implementing iPhone OS and starts
+  implementing a compatibility matrix, and every later reader has to work out
+  whether the surrounding code is a general rule or a special case.
+- It dates instantly and misleads afterwards. The app that motivated a fix is
+  rarely the only one affected and is often not even the most important one;
+  a comment naming it invites the next person to assume the code is only for
+  that app, and to reason about the sample rather than the class. That is how
+  `0f9d5a16` left two identical bugs in place.
+- It puts the maintainer's private test library into a public repository.
+
+Per-app behaviour has a home already: `tapHLE_default_options.txt`, keyed by
+bundle identifier, for the things apps genuinely differ on — orientation,
+native-landscape rendering, control mapping. That file is *supposed* to name
+apps. An option there is also not a licence to skip the underlying fix: record
+the gap separately, and prefer fixing the emulator to shipping a flag.
+
+Where the app-specific narrative belongs is `dev-docs/app-notes/`, which exists
+for exactly that, and the compatibility database. Name apps freely there, in
+commit messages, and in the changelog. Not in `src/`.
+
+A handful of identifier-keyed behavioural hacks predate this rule and are still
+in the tree — memory-zeroing and allocation-quarantine choices in
+`environment.rs`, movie-player waits in `ns_object.rs`, one reachability host
+name in `sc_network_reachability.rs`. **They should not be there.** They are
+debt, tolerated only because each is load-bearing for some app and removing one
+blind would break it. Do not add to them, do not cite them as precedent, and do
+not delete one as a drive-by; migrate it deliberately, with its own regression
+sweep, either into `tapHLE_default_options.txt` or into a general rule that
+covers the class of apps behaving that way.
+
+The principle behind all of this: **advancing one app should advance every app
+like it.** The work of a compatibility branch is to find the general gap the
+app happened to expose — a message iPhone OS answers that tapHLE does not, a
+convention it observes that tapHLE does not — and close that. If a change only
+helps one app, it is either in the wrong place or not yet understood. And when
+a launch option makes a symptom disappear, treat the option as a suspect, not a
+result: two apps carried `--landscape-native` for a year because it hid a
+presentation bug, and both rendered wrong the whole time.
+
 ## Change discipline
 
 ### Finish by pushing

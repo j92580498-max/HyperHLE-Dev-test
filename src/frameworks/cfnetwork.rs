@@ -6,8 +6,8 @@
 //! The CFNetwork framework, specifically its CFHTTPMessage / CFReadStream HTTP
 //! client.
 //!
-//! Early games bundle analytics and reporting SDKs (SPY mouse HD carries EA's
-//! IPSP SDK) that POST telemetry over CFNetwork. tapHLE has no network stack,
+//! Early games bundle analytics and reporting SDKs that POST telemetry over
+//! CFNetwork. tapHLE has no network stack,
 //! so the goal here is not to make the request succeed: it is to let the SDK
 //! *build* a request and *attempt* to send it without crashing, then observe
 //! the attempt fail, exactly as it would on a device with no connectivity, and

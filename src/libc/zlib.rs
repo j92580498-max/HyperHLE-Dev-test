@@ -91,7 +91,7 @@ fn gzopen(env: &mut Environment, path: ConstPtr<u8>, mode: ConstPtr<u8>) -> gzFi
         // through unchanged — that transparency is documented behaviour of
         // gzread, not a quirk, and apps rely on it to open a file without
         // caring whether it was compressed. Failing the open here instead
-        // handed JellyCar a null gzFile for a plain XML level file.
+        // handed an app a null gzFile for a plain XML level file.
         let mut decoder = flate2::read::MultiGzDecoder::new(&compressed[..]);
         let mut data = Vec::new();
         let mut direct = false;

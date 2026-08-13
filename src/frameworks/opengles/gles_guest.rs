@@ -743,7 +743,7 @@ fn glVertexPointer(
 /// extension, and on finding it configures each mesh's arrays once into a VAO
 /// and thereafter just binds the VAO before drawing. With binding a no-op,
 /// every such batch drew with whichever pointers the previous draw happened to
-/// leave behind. In Cubed Rally Redline the track was drawn with its own
+/// leave behind. In one measured case a track mesh was drawn with its own
 /// vertex positions in place of its texture coordinates, sampling one white
 /// corner of the atlas, which is why the world was a flat grey sheet.
 ///

@@ -372,7 +372,7 @@ impl super::ObjC {
 
     /// Getting a refcount of an object.
     /// While Apple's docs advise to not relay on the returned value,
-    /// some games (like "Cut the Rope") does call `retainCount`.
+    /// some games do call `retainCount`.
     pub fn get_refcount(&mut self, object: id) -> NonZeroU32 {
         let Some(entry) = self.objects.get_mut(&object) else {
             panic!("No entry found for object {object:?}, it may have already been deallocated");

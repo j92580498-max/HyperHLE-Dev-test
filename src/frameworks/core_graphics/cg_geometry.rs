@@ -23,7 +23,7 @@ use crate::Environment;
 /// the compact `{{0,0},{1024,768}}` fail and, per the documented contract for
 /// malformed input, come back as zeroes.
 ///
-/// That is not a hypothetical spelling. The Jim and Frank Mysteries HD stores
+/// That is not a hypothetical spelling. A game can store
 /// every element's frame as a string in its scene plists, and its chapters use
 /// the compact form while its main menu uses the spaced one — so the menu drew
 /// and every chapter was a black screen of correctly loaded, correctly bound,
@@ -322,7 +322,7 @@ fn CGRectIntersectsRect(_env: &mut Environment, rect1: CGRect, rect2: CGRect) ->
 /// hands it straight to this function without checking, because on a device
 /// there is nothing to check for.
 ///
-/// The Jim and Frank Mysteries HD ended here while opening its first scene.
+/// Apps end here while laying out a scene.
 pub(super) fn CGRectIntersection(_env: &mut Environment, rect1: CGRect, rect2: CGRect) -> CGRect {
     rect_intersection(rect1, rect2)
 }

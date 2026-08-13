@@ -262,8 +262,8 @@ impl Bundle {
     /// different questions, and conflating them loses this one. The array says
     /// which orientations the app can rotate to; the older singular key says
     /// which one it starts in. An app that lists all four but launches
-    /// landscape is ordinary — The Jim and Frank Mysteries HD is exactly that —
-    /// and reading only the array leaves it in portrait, drawing its landscape
+    /// landscape is ordinary, and reading only the array leaves it in
+    /// portrait, drawing its landscape
     /// artwork sideways in a portrait window.
     ///
     /// When the older key holds a comma-separated list, the first entry is the
@@ -283,10 +283,10 @@ impl Bundle {
         // UISupportedInterfaceOrientations (iOS 3.2) is an array of strings and
         // takes precedence.
         // The newer key is documented as an array, and mostly is, but shipped
-        // Info.plists disagree: Paddle Pong writes a bare string under it, the
-        // older key's spelling with the newer key's name, and Glass Tower 2
-        // writes a dictionary of "Item 0", "Item 1" entries, which is what an
-        // array edited in the wrong pane of Xcode's plist editor becomes.
+        // Info.plists disagree: some write a bare string under it, the older
+        // key's spelling with the newer key's name, and some write a
+        // dictionary of "Item 0", "Item 1" entries, which is what an array
+        // edited in the wrong pane of Xcode's plist editor becomes.
         //
         // A string is read the way the older key is read. Anything else that is
         // not an array of strings is reported and treated as absent, which
@@ -492,9 +492,9 @@ mod tests {
     }
 
     /// The landscape modifier names the interface orientation, which is the
-    /// opposite of the device orientation. Baby Monkey asks for
-    /// `UIInterfaceOrientationLandscapeLeft`, which the environment turns into
-    /// a `LandscapeRight` device orientation; it must still get the
+    /// opposite of the device orientation. An app asking for
+    /// `UIInterfaceOrientationLandscapeLeft` gets a `LandscapeRight` device
+    /// orientation from the environment; it must still be given the
     /// `-LandscapeLeft` image, or it launches upside down.
     #[test]
     fn the_landscape_modifier_names_the_interface_not_the_device() {

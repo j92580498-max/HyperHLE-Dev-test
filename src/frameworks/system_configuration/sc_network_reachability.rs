@@ -156,13 +156,13 @@ fn SCNetworkReachabilityCreateWithAddress(
 /// answer, never the first.
 ///
 /// This mattered because reporting failure hangs SDKs rather than failing them.
-/// Chillingo's Crystal asks whether it is online before starting a session; on
+/// A social SDK asks whether it is online before starting a session; on
 /// "I do not know" it neither proceeds nor gives up, so the splash screen it
 /// presents over the game is never dismissed, and being a full-screen modal it
-/// swallows every touch. That is what stopped The Jim and Frank Mysteries HD at
+/// swallows every touch. That is what stops such a game at
 /// its main menu, and a game-specific hack in
 /// [SCNetworkReachabilityCreateWithName] was already papering over the same
-/// hang in Cut the Rope.
+/// hang.
 fn SCNetworkReachabilityGetFlags(
     env: &mut Environment,
     target: SCNetworkReachabilityRef,
@@ -256,7 +256,7 @@ fn SCNetworkReachabilitySetCallback(
 /// tapHLE has no state changes to report, so this one delivery is the whole of
 /// the callback's life — but omitting it is not "no news", it is silence, and
 /// an SDK that is waiting to be told cannot distinguish silence from a slow
-/// network. Chillingo's Crystal waits exactly there.
+/// network. Such an SDK waits exactly there.
 fn SCNetworkReachabilityScheduleWithRunLoop(
     env: &mut Environment,
     target: SCNetworkReachabilityRef,

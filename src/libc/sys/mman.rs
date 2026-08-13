@@ -83,7 +83,7 @@ fn mmap(
     // MAP_FIXED replaces whatever is mapped there; tapHLE's allocator instead
     // refuses an address it has already handed out, so the collector saw
     // MAP_FAILED and called `ABORT("mmap(PROT_NONE) failed")`, terminating the
-    // app. In Cubed Rally Redline that happened while loading the second race.
+    // app. In one measured case that happened while loading a level.
     //
     // Answering with the same address models the replacement. tapHLE has no
     // per-page protection to apply, and leaving the bytes untouched is the
@@ -210,7 +210,7 @@ fn shm_open(env: &mut Environment, name: ConstPtr<u8>, oflag: i32, _dots: DotDot
 /// then describes tapHLE's own bookkeeping rather than the guest's memory, and
 /// callers act on it: Boehm's collector, inside Mono and therefore inside every
 /// Unity game, prints `Mprotect remapping failed` and calls `abort()`. In Cubed
-/// Rally Redline that ended the app part-way through a session.
+/// measured case that ended the app part-way through a session.
 ///
 /// A request to make memory *less* accessible is the case tapHLE cannot honour,
 /// and there is nothing better to return for it either. Refusing does not
@@ -252,7 +252,7 @@ mod tests {
     #[test]
     fn a_subrange_of_an_existing_mapping_is_recognised() {
         let state = state_with(0x1f00000, 0x100000);
-        // The exact call Boehm's GC_unmap made in Cubed Rally Redline.
+        // The exact call Boehm's GC_unmap made in a measured case.
         assert!(within_existing_mapping(
             &state,
             Ptr::from_bits(0x1f2e000),

@@ -440,7 +440,7 @@ mod tests {
     #[test]
     fn cccrypt_pkcs7_round_trips_and_rejects_bad_padding() {
         let key = [0x5a; AES_BLOCK_SIZE];
-        let plaintext = b"SPYmouse test";
+        let plaintext = b"tapHLE test";
         let ciphertext =
             cccrypt_aes(KCC_ENCRYPT, KCC_OPTION_PKCS7_PADDING, &key, None, plaintext).unwrap();
         assert_eq!(

@@ -13,7 +13,7 @@
 # Each line in this file specifies options for an app; there should only be one
 # line per app. A line should consist of the identifier for an app, followed by
 # a colon (:), followed by the options to apply. To find out an app's
-# identifier, you can run it in tapHLE and look at the “App bundle info”
+# identifier, you can run it in tapHLE and look at the â€œApp bundle infoâ€
 # output. To get a list of possible options, see OPTIONS_HELP.txt or run
 # tapHLE with the --help flag.
 #
@@ -75,7 +75,7 @@ com.nabilchatbi.Ricky: --landscape-left --button-to-touch=DPadLeft,40,285 --butt
 # Warlords HD: Call to Arms
 # Landscape-native renderer: draws a landscape-sized scene directly rather than
 # using UIKit auto-rotation, so it needs the landscape-native screen mode to
-# avoid coming out rotated 90° and clipped.
+# avoid coming out rotated 90Â° and clipped.
 greyhoundgames.warlordshdapp: --landscape-native
 
 # Baby Monkey (going backwards on a pig)
@@ -87,7 +87,11 @@ greyhoundgames.warlordshdapp: --landscape-native
 # Tilt (the analog stick) steers the pig. A = the monkey button, bottom left,
 # which jumps the monkey off the pig before a crash; B = the pig button, bottom
 # right; Start = pause, top left.
-com.kihon.babymonkey: --landscape-native --button-to-touch=A,43,274 --button-to-touch=B,439,274 --button-to-touch=Start,22,22
+# It used to carry --landscape-native. That was a workaround for a
+# presentation bug, not a fact about the app: it renders portrait and
+# relies on the ordinary rotation, so suppressing the rotation left a
+# portrait frame unrotated in a landscape window.
+com.kihon.babymonkey: --landscape-right --button-to-touch=A,43,274 --button-to-touch=B,439,274 --button-to-touch=Start,22,22
 
 # Redline (Cubed Rally Redline)
 # Landscape-only. It used to carry --landscape-native, which was a workaround

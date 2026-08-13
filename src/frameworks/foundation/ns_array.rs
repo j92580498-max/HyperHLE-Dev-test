@@ -65,7 +65,7 @@ pub const CLASSES: ClassExports = objc_classes! {
     // -count; there is no version of honouring the subclass that works without
     // making NSArray itself concrete.
     //
-    // In practice these subclasses are helpers — SPY mouse HD has an
+    // In practice these subclasses are helpers — an app may ship an
     // AS_NSArrayJSONSerializable — where the class exists to hang methods off
     // and the instances are ordinary arrays.
     if this != env.objc.get_known_class("NSArray", &mut env.mem) {

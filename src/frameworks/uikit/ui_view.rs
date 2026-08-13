@@ -196,10 +196,10 @@ fn init_common(env: &mut Environment, this: id) -> id {
     // it for some other reason. Nothing in UIKit's contract makes an app do
     // that, so most never did.
     //
-    // The Jim and Frank Mysteries HD is the measured case: Chillingo's Crystal
-    // presents a full-screen `CCSkinnedView` over the game, that view's buttons
-    // are drawn in `-drawRect:`, and across a whole startup `-drawRect:` was
-    // never called even once. The splash therefore had no button to press, and
+    // The measured case: a bundled social SDK presents a full-screen view over
+    // the game, that view's buttons are drawn in `-drawRect:`, and across a
+    // whole startup `-drawRect:` was never called even once. The panel
+    // therefore had no button to press, and
     // pressing one is the only thing that dismisses it.
     //
     // Restricted to classes that override `-drawRect:`, because displaying a
@@ -224,10 +224,10 @@ fn init_common(env: &mut Environment, this: id) -> id {
 /// without it presents every frame into no drawable.
 ///
 /// Doing it **synchronously** here, which is what this did first, breaks apps
-/// outright: JellyCar 2 faulted during startup because its layout ran while the
-/// view hierarchy was still being built, a moment the app never expects. Merely
+/// outright: an app faulted during startup because its layout ran while the
+/// view hierarchy was still being built, a moment no app expects. Merely
 /// flagging it, and letting `handle_pending_layout` service it on the next run
-/// loop turn, is both what UIKit does and what both apps survive.
+/// loop turn, is both what UIKit does and what apps survive.
 ///
 /// A view not yet in a window is flagged anyway; `handle_pending_layout` skips
 /// it until it is mounted, so it is laid out once it has a real size rather
@@ -236,7 +236,7 @@ pub(super) fn mark_needs_layout_on_mount(env: &mut Environment, view: id) {
     env.objc.borrow_mut::<UIViewHostObject>(view).needs_layout = true;
 
     // During launch, leave it at the flag. The app is still assembling its view
-    // hierarchy and running its layout code now is what killed JellyCar 2.
+    // hierarchy, and running its layout code now is what kills it.
     if !env.framework_state.uikit.ui_application.finished_launching {
         return;
     }
@@ -244,8 +244,8 @@ pub(super) fn mark_needs_layout_on_mount(env: &mut Environment, view: id) {
     // Afterwards, lay out immediately if the view is already in a window.
     // Waiting for the next run loop turn is closer to UIKit, but it costs a
     // frame — and for an EAGLView that frame is presented into no drawable,
-    // which is how Tap Tap Revenge 2 lost its background: the first frames of
-    // its game screen were drawn before the layout that creates the surface.
+    // which is how an app loses its background: the first frames of its game
+    // screen are drawn before the layout that creates the surface.
     let window: id = msg![env; view window];
     if window == nil {
         return;

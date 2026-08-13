@@ -61,8 +61,7 @@ impl HostObject for AVAudioPlayerHostObject {}
 /// two initialisers here each open-coded this, and one of them wrote through
 /// the pointer without checking, so a game that declined the error and then hit
 /// an unreadable sound file was killed by the report rather than by the
-/// failure. The Jim and Frank Mysteries HD does both while opening its first
-/// scene.
+/// failure. A game that loads a scene's sounds in bulk does both at once.
 fn write_os_status_error(env: &mut Environment, out_error: MutPtr<id>, status: NSInteger) {
     if out_error.is_null() {
         return;

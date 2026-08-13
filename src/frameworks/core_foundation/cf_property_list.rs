@@ -29,7 +29,7 @@ const kCFPropertyListMutableContainersAndLeaves: CFPropertyListMutabilityOptions
 /// the other. Apps use this to take a template out of a bundled plist and then
 /// edit the copy, which is exactly the case a shallow copy corrupts.
 ///
-/// The Jim and Frank Mysteries HD does that per scene, reading a schema once
+/// A game with data-driven scenes does that per scene, reading a schema once
 /// and deep-copying it for each element it builds.
 fn deep_copy(env: &mut Environment, value: id, mutability: CFPropertyListMutabilityOptions) -> id {
     if value == nil {

@@ -63,7 +63,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 + (id)imageNamed:(id)name { // NSString*
     // A nil name has no matching resource; UIKit returns nil rather than
-    // searching. (SPY mouse HD calls this from its render loop.)
+    // searching. (Apps call this from their render loops.)
     if name == nil {
         return nil;
     }
