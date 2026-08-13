@@ -15,6 +15,38 @@
 - tapHLEdb: App 19, version 19, report 27 (2026-07-26, tapHLE `730f2c29`,
   ★★★☆☆).
 
+## 2026-08-13: regressed. The menu draws, the text is a quarter turn out
+
+Reported to the database as two stars. The menu reaches a stable screen and the
+button layout is landscape-correct and unstretched — the circles are circles, so
+nothing is being squashed — but every label is rotated a quarter turn and START
+is rotated further, so none of it reads.
+
+**Not caused by the compositing and presentation work of the same day.** On
+`656e01ab`, the revision immediately before that work, this app renders a blank
+white client area and nothing else, for at least ninety seconds. So it was
+already regressed, and those fixes moved it from drawing nothing to drawing a
+menu. The regression is somewhere between `730f2c29` (2026-07-26, the three-star
+revision) and `656e01ab`, and finding it needs a bisect over that range.
+
+What is measured so far:
+
+- `Info.plist` declares `UIInterfaceOrientation = UIInterfaceOrientationPortrait`
+  and ships no `UISupportedInterfaceOrientations`.
+- tapHLE logs `applying device orientation Portrait`, and
+  `Window::rotation_matrix` is the identity for Portrait, so **no presentation
+  rotation is being applied**.
+- The client area is nevertheless 1024x768 landscape, and the content fills it
+  at the right aspect ratio.
+
+Those three together are the discriminator to chase: an app that renders
+landscape into a window tapHLE believes is portrait, with the labels rotated
+relative to the layout rather than with it. Whatever rotates the text is doing
+it independently of the frame, so look for a text path with its own transform
+before looking at the presentation path again.
+
+The coordinate warning below still applies and is probably related.
+
 ## Highest milestone: 3-star (In game), tapHLE `730f2c29`
 
 Reproduced from a clean committed release build (window title
