@@ -2,6 +2,14 @@
 
 ## Unreleased for 0.3.0-alpha.1
 
+- Read the positions and sizes games store as text without insisting on one
+  exact spelling. Games keep the layout of a screen — where each picture and
+  button goes — in data files, written as text like `{{0,0},{1024,768}}`.
+  tapHLE only accepted the variant with spaces after the commas, and silently
+  treated the rest as zero, so every element ended up with no size at all.
+  The Jim and Frank Mysteries HD writes its menu one way and its chapters the
+  other, which is why its menu appeared and every chapter was a black screen.
+
 - Play the compressed sound files a great many games of this era ship. Apple's
   own conversion tool produced them by default, and tapHLE could not read them
   at all — The Jim and Frank Mysteries HD has 267 sounds and not one of them
