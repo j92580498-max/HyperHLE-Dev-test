@@ -90,12 +90,11 @@ greyhoundgames.warlordshdapp: --landscape-native
 com.kihon.babymonkey: --landscape-native --button-to-touch=A,43,274 --button-to-touch=B,439,274 --button-to-touch=Start,22,22
 
 # Redline (Cubed Rally Redline)
-# Unity 4 landscape-native renderer: its CAEAGLLayer drawable is already
-# 480x320 and it sets a matching landscape viewport, so tapHLE's usual
-# portrait-drawable-plus-presentation-rotation turns the finished frame into
-# horizontal bands. The guest renderbuffer was verified correct at
-# presentation time while the window showed none of it.
-com.nocanwin.redline: --landscape-native
+# Landscape-only. It used to carry --landscape-native, which was a workaround
+# for a presentation bug rather than a fact about the app: the frame came out
+# as horizontal bands, and suppressing the rotation hid that at the cost of
+# presenting a portrait frame stretched across a landscape window.
+com.nocanwin.redline: --landscape-left
 
 # Head2Head
 com.darxun: --landscape-right --y-tilt-offset=24
