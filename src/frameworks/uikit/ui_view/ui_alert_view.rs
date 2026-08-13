@@ -14,9 +14,12 @@
 //! deletion or a network action on their behalf.
 //!
 //! That reasoning only holds if the reported index really is the cancel
-//! button's. An alert with no cancel button is dismissed with -1, which is what
-//! UIKit reports for one, rather than with some other button standing in for
-//! it — see [cancel_button_index].
+//! button's. An alert with several buttons and no cancel button is dismissed
+//! with -1, which is what UIKit reports for one, rather than with some other
+//! button standing in for it — see [cancel_button_index].
+//!
+//! The exception is an alert with exactly one button, which is a statement
+//! rather than a question: see [dismissal_button_index].
 
 use crate::frameworks::foundation::{ns_string, NSInteger};
 use crate::objc::{
@@ -74,6 +77,31 @@ fn set_string_property(env: &mut Environment, alert: id, new: id, is_title: bool
 /// URL, and tapHLE exited before the game ever started.
 fn cancel_button_index(has_cancel_button: bool) -> NSInteger {
     if has_cancel_button {
+        0
+    } else {
+        -1
+    }
+}
+
+/// The index `-show` reports, which is not always [cancel_button_index].
+///
+/// The caution above is about *choosing between* buttons. An alert with exactly
+/// one button offers no choice: it is informational, the button is the only
+/// thing on it, and a user who wants to keep playing has one option. Reporting
+/// -1 for that alert says it was dismissed without any button, which UIKit says
+/// only when the app dismissed it itself, so an app waiting to be told its
+/// single button was pressed waits forever. Mr. Oops!! stalls on its own
+/// mission briefing that way — one "OK", added with `addButtonWithTitle:` after
+/// a nil `cancelButtonTitle:`.
+///
+/// Two or more buttons with no cancel button stay -1. That is the case where
+/// picking one is picking *for* the user, and it is the case the Jim and Frank
+/// rate prompt described above falls into.
+fn dismissal_button_index(has_cancel_button: bool, button_count: usize) -> NSInteger {
+    // Index 0 is the cancel button when there is one, and the lone button when
+    // there is not; the two cases coincide because a cancel button is always
+    // first.
+    if has_cancel_button || button_count == 1 {
         0
     } else {
         -1
@@ -233,10 +261,11 @@ pub const CLASSES: ClassExports = objc_classes! {
     log!("UIAlertView: title: {:?}, message: {:?}", title_str, message_str);
 
     let host_object = env.objc.borrow::<UIAlertViewHostObject>(this);
-    let index = cancel_button_index(host_object.has_cancel_button);
+    let index = dismissal_button_index(host_object.has_cancel_button, host_object.buttons.len());
     let reported = match usize::try_from(index).ok().and_then(|i| host_object.buttons.get(i)) {
-        Some(button) => format!("its cancel button ({button:?})"),
-        None => "no button, as it has no cancel button".to_string(),
+        Some(button) if host_object.has_cancel_button => format!("its cancel button ({button:?})"),
+        Some(button) => format!("its only button ({button:?})"),
+        None => "no button, as it has several and none of them is cancel".to_string(),
     };
     log!("UIAlertView: cannot be displayed; reporting it as dismissed by {reported}");
 
@@ -253,7 +282,36 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 #[cfg(test)]
 mod tests {
-    use super::cancel_button_index;
+    use super::{cancel_button_index, dismissal_button_index};
+
+    /// The one-button case this exists for: informational alerts an app blocks
+    /// on. There is nothing else the user could have pressed.
+    #[test]
+    fn a_lone_button_is_reported_as_pressed() {
+        assert_eq!(dismissal_button_index(false, 1), 0);
+    }
+
+    /// The case it must not touch. Jim and Frank's rate prompt is three buttons
+    /// and no cancel; reporting 0 there presses "Rate Now" for the user.
+    #[test]
+    fn several_buttons_and_no_cancel_still_press_nothing() {
+        assert_eq!(dismissal_button_index(false, 3), -1);
+        assert_eq!(dismissal_button_index(false, 2), -1);
+    }
+
+    /// A cancel button is still preferred whenever there is one, whatever else
+    /// the alert offers.
+    #[test]
+    fn a_cancel_button_still_wins() {
+        assert_eq!(dismissal_button_index(true, 1), 0);
+        assert_eq!(dismissal_button_index(true, 3), 0);
+    }
+
+    /// An alert with no buttons at all cannot report one.
+    #[test]
+    fn no_buttons_reports_no_button() {
+        assert_eq!(dismissal_button_index(false, 0), -1);
+    }
 
     /// The index only means "cancel" when the alert was given a cancel button.
     /// Getting this wrong presses a real button on the user's behalf, which is
