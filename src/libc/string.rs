@@ -419,8 +419,9 @@ fn strnstr_inner(mem: &Mem, s: ConstPtr<u8>, find: ConstPtr<u8>, slen: GuestUSiz
 /// caller detects truncation. Getting that backwards is the classic misuse, so
 /// it is worth being explicit: the result can exceed `size`.
 ///
-/// If `dst` has no terminator within `size` bytes there is nothing to append to,
-/// and the specification says to return `size + strlen(src)` and write nothing.
+/// If `dst` has no terminator within `size` bytes there is nothing to append
+/// to, and the specification says to return `size + strlen(src)` and write
+/// nothing.
 fn strlcat(
     env: &mut Environment,
     dst: MutPtr<u8>,
@@ -597,9 +598,9 @@ mod tests {
 
     #[test]
     fn strlcat_writes_nothing_when_the_destination_has_no_terminator_in_range() {
-        // size smaller than the existing content means there is no terminator to
-        // append at, so the specification says write nothing and return
-        // size + strlen(src).
+        // size smaller than the existing content means there is no terminator
+        // to append at, so the specification says write nothing and return size
+        // + strlen(src).
         assert_eq!(strlcat_call(b"abcd", b"xy", 2), (4, b"abcd".to_vec()));
     }
 

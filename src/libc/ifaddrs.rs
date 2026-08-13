@@ -7,9 +7,9 @@
 //!
 //! Apps reach for this to answer one of two questions: what is my own IP
 //! address, and is there a network at all. The interfaces reported here are
-//! synthetic and deterministic, matching the set [crate::libc::net::if_] indexes
-//! and the `en0` that [crate::libc::sysctl] describes. Exposing the host
-//! computer's real adapters would be both a privacy leak and a source of
+//! synthetic and deterministic, matching the set [crate::libc::net::if_]
+//! indexes and the `en0` that [crate::libc::sysctl] describes. Exposing the
+//! host computer's real adapters would be both a privacy leak and a source of
 //! run-to-run variation in a game's behaviour.
 
 use crate::dyld::FunctionExports;
@@ -19,7 +19,8 @@ use crate::libc::sys::socket::sockaddr;
 use crate::mem::{MutPtr, MutVoidPtr, Ptr, SafeRead};
 use crate::Environment;
 
-/// Darwin's 32-bit `struct ifaddrs`: seven words, all pointers except the flags.
+/// Darwin's 32-bit `struct ifaddrs`: seven words, all pointers except the
+/// flags.
 #[derive(Copy, Clone, Debug)]
 #[repr(C, packed)]
 #[allow(non_camel_case_types)]
@@ -144,8 +145,8 @@ fn getifaddrs(env: &mut Environment, ifap: MutPtr<MutPtr<ifaddrs>>) -> i32 {
 /// Apple sample for finding the device's own address declares its list pointer,
 /// calls `getifaddrs`, and calls this unconditionally afterwards, so the null
 /// case is reached whenever the query fails. 314 of the 1192 apps in the
-/// import-demand catalogue import this function, and before it existed every one
-/// of them would have died on that cleanup line.
+/// import-demand catalogue import this function, and before it existed every
+/// one of them would have died on that cleanup line.
 ///
 /// Darwin allocates the whole list as one block and frees it with a single
 /// `free`, whereas [getifaddrs] here allocates each piece separately, so this
@@ -207,8 +208,8 @@ mod tests {
         assert_eq!(interfaces[1].name, b"en0");
         assert!(interfaces[1].flags & IFF_LOOPBACK == 0);
         assert!(interfaces[1].flags & IFF_BROADCAST != 0);
-        // A broadcast interface must supply the broadcast address, since that is
-        // what the ifa_dstaddr union means when IFF_BROADCAST is set.
+        // A broadcast interface must supply the broadcast address, since that
+        // is what the ifa_dstaddr union means when IFF_BROADCAST is set.
         assert!(interfaces[1].broadcast.is_some());
     }
 

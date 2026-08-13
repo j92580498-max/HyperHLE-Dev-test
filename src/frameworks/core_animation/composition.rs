@@ -721,11 +721,11 @@ unsafe fn composite_layer_recursive(
 
         gles.EnableClientState(gles11::TEXTURE_COORD_ARRAY);
         // Which way up the texture's rows are depends on who produced them, and
-        // the three sources do not agree. Core Graphics hands back top-to-bottom
-        // rows — that is true of a `CGImage` in `contents` and equally of the
-        // bitmap `-drawRect:` drew into — while pixels read back out of a
-        // renderbuffer are bottom-to-top, as OpenGL stores them. Only the last
-        // needs its UVs flipped.
+        // the three sources do not agree. Core Graphics hands back
+        // top-to-bottom rows — that is true of a `CGImage` in `contents` and
+        // equally of the bitmap `-drawRect:` drew into — while pixels read back
+        // out of a renderbuffer are bottom-to-top, as OpenGL stores them. Only
+        // the last needs its UVs flipped.
         //
         // Testing `contents` alone put the `-drawRect:` bitmap in the flipped
         // branch with the renderbuffer, which drew every custom-drawn view

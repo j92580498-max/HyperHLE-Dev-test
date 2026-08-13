@@ -7,10 +7,10 @@
 //!
 //! The loop the compiler emits around a `for...in` body is not just a call to
 //! `countByEnumeratingWithState:objects:count:`. It also reads the word at the
-//! state's `mutationsPtr` before the first batch and compares it on every batch,
-//! and calls [objc_enumerationMutation] when it changes. That is the check that
-//! turns a collection modified mid-loop into a diagnostic instead of a walk off
-//! the end of a stale buffer.
+//! state's `mutationsPtr` before the first batch and compares it on every
+//! batch, and calls [objc_enumerationMutation] when it changes. That is the
+//! check that turns a collection modified mid-loop into a diagnostic instead of
+//! a walk off the end of a stale buffer.
 //!
 //! `objc_enumerationMutation` is the single most widely imported symbol tapHLE
 //! did not provide: 1100 of the 1192 distinct apps in the import-demand
@@ -38,8 +38,8 @@ use crate::Environment;
 /// Here it logs and returns, which is the same choice
 /// [crate::frameworks::foundation::ns_exception] already makes for every other
 /// exception: native Objective-C exception delivery is not implemented, so
-/// raising would mean terminating, and terminating on a diagnostic the app might
-/// have caught is worse than continuing.
+/// raising would mean terminating, and terminating on a diagnostic the app
+/// might have caught is worse than continuing.
 ///
 /// Continuing is not free and the log line says so: the enumeration proceeds
 /// over a batch that no longer matches the collection, so the loop may see a
@@ -59,9 +59,9 @@ fn objc_enumerationMutation(env: &mut Environment, collection: id) {
 /// to something that is not an object.
 ///
 /// `description` would be more informative and is what the real exception
-/// message uses, but this is called from a broken enumeration: the collection is
-/// mid-mutation, and asking it to describe itself could re-enter the very code
-/// that went wrong.
+/// message uses, but this is called from a broken enumeration: the collection
+/// is mid-mutation, and asking it to describe itself could re-enter the very
+/// code that went wrong.
 fn describe(env: &mut Environment, collection: id) -> String {
     if collection == nil {
         return "A nil collection".to_string();

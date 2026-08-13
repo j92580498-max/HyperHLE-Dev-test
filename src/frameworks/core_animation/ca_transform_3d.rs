@@ -29,10 +29,10 @@ use crate::frameworks::core_graphics::CGFloat;
 use crate::mem::SafeRead;
 use crate::Environment;
 
-/// Apple's convention is that a point is a **row** vector post-multiplied by the
-/// matrix: `p' = p × M`. That is the same convention [CGAffineTransform] uses,
-/// which is why the translation lives in `m41`–`m43` rather than in the last
-/// column.
+/// Apple's convention is that a point is a **row** vector post-multiplied by
+/// the matrix: `p' = p × M`. That is the same convention [CGAffineTransform]
+/// uses, which is why the translation lives in `m41`–`m43` rather than in the
+/// last column.
 ///
 /// Getting this backwards transposes every rotation, and a transposed rotation
 /// is still a valid rotation — by the opposite angle — so it produces plausible
@@ -89,8 +89,8 @@ impl GuestArg for CATransform3D {
 }
 
 impl CATransform3D {
-    /// Row-major, so `rows[i][j]` is `m(i+1)(j+1)`: the same subscript order the
-    /// field names use.
+    /// Row-major, so `rows[i][j]` is `m(i+1)(j+1)`: the same subscript order
+    /// the field names use.
     fn rows(self) -> [[CGFloat; 4]; 4] {
         [
             [self.m11, self.m12, self.m13, self.m14],
