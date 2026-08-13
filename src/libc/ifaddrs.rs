@@ -59,7 +59,7 @@ struct Interface {
 ///
 /// A device has `lo0` and, on WiFi, `en0`; `pdp_ip0` exists only on a cellular
 /// connection and is deliberately absent, because
-/// [crate::frameworks::system_configuration::sc_network_reachability] tells
+/// [crate::frameworks::system_configuration]'s reachability implementation tells
 /// guests the network is direct rather than WWAN, and the two answers should not
 /// contradict each other.
 ///
