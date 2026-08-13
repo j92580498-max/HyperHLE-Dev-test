@@ -58,9 +58,9 @@ struct Interface {
 /// The interface list, in the order `getifaddrs` reports it.
 ///
 /// A device has `lo0` and, on WiFi, `en0`; `pdp_ip0` exists only on a cellular
-/// connection and is deliberately absent, because
-/// [crate::frameworks::system_configuration]'s reachability implementation tells
-/// guests the network is direct rather than WWAN, and the two answers should not
+/// connection and is deliberately absent, because the reachability
+/// implementation in [crate::frameworks::system_configuration] tells guests
+/// the network is direct rather than WWAN, and the two answers should not
 /// contradict each other.
 ///
 /// The `en0` address is a fixed private one. It is not the host's, and a game
