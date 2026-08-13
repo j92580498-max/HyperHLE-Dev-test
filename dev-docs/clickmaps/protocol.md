@@ -1,0 +1,88 @@
+# Clickmaps
+
+A clickmap is a replayable record of how to drive one app to a rating
+milestone: the launch options, the window size the coordinates belong to, the
+waits, and the taps, with a plain-words note of what each step should produce.
+
+They exist because rediscovering a route is the most expensive and least
+interesting thing an agent does. Finding that a game's profile slot is at
+`(202, 199)` costs a launch, a screenshot, a guess, another screenshot, and a
+few thousand tokens of looking at pictures — and it is the same answer every
+time. Recording it once means the next run starts by *replaying* and only
+spends tokens where the replay stops.
+
+**Try the map before exploring.** If a clickmap exists for the app, or for
+another version of it, run `dev-scripts/clickmap.ps1` first. Explore only from
+the step where it stopped. This is also the rule for a version bump: a map for
+1.0 is usually most of the map for 1.1, and the parts that moved are exactly
+what is worth a screenshot.
+
+## Files
+
+- `dev-docs/clickmaps/schema.json` — the format, JSON Schema 2020-12.
+- `dev-docs/clickmaps/<slug>.json` — one map per app, slug matching the app
+  note in `dev-docs/app-notes/`.
+- `dev-scripts/clickmap.ps1` — the runner. `-Validate` checks a map without
+  launching anything.
+
+The app note stays the place for narrative: what was tried, what was ruled out,
+why a coordinate is where it is. The clickmap is only the route. Keep the note
+pointing at the map rather than duplicating the steps, so they cannot drift.
+
+## Replaying
+
+```powershell
+.\dev-scripts\clickmap.ps1 -Map dev-docs\clickmaps\jim-and-frank-hd.json `
+                           -App "tapHLE_apps\J & F HD (v1.1) [Cracked].ipa"
+```
+
+The runner launches the app, executes each step, captures a frame after every
+step into `-OutDir`, and prints one line per step. It exits non-zero if the app
+died, and names the step it died on.
+
+What it does **not** do is decide whether a step worked. It cannot: `expect` is
+prose, and comparing frames is what
+`dev-docs/app-debugging-playbook.md` warns about — a screen that animates on
+its own changes between two frames whether or not the tap landed. So the runner
+reports, and a human or an agent looks at the captures. That division is
+deliberate: the cheap mechanical part is automated, the judgement is not.
+
+## Recording a map
+
+Write one whenever a run reaches a rating milestone, in the same commit as the
+report. The route is fresh then and never will be again.
+
+Record the coordinates in **client** coordinates, origin top-left. A capture
+usually includes the window border and title bar, so a position read off a
+screenshot is not a client coordinate — subtract the offset, and say so in
+`notes` if the app's own frame capture uses different axes again.
+
+Put in `notes` anything a replayer would otherwise have to rediscover the hard
+way. Real examples from existing maps: a Return that only registers as a raw
+scancode because SDL never sees a virtual-key-only synthetic press; a title
+screen that keeps animating for seconds after a missed tap, so a frame
+comparison shows change either way; a press shorter than about 300 ms that one
+app does not see at all.
+
+## Saved state is why a replay diverges
+
+The most common reason a good map stops working is that the app now has a save.
+A game whose first run offers **New Game** offers **Continue** on the second,
+in the same place, and the step after that is a different screen.
+
+Mark those steps with `requires_save_state`, and prefer routes that survive
+both. When a route cannot, record the fresh-profile route as the map and note
+where a saved game diverges — a replay that finds the wrong screen should say
+so rather than click on regardless.
+
+## Reporting a replay
+
+A replay is evidence, and the same rules apply as to any other run: identity
+comes from `tapHLE --info`, and a result from a dirty worktree never enters the
+database. If a replay of a map recorded at three stars now stops at step 4,
+that is a regression and it is filed immediately — with the step id in the
+frontier text, which is the most useful thing a later reader can be given.
+
+If a map replays clean, say so in the report's frontier. "Replayed
+`jim-and-frank-hd.json` end to end" is a stronger and shorter claim than a
+paragraph describing the same clicks.

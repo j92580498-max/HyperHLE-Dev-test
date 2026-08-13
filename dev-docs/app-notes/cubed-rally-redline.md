@@ -39,6 +39,10 @@ real results rather than an artefact of a bad dump.
 
 ## Click map
 
+Recorded as a replayable clickmap in
+`dev-docs/clickmaps/cubed-rally-redline.json`, verified end to end on
+`58e8c1a6`. Replay it with `dev-scripts/clickmap.ps1` before exploring.
+
 Launch options: none (no entry in `tapHLE_default_options.txt`). Window client
 area 480x320, landscape, matching the app's own resolution 1:1.
 
