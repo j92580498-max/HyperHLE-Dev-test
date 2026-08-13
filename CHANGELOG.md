@@ -2,6 +2,27 @@
 
 ## Unreleased for 0.3.0-alpha.1
 
+- Let a game set up an object from a whole block of saved settings at once,
+  rather than one setting at a time. Games that keep the description of a
+  scene in a data file hand the whole description over in one go, and that
+  way of doing it did not exist, so the game ended the moment a scene was
+  built. The Jim and Frank Mysteries HD builds every element of every scene
+  this way.
+
+- Fill in the settings of a scrolling view. A game configures such a view
+  before showing it — whether the scroll bars appear, where the content
+  starts, how far it is inset — and then asks it what state it is in. Six of
+  those settings were missing and any one of them ended the game. The letter
+  that opens The Jim and Frank Mysteries HD's first chapter is one of these
+  views.
+
+- Stop insisting a rectangle's centre survive being trimmed to the last
+  decimal place. Trimming a margin off a rectangle is one of the commonest
+  things a game does when laying out a screen, and tapHLE checked its own
+  arithmetic afterwards with a comparison that ordinary numbers fail, so the
+  game ended. Trimming away more than a rectangle holds is now answered the
+  way it should be, too, instead of ending the game.
+
 - Copy a game's data templates properly instead of ending the game. Games read
   a layout or a set of properties once and then take a private copy for each
   thing they build from it. The call that makes such a copy did not exist, so
