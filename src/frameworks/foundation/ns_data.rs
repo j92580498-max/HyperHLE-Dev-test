@@ -412,7 +412,13 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 pub fn to_rust_slice(env: &mut Environment, data: id) -> &[u8] {
     let borrowed_data = env.objc.borrow::<NSDataHostObject>(data);
-    assert!(!borrowed_data.bytes.is_null() && borrowed_data.length != 0);
+    // Empty data is ordinary, not a mistake: a zero-length file read off disk,
+    // a response with no body, and a plain `[NSData data]` all arrive here, and
+    // the empty slice is the right answer for each. This used to assert, which
+    // ended the app for reading a file that happened to be empty.
+    if borrowed_data.bytes.is_null() || borrowed_data.length == 0 {
+        return &[];
+    }
     env.mem
         .bytes_at(borrowed_data.bytes.cast(), borrowed_data.length)
 }
