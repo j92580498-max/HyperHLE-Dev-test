@@ -2,6 +2,14 @@
 
 ## Unreleased for 0.3.0-alpha.1
 
+- Let a game get past a pop-up that has only one button. tapHLE cannot draw
+  pop-ups, so it tells the game one was dismissed; for a pop-up offering a
+  single "OK" it used to say nobody pressed anything, which the game reads as
+  the message never having been acknowledged, and it waits there. A pop-up
+  with one button is an announcement rather than a question, so that button is
+  now reported as pressed. Pop-ups offering a real choice are untouched and
+  still press nothing, because picking one would be choosing for the player.
+  Mr. Oops!! stopped at its mission briefing and now starts a stage.
 - Tell a game its network request failed instead of leaving it waiting.
   tapHLE has no network, and it used to say so by refusing to build the
   request at all — which no real device does even in airplane mode, so no
