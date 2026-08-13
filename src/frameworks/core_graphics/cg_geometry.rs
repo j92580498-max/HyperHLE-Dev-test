@@ -15,9 +15,38 @@ use crate::dyld::{export_c_func, ConstantExports, FunctionExports, HostConstant}
 use crate::mem::{MutPtr, SafeRead};
 use crate::Environment;
 
-fn parse_tuple(s: &str) -> Result<(f32, f32), ()> {
-    let (a, b) = s.split_once(", ").ok_or(())?;
-    Ok((a.parse().map_err(|_| ())?, b.parse().map_err(|_| ())?))
+/// Read the numbers out of a braced geometry string, ignoring layout.
+///
+/// Core Graphics writes `{{0, 0}, {1024, 768}}` and reads back anything of that
+/// shape regardless of whitespace. tapHLE used to require the exact spelling it
+/// emits — `", "` between numbers and `"}, {"` between the pairs — which made
+/// the compact `{{0,0},{1024,768}}` fail and, per the documented contract for
+/// malformed input, come back as zeroes.
+///
+/// That is not a hypothetical spelling. The Jim and Frank Mysteries HD stores
+/// every element's frame as a string in its scene plists, and its chapters use
+/// the compact form while its main menu uses the spaced one — so the menu drew
+/// and every chapter was a black screen of correctly loaded, correctly bound,
+/// zero-sized quads.
+fn parse_numbers<const N: usize>(s: &str) -> Result<[f32; N], ()> {
+    let mut out = [0.0; N];
+    let mut count = 0;
+    for field in s.split(['{', '}', ',']) {
+        let field = field.trim();
+        if field.is_empty() {
+            continue;
+        }
+        if count == N {
+            return Err(()); // more numbers than this shape holds
+        }
+        out[count] = field.parse().map_err(|_| ())?;
+        count += 1;
+    }
+    if count == N {
+        Ok(out)
+    } else {
+        Err(())
+    }
 }
 
 #[derive(Copy, Clone, Debug, Default, PartialEq)]
@@ -45,8 +74,7 @@ impl GuestArg for CGPoint {
 impl std::str::FromStr for CGPoint {
     type Err = ();
     fn from_str(s: &str) -> Result<CGPoint, ()> {
-        let s = s.strip_prefix('{').ok_or(())?.strip_suffix('}').ok_or(())?;
-        let (x, y) = parse_tuple(s)?;
+        let [x, y] = parse_numbers(s)?;
         Ok(CGPoint { x, y })
     }
 }
@@ -120,12 +148,8 @@ impl GuestArg for CGSize {
 impl std::str::FromStr for CGSize {
     type Err = ();
     fn from_str(s: &str) -> Result<CGSize, ()> {
-        let s = s.strip_prefix('{').ok_or(())?.strip_suffix('}').ok_or(())?;
-        let (w, h) = parse_tuple(s)?;
-        Ok(CGSize {
-            width: w,
-            height: h,
-        })
+        let [width, height] = parse_numbers(s)?;
+        Ok(CGSize { width, height })
     }
 }
 impl std::fmt::Display for CGSize {
@@ -201,14 +225,7 @@ impl GuestArg for CGRect {
 impl std::str::FromStr for CGRect {
     type Err = ();
     fn from_str(s: &str) -> Result<CGRect, ()> {
-        let s = s
-            .strip_prefix("{{")
-            .ok_or(())?
-            .strip_suffix("}}")
-            .ok_or(())?;
-        let (a, b) = s.split_once("}, {").ok_or(())?;
-        let (x, y) = parse_tuple(a)?;
-        let (width, height) = parse_tuple(b)?;
+        let [x, y, width, height] = parse_numbers(s)?;
         Ok(CGRect {
             origin: CGPoint { x, y },
             size: CGSize { width, height },
@@ -699,6 +716,41 @@ mod tests {
             origin: CGPoint { x, y },
             size: CGSize { width, height },
         }
+    }
+
+    /// The spelling Core Graphics emits, and the compact one apps store in
+    /// plists. Both must parse; only the first used to.
+    #[test]
+    fn geometry_strings_parse_with_or_without_spaces() {
+        let spaced: CGRect = "{{-2, 634}, {-1, -1}}".parse().unwrap();
+        assert_eq!(spaced, rect(-2.0, 634.0, -1.0, -1.0));
+        let compact: CGRect = "{{0,0},{1024,768}}".parse().unwrap();
+        assert_eq!(compact, rect(0.0, 0.0, 1024.0, 768.0));
+        let roomy: CGRect = "{ { 1 , 2 } , { 3 , 4 } }".parse().unwrap();
+        assert_eq!(roomy, rect(1.0, 2.0, 3.0, 4.0));
+
+        let p: CGPoint = "{12,34}".parse().unwrap();
+        assert_eq!(p, CGPoint { x: 12.0, y: 34.0 });
+        let sz: CGSize = "{5, 6}".parse().unwrap();
+        assert_eq!(
+            sz,
+            CGSize {
+                width: 5.0,
+                height: 6.0
+            }
+        );
+    }
+
+    /// Malformed input still has to fail, so callers keep getting the
+    /// documented zeroes rather than a silently wrong rectangle.
+    #[test]
+    fn malformed_geometry_strings_are_rejected() {
+        assert!("".parse::<CGRect>().is_err());
+        assert!("{{0,0},{1,2,3}}".parse::<CGRect>().is_err()); // too many
+        assert!("{{0,0},{1}}".parse::<CGRect>().is_err()); // too few
+        assert!("{{0,0},{a,b}}".parse::<CGRect>().is_err()); // not numbers
+        assert!("{1,2}".parse::<CGPoint>().is_ok());
+        assert!("{1,2,3}".parse::<CGPoint>().is_err());
     }
 
     #[test]
