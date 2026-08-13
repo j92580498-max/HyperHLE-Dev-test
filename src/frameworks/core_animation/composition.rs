@@ -720,24 +720,22 @@ unsafe fn composite_layer_recursive(
         gles.VertexPointer(2, gles11::FLOAT, 0, 0 as *const GLvoid);
 
         gles.EnableClientState(gles11::TEXTURE_COORD_ARRAY);
-        // Which way up the texture's rows are depends on who produced them, and
-        // the three sources do not agree. Core Graphics hands back
-        // top-to-bottom rows — that is true of a `CGImage` in `contents` and
-        // equally of the bitmap `-drawRect:` drew into — while pixels read back
-        // out of a renderbuffer are bottom-to-top, as OpenGL stores them. Only
-        // the last needs its UVs flipped.
+        // Which way up the texture's rows are depends on who produced them. A
+        // `CGImage` assigned to `contents` arrives top-to-bottom and is used as
+        // it is; everything else here — the bitmap `-drawRect:` drew into, and
+        // pixels read back out of a renderbuffer — is bottom-to-top and needs
+        // its UVs flipped.
         //
-        // Testing `contents` alone put the `-drawRect:` bitmap in the flipped
-        // branch with the renderbuffer, which drew every custom-drawn view
-        // upside down. That went unnoticed because layers never displayed at
-        // all until views started drawing themselves, so this branch had
-        // effectively never carried drawn content. The order of the tests
-        // matches the uploads above, where a later source overwrites an
-        // earlier one.
-        let rows_are_bottom_to_top = host_obj.contents == nil && host_obj.cg_context.is_none();
+        // Do not "correct" this to also exclude `cg_context`. The drawing that
+        // fills that bitmap is written for the flip: `CGContextDrawImage`
+        // inverts the vertical texture coordinate and glyph drawing does not,
+        // and both come out right only when the result is flipped once here.
+        // Dropping the flip mirrors every string an app draws, and every image
+        // it composes into a context, which is most of a hand-drawn interface.
+        let rows_are_top_to_bottom = host_obj.contents == nil;
         gles.BindBuffer(
             gles11::ARRAY_BUFFER,
-            if rows_are_bottom_to_top {
+            if rows_are_top_to_bottom {
                 misc.flipped_square_buffer
             } else {
                 misc.basic_square_buffer

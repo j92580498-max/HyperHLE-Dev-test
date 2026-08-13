@@ -33,7 +33,10 @@ use crate::frameworks::core_animation::CACurrentMediaTime;
 use crate::frameworks::core_foundation::time::CFTimeInterval;
 use crate::frameworks::core_graphics::cg_affine_transform::CGAffineTransform;
 use crate::frameworks::core_graphics::cg_color::CGColorRef;
-use crate::frameworks::core_graphics::cg_context::{CGContextClearRect, CGContextRef};
+use crate::frameworks::core_graphics::cg_context::{
+    CGContextClearRect, CGContextRef, CGContextRestoreGState, CGContextSaveGState, CGContextScaleCTM,
+    CGContextTranslateCTM,
+};
 use crate::frameworks::core_graphics::{CGFloat, CGPoint, CGRect, CGSize};
 use crate::frameworks::foundation::ns_string::{from_rust_string, get_static_str, to_rust_string};
 use crate::frameworks::foundation::{ns_array, NSInteger, NSTimeInterval, NSUInteger};
@@ -1088,7 +1091,21 @@ pub const CLASSES: ClassExports = objc_classes! {
         CGContextClearRect(env, context, bounds);
     }
     UIGraphicsPushContext(env, context);
+    // UIKit hands -drawRect: a context whose origin is the top-left corner and
+    // whose y grows downward, which is the opposite of the Core Graphics
+    // context underneath it. A view draws to those coordinates, so without the
+    // flip everything it paints lands mirrored top to bottom -- and a
+    // full-screen view drawn that way is not obviously mirrored, it just looks
+    // wrong in a way that is easy to blame on the compositor.
+    //
+    // Only this path gets the flip. A plain CALayer delegate that implements
+    // drawLayer:inContext: itself is drawing in Core Graphics' coordinates and
+    // must not be flipped, which is why this is here and not in CALayer.
+    CGContextSaveGState(env, context);
+    CGContextTranslateCTM(env, context, 0.0, bounds.size.height);
+    CGContextScaleCTM(env, context, 1.0, -1.0);
     () = msg![env; this drawRect:bounds];
+    CGContextRestoreGState(env, context);
     UIGraphicsPopContext(env);
 }
 
