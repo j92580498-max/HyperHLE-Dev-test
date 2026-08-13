@@ -90,18 +90,14 @@ pub const CLASSES: ClassExports = objc_classes! {
         timeout_interval,
     );
 
-    // Preserving old behaviour
-    if !env.options.network_access {
-        log_dbg!(
-            "Network access is disabled, [(NSURLRequest *){:?} initWithURL:{} cachePolicy:{} timeoutInterval:{}] -> nil",
-            this,
-            to_rust_string(env, url_desc),
-            cache_policy,
-            timeout_interval,
-        );
-        release(env, this);
-        return nil;
-    }
+    // A request is a value, not a connection: building one performs no I/O and
+    // succeeds on a device in airplane mode exactly as it does on WiFi. tapHLE
+    // used to return nil here when network access was off, which no real device
+    // ever does, so no app has code for it — they carry the nil forward and
+    // hand it to NSURLConnection, which then cannot report a failure against a
+    // request that does not exist. Offline is modelled where it actually
+    // happens, in NSURLConnection, which fails with
+    // NSURLErrorNotConnectedToInternet.
 
     let url_copy = msg![env; url copy];
     env.objc.borrow_mut::<NSURLRequestHostObject>(this).url = url_copy;

@@ -2,6 +2,15 @@
 
 ## Unreleased for 0.3.0-alpha.1
 
+- Tell a game its network request failed instead of leaving it waiting.
+  tapHLE has no network, and it used to say so by refusing to build the
+  request at all — which no real device does even in airplane mode, so no
+  game has code for it. Games carried the empty request forward and either
+  hung on a sign-in, a leaderboard or an advert that could never answer, or
+  quit outright. The request is now built normally and the connection reports
+  that there is no internet connection, which is the failure games already
+  know how to handle. Mr. Oops!! was quitting during startup on its Twitter
+  sign-in and now reaches its title screen.
 - Draw the shapes and outlines games ask for directly instead of quitting:
   circles and ovals, rectangle outlines, sets of separate lines such as
   grids and tick marks, and the "cut out the overlap" style of filling.
