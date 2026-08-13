@@ -546,8 +546,8 @@ fn strtoull(
 ///
 /// Its unsigned twin `strtoull` was already here; this is the half that was
 /// missing, and 197 of the 1192 distinct apps in the import-demand catalogue
-/// import it. Anything parsing an identifier or a timestamp that does not fit in
-/// 32 bits reaches for it.
+/// import it. Anything parsing an identifier or a timestamp that does not fit
+/// in 32 bits reaches for it.
 ///
 /// Saturating on overflow rather than wrapping, which is what the C standard
 /// specifies: the result is clamped to the representable range. `strtoull` here

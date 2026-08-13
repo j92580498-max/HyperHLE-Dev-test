@@ -459,16 +459,16 @@ fn CGRectIsEmpty(_env: &mut Environment, rect: CGRect) -> bool {
 }
 
 fn rect_is_empty(rect: CGRect) -> bool {
-    // Tested for being positive rather than for being non-positive so that a NaN
-    // extent counts as empty. A rectangle whose size has picked up a NaN from
-    // guest arithmetic encloses nothing anyone can draw, and calling it
+    // Tested for being positive rather than for being non-positive so that a
+    // NaN extent counts as empty. A rectangle whose size has picked up a NaN
+    // from guest arithmetic encloses nothing anyone can draw, and calling it
     // non-empty would send it on to code that then divides by it.
     let positive = |v: CGFloat| v.partial_cmp(&0.0) == Some(std::cmp::Ordering::Greater);
     !(positive(rect.size.width) && positive(rect.size.height))
 }
 
-/// Turn a rectangle with a negative width or height into the equivalent one with
-/// positive extents.
+/// Turn a rectangle with a negative width or height into the equivalent one
+/// with positive extents.
 ///
 /// Guest code produces these constantly by subtracting two points in whichever
 /// order they arrived, and most of Core Graphics is specified in terms of the
@@ -529,8 +529,8 @@ const CGRectMinYEdge: CGRectEdge = 1;
 const CGRectMaxXEdge: CGRectEdge = 2;
 const CGRectMaxYEdge: CGRectEdge = 3;
 
-/// Split a rectangle into a slice of the given thickness taken off one edge, and
-/// the remainder.
+/// Split a rectangle into a slice of the given thickness taken off one edge,
+/// and the remainder.
 ///
 /// The two out-parameters are what makes this awkward to use and easy to get
 /// wrong: `slice` is the piece cut off, `remainder` is what is left, and either
