@@ -78,6 +78,7 @@ pub const DYLIB: crate::dyld::HostDylib = crate::dyld::HostDylib {
         ui_device::CONSTANTS,
         ui_geometry::CONSTANTS,
         ui_image_picker_controller::CONSTANTS,
+        ui_pasteboard::CONSTANTS,
         ui_view::ui_control::ui_text_field::CONSTANTS,
         ui_view::ui_window::CONSTANTS,
     ],
