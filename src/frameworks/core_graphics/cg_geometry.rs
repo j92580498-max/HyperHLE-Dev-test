@@ -422,7 +422,12 @@ fn CGRectOffset(_env: &mut Environment, rect: CGRect, dx: CGFloat, dy: CGFloat) 
     }
 }
 
-fn CGRectInset(_env: &mut Environment, rect: CGRect, dx: CGFloat, dy: CGFloat) -> CGRect {
+/// Shrink (or, for negative insets, grow) a rectangle about its centre.
+///
+/// Over-insetting is not an error: Core Graphics answers a rectangle that has
+/// been inset past nothing with the null rectangle, which is how a caller that
+/// insets by a fixed margin discovers the rectangle was too small to take it.
+fn rect_inset(rect: CGRect, dx: CGFloat, dy: CGFloat) -> CGRect {
     let res = CGRect {
         origin: CGPoint {
             x: rect.origin.x + dx,
@@ -433,13 +438,14 @@ fn CGRectInset(_env: &mut Environment, rect: CGRect, dx: CGFloat, dy: CGFloat) -
             height: rect.size.height - 2.0 * dy,
         },
     };
-    assert!(res.size.width >= 0.0); // TODO return a null rectangle
-    assert!(res.size.height >= 0.0); // TODO return a null rectangle
-
-    // center invariant
-    assert!(rect.origin.x + rect.size.width / 2.0 == res.origin.x + res.size.width / 2.0);
-    assert!(rect.origin.y + rect.size.height / 2.0 == res.origin.y + res.size.height / 2.0);
+    if res.size.width < 0.0 || res.size.height < 0.0 {
+        return CGRectNull;
+    }
     res
+}
+
+fn CGRectInset(_env: &mut Environment, rect: CGRect, dx: CGFloat, dy: CGFloat) -> CGRect {
+    rect_inset(rect, dx, dy)
 }
 
 /// Whether a rectangle encloses no area.
@@ -662,9 +668,57 @@ pub const CONSTANTS: ConstantExports = &[
 #[cfg(test)]
 mod tests {
     use super::{
-        divide, rect_intersection, rect_is_empty, standardize, CGPoint, CGRect, CGRectMaxXEdge,
-        CGRectMaxYEdge, CGRectMinXEdge, CGRectMinYEdge, CGRectNull, CGRectZero, CGSize,
+        divide, rect_inset, rect_intersection, rect_is_empty, standardize, CGPoint, CGRect,
+        CGRectMaxXEdge, CGRectMaxYEdge, CGRectMinXEdge, CGRectMinYEdge, CGRectNull, CGRectZero,
+        CGSize,
     };
+
+    #[test]
+    fn insetting_shrinks_about_the_centre() {
+        assert_eq!(
+            rect_inset(rect(0.0, 0.0, 10.0, 10.0), 2.0, 3.0),
+            rect(2.0, 3.0, 6.0, 4.0)
+        );
+    }
+
+    #[test]
+    fn negative_insets_grow_the_rectangle() {
+        assert_eq!(
+            rect_inset(rect(10.0, 10.0, 4.0, 4.0), -1.0, -1.0),
+            rect(9.0, 9.0, 6.0, 6.0)
+        );
+    }
+
+    /// Insetting a rectangle past nothing answers the null rectangle rather
+    /// than a rectangle of negative size. An app that insets by a fixed margin
+    /// meets this whenever the rectangle is smaller than the margin, so it has
+    /// to be an answer and not a failure.
+    #[test]
+    fn over_insetting_gives_the_null_rectangle() {
+        assert_eq!(rect_inset(rect(0.0, 0.0, 4.0, 100.0), 3.0, 0.0), CGRectNull);
+        assert_eq!(rect_inset(rect(0.0, 0.0, 100.0, 4.0), 0.0, 3.0), CGRectNull);
+    }
+
+    /// Exactly consuming the rectangle is not over-insetting: the result is
+    /// empty, which is a rectangle a caller can go on to use.
+    #[test]
+    fn insetting_to_exactly_nothing_is_not_null() {
+        assert_eq!(
+            rect_inset(rect(0.0, 0.0, 6.0, 6.0), 3.0, 3.0),
+            rect(3.0, 3.0, 0.0, 0.0)
+        );
+    }
+
+    /// The centre is preserved in exact arithmetic, but this is float
+    /// arithmetic: `origin + dx + (size - 2*dx)/2` rounds differently from
+    /// `origin + size/2`. Checking the invariant with `==` therefore rejects
+    /// ordinary geometry, which is why the implementation does not check it.
+    #[test]
+    fn insetting_does_not_require_the_centre_to_round_identically() {
+        let inset = rect_inset(rect(0.1, 0.2, 10.3, 20.7), 0.35, 1.15);
+        assert!((inset.origin.x + inset.size.width / 2.0 - (0.1 + 10.3 / 2.0)).abs() < 0.001);
+        assert!((inset.origin.y + inset.size.height / 2.0 - (0.2 + 20.7 / 2.0)).abs() < 0.001);
+    }
 
     /// The ordinary case, so the null answers below are not vacuously right.
     #[test]
