@@ -40,6 +40,11 @@ games page is historical and its app-specific site was unavailable. No current
 official purchase or download route was found. This is a bounded availability
 observation, not proof of legal abandonment or universal unavailability.
 
+## Clickmap
+
+`dev-docs/clickmaps/baby-monkey.json` replays launch to a live run. Run it
+with `dev-scripts/clickmap.ps1` before working out a route by hand.
+
 ## Current canonical checkpoint
 
 The release build for commit `ee21050a` was launched in a normal Windows
