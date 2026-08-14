@@ -202,6 +202,17 @@ An agent may assign at most three stars (two for reaching a stable screen, three
 for a gameplay loop that starts and persists); four and five stars require human
 testing.
 
+**Replay a clickmap before exploring for one.** Driving an app to its
+milestone is the most repetitive thing an agent does, and rediscovering the
+same coordinates costs a launch, several screenshots and the tokens to look at
+them, every single time. `dev-docs/clickmaps/` holds recorded routes and
+`dev-scripts/clickmap.ps1` replays them; explore only from the step where a
+replay stops. Try the map for another version of the same app too — most of it
+usually still applies, and the parts that moved are exactly what is worth a
+screenshot. Record a map whenever a run reaches a milestone, in the same commit
+as the report, while the route is still fresh. `dev-docs/clickmaps/protocol.md`
+has the format and the rules.
+
 **Never guess an app's identity. Read it from `tapHLE --info`, before you
 compose the report.** The bundle identifier, the version, and the display name
 are facts about the artifact, and every one of them must be copied from

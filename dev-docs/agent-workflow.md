@@ -123,6 +123,12 @@ Summarize:
 - exact game and host validation performed; and
 - the next observation needed if the target still fails.
 
+When a run reaches a rating milestone, record the route that got there as a
+clickmap in `dev-docs/clickmaps/`, in the same commit as the report. The route
+is fresh at that moment and never will be again, and the next agent — or the
+next version of the same app — starts by replaying it instead of rediscovering
+it. Replay before exploring, too. See `dev-docs/clickmaps/protocol.md`.
+
 When a verified result changes the app's star rating, submit it to the
 compatibility database at <https://taphle.ephun.net/compatibility> through
 `POST /api/report`, as described in `AGENTS.md`. Submit at *every* boundary the
