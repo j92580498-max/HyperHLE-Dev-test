@@ -409,7 +409,13 @@ pub fn field(ui: &mut Ui, label: &str, value: &str) {
     });
 }
 
-/// A field whose value can be selected and copied, for identifiers.
+/// A field whose value can be clicked to copy.
+///
+/// It reads in the same face as every other row on purpose. An identifier and
+/// a file path were set in monospace at first, on the reasoning that a
+/// character-exact string deserves a character-exact font; beside a panel of
+/// proportional text it simply looked like a mistake, and a long path in a
+/// narrow column looked worse.
 pub fn selectable_field(ui: &mut Ui, label: &str, value: &str) -> Response {
     let mut response = None;
     ui.horizontal_top(|ui| {
@@ -424,13 +430,7 @@ pub fn selectable_field(ui: &mut Ui, label: &str, value: &str) -> Response {
                 );
             },
         );
-        response = Some(
-            ui.add(
-                egui::Label::new(egui::RichText::new(value).monospace())
-                    .wrap()
-                    .sense(Sense::click()),
-            ),
-        );
+        response = Some(ui.add(egui::Label::new(value).wrap().sense(Sense::click())));
     });
     response.expect("the row always allocates a response")
 }

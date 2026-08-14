@@ -120,23 +120,18 @@ pub fn show_global(ctx: &egui::Context, dialog: &mut GlobalDialog) -> Outcome {
         ui.add_space(6.0);
 
         ui.horizontal_top(|ui| {
+            ui.set_height(PAGE_HEIGHT);
             category_list(ui, Category::GLOBAL, &mut dialog.category);
             ui.separator();
-            ui.vertical(|ui| {
-                ui.set_min_width(430.0);
-                egui::ScrollArea::vertical()
-                    .max_height(360.0)
-                    .auto_shrink([false, false])
-                    .show(ui, |ui| match dialog.category {
-                        Category::General => general_page(ui, &mut dialog.draft),
-                        Category::Paths => paths_page(ui, &mut dialog.draft),
-                        Category::Logging => {
-                            logging_page(ui, &mut dialog.draft.emulator, None);
-                            ui.add_space(8.0);
-                            frontend_logging_page(ui, &mut dialog.draft);
-                        }
-                        other => emulator_page(ui, other, &mut dialog.draft.emulator, None),
-                    });
+            page(ui, 430.0, |ui| match dialog.category {
+                Category::General => general_page(ui, &mut dialog.draft),
+                Category::Paths => paths_page(ui, &mut dialog.draft),
+                Category::Logging => {
+                    logging_page(ui, &mut dialog.draft.emulator, None);
+                    ui.add_space(8.0);
+                    frontend_logging_page(ui, &mut dialog.draft);
+                }
+                other => emulator_page(ui, other, &mut dialog.draft.emulator, None),
             });
         });
 
@@ -169,20 +164,15 @@ pub fn show_app(ctx: &egui::Context, dialog: &mut AppDialog) -> Outcome {
         ui.add_space(6.0);
 
         ui.horizontal_top(|ui| {
+            ui.set_height(PAGE_HEIGHT);
             category_list(ui, Category::PER_APP, &mut dialog.category);
             ui.separator();
-            ui.vertical(|ui| {
-                ui.set_min_width(430.0);
-                egui::ScrollArea::vertical()
-                    .max_height(340.0)
-                    .auto_shrink([false, false])
-                    .show(ui, |ui| {
-                        let inherited = Some(&dialog.inherited);
-                        match dialog.category {
-                            Category::Logging => logging_page(ui, &mut dialog.draft, inherited),
-                            other => emulator_page(ui, other, &mut dialog.draft, inherited),
-                        }
-                    });
+            page(ui, 430.0, |ui| {
+                let inherited = Some(&dialog.inherited);
+                match dialog.category {
+                    Category::Logging => logging_page(ui, &mut dialog.draft, inherited),
+                    other => emulator_page(ui, other, &mut dialog.draft, inherited),
+                }
             });
         });
 
@@ -206,6 +196,31 @@ pub fn show_app(ctx: &egui::Context, dialog: &mut AppDialog) -> Outcome {
         outcome = Outcome::Cancel;
     }
     outcome
+}
+
+/// How tall a dialog page is.
+///
+/// Fixed, and the same for every category. Two other arrangements were tried
+/// and both were worse. Letting the scroll area take the height available
+/// grew the dialog until it covered the window, because a modal lays its
+/// contents out in unbounded space and `max_height` does not stop a scroll
+/// area that has been told not to shrink. Letting it fit its contents
+/// instead left the dialog empty: with no bound anywhere in the chain, egui
+/// had nothing to lay the page out against.
+///
+/// So the page is bounded here, once, and every category gets the same
+/// height. A short category has some room below it; a tall one scrolls.
+const PAGE_HEIGHT: f32 = 320.0;
+
+/// A dialog's scrolling page.
+pub fn page(ui: &mut egui::Ui, width: f32, contents: impl FnOnce(&mut egui::Ui)) {
+    ui.vertical(|ui| {
+        ui.set_width(width);
+        ui.set_height(PAGE_HEIGHT);
+        egui::ScrollArea::vertical()
+            .auto_shrink([false, false])
+            .show(ui, contents);
+    });
 }
 
 fn category_list(ui: &mut Ui, categories: &[Category], current: &mut Category) {

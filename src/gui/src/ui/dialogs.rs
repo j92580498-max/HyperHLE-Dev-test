@@ -99,15 +99,12 @@ pub fn show_about(
         theme::hairline(ui);
         ui.add_space(6.0);
 
-        egui::ScrollArea::vertical()
-            .max_height(330.0)
-            .auto_shrink([false, false])
-            .show(ui, |ui| match dialog.tab {
-                AboutTab::About => about_tab(ui, actions),
-                AboutTab::Build => build_tab(ui, info, actions),
-                AboutTab::Credits => credits_tab(ui),
-                AboutTab::Licenses => licenses_tab(ui, dialog),
-            });
+        crate::ui::settings_dialog::page(ui, 540.0, |ui| match dialog.tab {
+            AboutTab::About => about_tab(ui, actions),
+            AboutTab::Build => build_tab(ui, info, actions),
+            AboutTab::Credits => credits_tab(ui),
+            AboutTab::Licenses => licenses_tab(ui, dialog),
+        });
 
         ui.add_space(8.0);
         theme::hairline(ui);
@@ -302,14 +299,11 @@ pub fn show_import_report(ctx: &egui::Context, report: &mut ImportReport) {
         ui.label(summary);
         ui.add_space(6.0);
         theme::hairline(ui);
-        egui::ScrollArea::vertical()
-            .max_height(240.0)
-            .auto_shrink([false, false])
-            .show(ui, |ui| {
-                for line in &report.outcomes {
-                    ui.label(line);
-                }
-            });
+        crate::ui::settings_dialog::page(ui, 460.0, |ui| {
+            for line in &report.outcomes {
+                ui.label(line);
+            }
+        });
         ui.add_space(8.0);
         ui.horizontal(|ui| {
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -403,78 +397,75 @@ pub fn show_report(
         theme::hairline(ui);
         ui.add_space(6.0);
 
-        egui::ScrollArea::vertical()
-            .max_height(340.0)
-            .auto_shrink([false, false])
-            .show(ui, |ui| {
-                match (
-                    &dialog.draft.existing_entry,
-                    dialog.draft.database_consulted,
-                ) {
-                    (Some(entry), _) => {
-                        ui.horizontal_wrapped(|ui| {
-                            ui.label("The database already has a record for this app:");
-                            ui.label(egui::RichText::new(&entry.name).strong());
-                        });
-                        ui.label(
-                            egui::RichText::new(
-                                "Report against that record rather than creating a \
+        crate::ui::settings_dialog::page(ui, 580.0, |ui| {
+            match (
+                &dialog.draft.existing_entry,
+                dialog.draft.database_consulted,
+            ) {
+                (Some(entry), _) => {
+                    ui.horizontal_wrapped(|ui| {
+                        ui.label("The database already has a record for this app:");
+                        ui.label(egui::RichText::new(&entry.name).strong());
+                    });
+                    ui.label(
+                        egui::RichText::new(
+                            "Report against that record rather than creating a \
                                  second one for the same app.",
-                            )
-                            .small()
-                            .color(theme::LIGHT.text_dim),
-                        );
-                        if ui.button("Open the existing record").clicked() {
-                            actions.push(Action::OpenUrl(entry.url.clone()));
-                        }
+                        )
+                        .small()
+                        .color(theme::LIGHT.text_dim),
+                    );
+                    if ui.button("Open the existing record").clicked() {
+                        actions.push(Action::OpenUrl(entry.url.clone()));
                     }
-                    (None, true) => {
-                        ui.label(
-                            "The database has no record for this bundle identifier \
+                }
+                (None, true) => {
+                    ui.label(
+                        "The database has no record for this bundle identifier \
                              yet, so this would be a new one.",
-                        );
-                    }
-                    (None, false) => {
-                        ui.label(
-                            egui::RichText::new(
-                                "The database could not be reached, so whether a \
+                    );
+                }
+                (None, false) => {
+                    ui.label(
+                        egui::RichText::new(
+                            "The database could not be reached, so whether a \
                                  record already exists is unknown. Check before \
                                  submitting, or a duplicate may be created.",
-                            )
-                            .color(theme::LIGHT.warning),
-                        );
-                    }
+                        )
+                        .color(theme::LIGHT.warning),
+                    );
                 }
+            }
 
-                ui::section(ui, "Rating");
-                if let Some(new_rating) = ui::star_picker(ui, dialog.stars) {
-                    dialog.stars = new_rating;
-                    dialog.draft.stars = new_rating;
-                }
+            ui::section(ui, "Rating");
+            if let Some(new_rating) = ui::star_picker(ui, dialog.stars) {
+                dialog.stars = new_rating;
+                dialog.draft.stars = new_rating;
+            }
 
-                ui::section(ui, "Notes");
-                if ui
-                    .add(
-                        egui::TextEdit::multiline(&mut dialog.notes)
-                            .desired_width(f32::INFINITY)
-                            .desired_rows(4)
-                            .hint_text("What worked, what did not, and where it stopped"),
-                    )
-                    .changed()
-                {
-                    dialog.draft.notes = dialog.notes.clone();
-                }
-
-                ui::section(ui, "Report contents");
-                ui.checkbox(&mut dialog.include_log, "Include the recent log output");
-                let text = report_text(dialog);
-                ui.add(
-                    egui::TextEdit::multiline(&mut text.as_str())
-                        .font(egui::TextStyle::Monospace)
+            ui::section(ui, "Notes");
+            if ui
+                .add(
+                    egui::TextEdit::multiline(&mut dialog.notes)
                         .desired_width(f32::INFINITY)
-                        .desired_rows(10),
-                );
-            });
+                        .desired_rows(4)
+                        .hint_text("What worked, what did not, and where it stopped"),
+                )
+                .changed()
+            {
+                dialog.draft.notes = dialog.notes.clone();
+            }
+
+            ui::section(ui, "Report contents");
+            ui.checkbox(&mut dialog.include_log, "Include the recent log output");
+            let text = report_text(dialog);
+            ui.add(
+                egui::TextEdit::multiline(&mut text.as_str())
+                    .font(egui::TextStyle::Monospace)
+                    .desired_width(f32::INFINITY)
+                    .desired_rows(10),
+            );
+        });
 
         ui.add_space(8.0);
         theme::hairline(ui);
