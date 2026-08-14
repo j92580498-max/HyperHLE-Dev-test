@@ -490,8 +490,10 @@ mod tests {
     #[test]
     fn search_narrows_to_matching_lines() {
         let store = store_with(&["alpha", "beta", "alphabet"]);
-        let mut view = LogView::default();
-        view.search = "alpha".to_string();
+        let mut view = LogView {
+            search: "alpha".to_string(),
+            ..LogView::default()
+        };
         view.refresh(&store, &[]);
         assert_eq!(view.visible_count(), 2);
     }
@@ -505,8 +507,10 @@ mod tests {
             "tapHLE::mem: b",
             "no module here",
         ]);
-        let mut view = LogView::default();
-        view.module_filter = "uikit".to_string();
+        let mut view = LogView {
+            module_filter: "uikit".to_string(),
+            ..LogView::default()
+        };
         view.refresh(&store, &[]);
         assert_eq!(view.visible_count(), 1);
     }
@@ -572,8 +576,10 @@ mod tests {
     #[test]
     fn selected_lines_can_be_taken_as_text() {
         let store = store_with(&["alpha", "beta", "gamma"]);
-        let mut view = LogView::default();
-        view.show_timestamps = false;
+        let mut view = LogView {
+            show_timestamps: false,
+            ..LogView::default()
+        };
         view.refresh(&store, &[]);
         view.selection = Some((1, 2));
         let text = view.text(&store, true);
@@ -595,8 +601,10 @@ mod tests {
             },
             "app line",
         );
-        let mut view = LogView::default();
-        view.only_selected_app = true;
+        let mut view = LogView {
+            only_selected_app: true,
+            ..LogView::default()
+        };
         view.refresh(&store, &[7]);
         assert_eq!(view.visible_count(), 1);
     }

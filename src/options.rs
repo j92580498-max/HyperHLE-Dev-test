@@ -363,7 +363,10 @@ impl DumpingOptions {
 /// directions from an argument list. Keeping the pairs in one table lets the
 /// tests below check that without restating them.
 #[cfg(test)]
-const BOOLEAN_OPTION_PAIRS: &[(&str, &str, fn(&Options) -> bool)] = &[
+type BooleanOptionPair = (&'static str, &'static str, fn(&Options) -> bool);
+
+#[cfg(test)]
+const BOOLEAN_OPTION_PAIRS: &[BooleanOptionPair] = &[
     ("--fullscreen", "--windowed", |o| o.fullscreen),
     ("--landscape-native", "--no-landscape-native", |o| {
         o.landscape_native

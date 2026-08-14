@@ -644,7 +644,7 @@ mod tests {
     /// library keys on the app's identity, not on where the file is.
     #[test]
     fn a_duplicate_is_recognized_by_identity() {
-        let mut library = library_of(vec![entry("A", "com.a")]);
+        let library = library_of(vec![entry("A", "com.a")]);
         assert!(library.find("com.a@1.0").is_some());
         let outcome = ImportOutcome::Duplicate {
             id: "com.a@1.0".to_string(),
