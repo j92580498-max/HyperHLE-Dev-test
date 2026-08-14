@@ -119,6 +119,24 @@ pub fn locate_data_dir() -> (PathBuf, Vec<String>) {
     (fallback, notes)
 }
 
+/// A path as a person should see it.
+///
+/// Canonicalising a path on Windows produces the extended-length form,
+/// `\\?\C:\...`. It is the right thing to store — it is what makes a long
+/// path work — and the wrong thing to show, because nobody types it and
+/// nothing else displays it.
+pub fn display_path(path: &Path) -> String {
+    let text = path.display().to_string();
+    match text.strip_prefix(r"\\?\") {
+        // The UNC form keeps its double backslash, which is how a network
+        // path is written.
+        Some(rest) => rest
+            .strip_prefix("UNC\\")
+            .map_or_else(|| rest.to_string(), |share| format!(r"\\{share}")),
+        None => text,
+    }
+}
+
 /// Create the frontend's directory if it is not there yet.
 pub fn ensure_frontend_dir() -> Result<PathBuf, String> {
     let dir = frontend_dir();
@@ -170,5 +188,23 @@ mod tests {
     fn a_directory_without_the_dylibs_is_not_an_installation() {
         let dir = std::env::temp_dir();
         assert!(!looks_like_data_dir(&dir.join("tapHLE-no-such-directory")));
+    }
+
+    /// Every library entry's path has been canonicalised, so without this
+    /// the details panel would show `\\?\C:\...` for every app.
+    #[test]
+    fn the_extended_length_prefix_is_not_shown() {
+        assert_eq!(
+            super::display_path(std::path::Path::new(r"\\?\C:\apps\Game.ipa")),
+            r"C:\apps\Game.ipa"
+        );
+        assert_eq!(
+            super::display_path(std::path::Path::new(r"\\?\UNC\server\share\Game.ipa")),
+            r"\\server\share\Game.ipa"
+        );
+        assert_eq!(
+            super::display_path(std::path::Path::new("/home/user/Game.ipa")),
+            "/home/user/Game.ipa"
+        );
     }
 }

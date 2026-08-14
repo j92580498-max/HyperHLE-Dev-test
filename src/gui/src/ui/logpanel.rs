@@ -57,8 +57,6 @@ pub struct LogView {
     selection: Option<(u64, u64)>,
     /// Where a shift-click extends from.
     anchor: Option<u64>,
-    /// Whether a scroll to the end is owed.
-    scroll_to_end: bool,
 }
 
 impl Default for LogView {
@@ -79,7 +77,6 @@ impl Default for LogView {
             filter_key: String::new(),
             selection: None,
             anchor: None,
-            scroll_to_end: false,
         }
     }
 }
@@ -166,7 +163,6 @@ impl LogView {
         if self.paused {
             return;
         }
-        let before = self.matched.len();
         for seq in self.scanned_to..store.next_seq() {
             if let Some(line) = store.get(seq) {
                 if self.matches(line, run_ids) {
@@ -175,9 +171,6 @@ impl LogView {
             }
         }
         self.scanned_to = store.next_seq();
-        if self.follow_tail && self.matched.len() != before {
-            self.scroll_to_end = true;
-        }
     }
 
     pub fn select_all(&mut self) {
@@ -239,6 +232,11 @@ pub fn show(
     actions: &mut Vec<Action>,
 ) {
     view.refresh(store, run_ids);
+    // The whole panel is painted first. Doing it inside `rows` painted over
+    // the toolbar, because a Ui's max_rect stays the full region however far
+    // down the cursor has moved.
+    ui.painter()
+        .rect_filled(ui.max_rect(), 0.0, theme::LIGHT.log_background);
     toolbar(ui, view, store, actions);
     theme::hairline(ui);
     rows(ui, view, store);
@@ -343,9 +341,6 @@ fn toolbar(ui: &mut Ui, view: &mut LogView, store: &LogStore, actions: &mut Vec<
 
 fn rows(ui: &mut Ui, view: &mut LogView, store: &LogStore) {
     let palette = &theme::LIGHT;
-    ui.painter()
-        .rect_filled(ui.max_rect(), 0.0, palette.log_background);
-
     let font = egui::TextStyle::Monospace.resolve(ui.style());
     let row_height = ui.text_style_height(&egui::TextStyle::Monospace) + 2.0;
 
@@ -381,10 +376,13 @@ fn rows(ui: &mut Ui, view: &mut LogView, store: &LogStore) {
         return;
     }
 
-    let mut scroll = egui::ScrollArea::both().auto_shrink([false, false]);
-    if std::mem::take(&mut view.scroll_to_end) {
-        scroll = scroll.vertical_scroll_offset(f32::MAX);
-    }
+    // Following the tail is egui's own `stick_to_bottom`. Setting a huge
+    // scroll offset instead looks equivalent and is not: `show_rows` turns
+    // the offset into a row index, and an offset of f32::MAX turns into a
+    // row index past the end, so nothing at all gets drawn.
+    let scroll = egui::ScrollArea::both()
+        .auto_shrink([false, false])
+        .stick_to_bottom(view.follow_tail);
     scroll.show_rows(ui, row_height, view.matched.len(), |ui, row_range| {
         ui.spacing_mut().item_spacing.y = 0.0;
         let mut clicked: Option<(u64, bool)> = None;

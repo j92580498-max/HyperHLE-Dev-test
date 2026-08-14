@@ -97,7 +97,7 @@ fn header(
                 .color(theme::LIGHT.error),
         );
         ui.label(
-            egui::RichText::new(entry.path.display().to_string())
+            egui::RichText::new(crate::storage::display_path(&entry.path))
                 .small()
                 .color(theme::LIGHT.text_dim),
         );
@@ -254,7 +254,7 @@ fn details(ui: &mut Ui, entry: &LibraryEntry, actions: &mut Vec<Action>) {
         ui::field(ui, "Size", &format_size(size));
     }
 
-    let path = entry.path.display().to_string();
+    let path = crate::storage::display_path(&entry.path);
     let path_row = ui::selectable_field(ui, "Location", &path);
     if path_row.clicked() {
         actions.push(Action::CopyText(path.clone()));

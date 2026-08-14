@@ -736,19 +736,16 @@ fn general_page(ui: &mut Ui, draft: &mut FrontendSettings) {
 fn paths_page(ui: &mut Ui, draft: &mut FrontendSettings) {
     crate::ui::section(ui, "tapHLE");
     let data_dir = crate::storage::data_dir();
-    crate::ui::field(ui, "Installation", &data_dir.display().to_string());
+    crate::ui::field(ui, "Installation", &crate::storage::display_path(&data_dir));
     crate::ui::field(
         ui,
         "Frontend files",
-        &crate::storage::frontend_dir().display().to_string(),
+        &crate::storage::display_path(&crate::storage::frontend_dir()),
     );
     crate::ui::field(
         ui,
         "Saved app data",
-        &data_dir
-            .join(tapHLE::paths::SANDBOX_DIR)
-            .display()
-            .to_string(),
+        &crate::storage::display_path(&data_dir.join(tapHLE::paths::SANDBOX_DIR)),
     );
 
     crate::ui::section(ui, "Emulator");
@@ -756,7 +753,7 @@ fn paths_page(ui: &mut Ui, draft: &mut FrontendSettings) {
         let text = draft
             .emulator_path
             .as_ref()
-            .map(|p| p.display().to_string())
+            .map(|p| crate::storage::display_path(p))
             .unwrap_or_else(|| "found automatically".to_string());
         ui.add_sized(
             [150.0, 18.0],
@@ -792,7 +789,7 @@ fn paths_page(ui: &mut Ui, draft: &mut FrontendSettings) {
                 remove = Some(index);
             }
             ui.add(
-                egui::Label::new(egui::RichText::new(folder.display().to_string()).small())
+                egui::Label::new(egui::RichText::new(crate::storage::display_path(folder)).small())
                     .truncate(),
             );
         });

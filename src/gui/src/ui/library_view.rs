@@ -511,7 +511,7 @@ pub fn describe_entry(entry: &LibraryEntry) -> String {
     text.push_str(&format!(
         "Device family: {}\nPath: {}\n",
         metadata.device_family_summary(),
-        entry.path.display()
+        crate::storage::display_path(&entry.path)
     ));
     text
 }

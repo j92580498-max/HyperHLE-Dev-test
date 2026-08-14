@@ -335,6 +335,204 @@ pub fn explain_outcome(outcome: &RunOutcome, app: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::logstore::{self, LogLevel};
+
+    /// A stand-in for the emulator: a program every machine has, which
+    /// prints something and exits with a status we choose.
+    ///
+    /// The point of these tests is the plumbing — spawning, the pipes, the
+    /// log capture and the exit status — not the emulator, so using a
+    /// predictable program keeps them fast and keeps them passing on a
+    /// machine that has not built tapHLE yet.
+    /// The program, and the flag that has to come before the script.
+    ///
+    /// A real launch is `tapHLE <app path> <options>`, so the flag takes the
+    /// app path's place and the script takes the options'.
+    fn shell() -> (PathBuf, PathBuf) {
+        if cfg!(windows) {
+            // COMSPEC rather than a written-out path: cmd.exe resolves things
+            // from its own command line and fails with "the system cannot
+            // find the path specified" when it is given one with forward
+            // slashes, which is easy to write and hard to diagnose.
+            let comspec = std::env::var("COMSPEC")
+                .unwrap_or_else(|_| r"C:\Windows\System32\cmd.exe".to_string());
+            (PathBuf::from(comspec), PathBuf::from("/C"))
+        } else {
+            (PathBuf::from("/bin/sh"), PathBuf::from("-c"))
+        }
+    }
+
+    /// Start a command through the shell, as if it were an app.
+    ///
+    /// `words` are passed separately on Windows and joined into one argument
+    /// on Unix, because the two shells want opposite things: `sh -c` takes
+    /// the whole script as a single argument, while `cmd /C` given a single
+    /// quoted argument treats it as the name of a program to run.
+    fn start(launcher: &mut Launcher, app_name: &str, words: &[&str]) -> u64 {
+        let (program, flag) = shell();
+        let arguments: Vec<String> = if cfg!(windows) {
+            words.iter().map(|word| word.to_string()).collect()
+        } else {
+            vec![words.join(" ")]
+        };
+        launcher
+            .launch(LaunchRequest {
+                emulator: &program,
+                working_directory: &std::env::temp_dir(),
+                entry_id: "com.test@1",
+                app_name,
+                app_path: &flag,
+                arguments: &arguments,
+                environment: &[],
+            })
+            .expect("the shell should start")
+    }
+
+    /// Wait for the one running run to end.
+    fn wait_for_end(launcher: &mut Launcher) -> RunOutcome {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+        loop {
+            if let Some((_, outcome)) = launcher.poll().into_iter().next() {
+                return outcome;
+            }
+            assert!(std::time::Instant::now() < deadline, "the run never ended");
+            std::thread::sleep(std::time::Duration::from_millis(30));
+        }
+    }
+
+    fn run_to_completion(words: &[&str]) -> (RunOutcome, Vec<String>) {
+        let log = logstore::new_shared();
+        let mut launcher = Launcher::new(log.clone());
+        start(&mut launcher, "Test App", words);
+        let outcome = wait_for_end(&mut launcher);
+        // The reader threads may still be draining the pipe when the process
+        // ends, so give them a moment to finish.
+        std::thread::sleep(std::time::Duration::from_millis(400));
+        let lines = log
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|line| line.full_text())
+            .collect();
+        (outcome, lines)
+    }
+
+    /// The whole reason the emulator runs in its own process is that its
+    /// output can be read back. If this breaks, the log panel is empty and
+    /// there is no way to tell why an app failed.
+    #[test]
+    fn a_run_s_output_reaches_the_log() {
+        let (outcome, lines) =
+            run_to_completion(&["echo", "tapHLE::test:", "hello", "from", "the", "child"]);
+        assert_eq!(outcome, RunOutcome::Finished);
+        assert!(
+            lines
+                .iter()
+                .any(|line| line.contains("hello from the child")),
+            "the child's output should be in the log, got {lines:?}"
+        );
+    }
+
+    /// Every line is tagged with the run it came from, which is what the
+    /// panel's per-app filter and a crash excerpt depend on.
+    #[test]
+    fn captured_lines_are_attributed_to_the_run() {
+        let log = logstore::new_shared();
+        let mut launcher = Launcher::new(log.clone());
+        let id = start(&mut launcher, "Named App", &["echo", "attributed"]);
+        wait_for_end(&mut launcher);
+        std::thread::sleep(std::time::Duration::from_millis(400));
+        let store = log.lock().unwrap();
+        // Only the child's own line, not the frontend's note about starting
+        // it, which quotes the same command.
+        let from_run = store
+            .iter()
+            .find(|line| line.origin.run_id().is_some() && line.message.contains("attributed"))
+            .expect("the child's line should be present");
+        assert_eq!(from_run.origin.run_id(), Some(id));
+        assert_eq!(from_run.origin.label(), "Named App");
+    }
+
+    /// A non-zero exit is what a crashed app looks like from here, and it
+    /// has to be reported as a failure so the crash notice appears.
+    #[test]
+    fn a_non_zero_exit_is_a_failure() {
+        let (outcome, _) = run_to_completion(&["exit", "3"]);
+        assert_eq!(outcome, RunOutcome::Failed { code: Some(3) });
+        assert!(outcome.is_failure());
+    }
+
+    /// Stopping a run also produces a non-zero status, and reporting that as
+    /// a crash would put a diagnostic dialog in front of somebody who had
+    /// just pressed Stop.
+    #[test]
+    fn stopping_a_run_is_not_reported_as_a_crash() {
+        let log = logstore::new_shared();
+        let mut launcher = Launcher::new(log);
+        let script: &[&str] = if cfg!(windows) {
+            &["ping", "-n", "30", "127.0.0.1"]
+        } else {
+            &["sleep", "30"]
+        };
+        let id = start(&mut launcher, "Long App", script);
+        assert!(launcher.is_running("com.test@1"));
+        launcher.stop(id);
+        let outcome = wait_for_end(&mut launcher);
+        assert_eq!(outcome, RunOutcome::Stopped);
+        assert!(!outcome.is_failure());
+    }
+
+    /// The frontend has to notice a run has ended so it can record the time
+    /// played and stop showing the app as running.
+    #[test]
+    fn a_finished_run_is_no_longer_running() {
+        let log = logstore::new_shared();
+        let mut launcher = Launcher::new(log);
+        start(&mut launcher, "Test App", &["echo", "done"]);
+        assert!(launcher.any_running());
+        wait_for_end(&mut launcher);
+        assert!(!launcher.any_running());
+        assert!(!launcher.is_running("com.test@1"));
+    }
+
+    /// An emulator that is not there has to be reported before anything is
+    /// spawned, with a message that says what to do about it.
+    #[test]
+    fn a_missing_emulator_is_reported_clearly() {
+        let log = logstore::new_shared();
+        let mut launcher = Launcher::new(log);
+        let error = launcher
+            .launch(LaunchRequest {
+                emulator: Path::new("Z:/nowhere/tapHLE.exe"),
+                working_directory: &std::env::temp_dir(),
+                entry_id: "com.test@1",
+                app_name: "Test App",
+                app_path: Path::new("Z:/nowhere/Game.ipa"),
+                arguments: &[],
+                environment: &[],
+            })
+            .unwrap_err();
+        assert!(error.contains("was not found"), "got {error:?}");
+        assert!(error.contains("Settings"), "it should say where to fix it");
+    }
+
+    /// The frontend logs what it is about to run, so a launch that fails
+    /// leaves a record of the exact arguments it used.
+    #[test]
+    fn the_launch_itself_is_logged() {
+        let log = logstore::new_shared();
+        let mut launcher = Launcher::new(log.clone());
+        start(&mut launcher, "Test App", &["echo", "x"]);
+        let store = log.lock().unwrap();
+        let line = store
+            .iter()
+            .find(|line| line.message.starts_with("Launching"))
+            .expect("the launch should be logged");
+        assert_eq!(line.level, LogLevel::Info);
+        assert!(line.message.contains("Test App"));
+        drop(store);
+        launcher.stop_all();
+    }
 
     #[test]
     fn a_clean_exit_is_not_a_failure() {

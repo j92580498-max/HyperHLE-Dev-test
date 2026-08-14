@@ -60,6 +60,22 @@ enum Background {
     Note(LogLevel, String),
 }
 
+/// A channel to the interface that also wakes it.
+struct BackgroundSender {
+    sender: Sender<Background>,
+    repaint: egui::Context,
+}
+
+impl BackgroundSender {
+    fn send(&self, message: Background) {
+        // A closed channel means the window has gone; there is nothing to
+        // report it to, and the thread is about to end anyway.
+        if self.sender.send(message).is_ok() {
+            self.repaint.request_repaint();
+        }
+    }
+}
+
 /// How often state is written back to disk while the program runs.
 const SAVE_INTERVAL: Duration = Duration::from_secs(3);
 /// How many recent lines a crash notice and a diagnostics copy carry.
@@ -89,6 +105,11 @@ pub struct Frontend {
     confirmation: Option<Confirmation>,
 
     background: (Sender<Background>, Receiver<Background>),
+    /// A handle used only to wake the interface when a worker thread has
+    /// something. Without it the frame loop sleeps until the next mouse
+    /// movement, and a library scan or a rating fetch would sit unread in
+    /// the channel until somebody happened to touch the window.
+    repaint: egui::Context,
     /// Bumped whenever the library changes, so the sorted order is rebuilt
     /// exactly when it needs to be and not every frame.
     library_revision: u64,
@@ -125,7 +146,7 @@ impl Frontend {
             format!(
                 "tapHLE {} frontend started in {}",
                 tapHLE_version::VERSION.trim(),
-                data_dir.display()
+                storage::display_path(&data_dir)
             ),
         );
 
@@ -162,6 +183,7 @@ impl Frontend {
             report: None,
             confirmation: None,
             background: channel(),
+            repaint: cc.egui_ctx.clone(),
             library_revision: 0,
             order_cache: Vec::new(),
             order_key: String::new(),
@@ -182,6 +204,14 @@ impl Frontend {
             frontend.update = UpdateStatus::Disabled;
         }
         frontend
+    }
+
+    /// A sender that wakes the interface after each message.
+    fn background_sender(&self) -> BackgroundSender {
+        BackgroundSender {
+            sender: self.background.0.clone(),
+            repaint: self.repaint.clone(),
+        }
     }
 
     /// The settings that apply to an app: its own over the global defaults.
@@ -214,7 +244,7 @@ impl Frontend {
 
     /// Read every cached icon on a worker thread.
     fn load_cached_icons(&self) {
-        let sender = self.background.0.clone();
+        let sender = self.background_sender();
         let wanted: Vec<(String, String)> = self
             .library
             .entries
@@ -228,7 +258,7 @@ impl Frontend {
         std::thread::spawn(move || {
             for (id, name) in wanted {
                 if let Some(icon) = crate::metadata::read_icon_cache(&dir, &name) {
-                    let _ = sender.send(Background::Icon {
+                    sender.send(Background::Icon {
                         id,
                         icon: Box::new(icon),
                     });
@@ -240,7 +270,7 @@ impl Frontend {
     /// Look through the library folders for apps, on a worker thread.
     fn rescan_library(&mut self, report: bool) {
         let folders = self.library_folders();
-        let sender = self.background.0.clone();
+        let sender = self.background_sender();
         std::thread::spawn(move || {
             let mut paths = Vec::new();
             for folder in folders {
@@ -250,12 +280,12 @@ impl Frontend {
                 match library::scan_folder(&folder) {
                     Ok(found) => paths.extend(found),
                     Err(e) => {
-                        let _ = sender.send(Background::Note(LogLevel::Warning, e));
+                        sender.send(Background::Note(LogLevel::Warning, e));
                     }
                 }
             }
             let results = paths.iter().map(|p| library::read_for_import(p)).collect();
-            let _ = sender.send(Background::Scanned { results, report });
+            sender.send(Background::Scanned { results, report });
         });
     }
 
@@ -264,10 +294,10 @@ impl Frontend {
         if paths.is_empty() {
             return;
         }
-        let sender = self.background.0.clone();
+        let sender = self.background_sender();
         std::thread::spawn(move || {
             let results = paths.iter().map(|p| library::read_for_import(p)).collect();
-            let _ = sender.send(Background::Scanned {
+            sender.send(Background::Scanned {
                 results,
                 report: true,
             });
@@ -275,23 +305,23 @@ impl Frontend {
     }
 
     fn refresh_compatibility(&self) {
-        let sender = self.background.0.clone();
+        let sender = self.background_sender();
         let provider = TapHledbProvider::new(self.transport.clone());
         std::thread::spawn(move || {
-            let _ = sender.send(Background::Compatibility(provider.fetch()));
+            sender.send(Background::Compatibility(provider.fetch()));
         });
     }
 
     fn check_for_updates(&mut self) {
         self.update = UpdateStatus::Checking;
-        let sender = self.background.0.clone();
+        let sender = self.background_sender();
         let provider = GitHubReleaseProvider::new(self.transport.clone());
         std::thread::spawn(move || {
             let status = match provider.releases() {
                 Ok(releases) => updates::evaluate(&releases, &updates::running_version()),
                 Err(e) => UpdateStatus::Failed(e),
             };
-            let _ = sender.send(Background::Update(status));
+            sender.send(Background::Update(status));
         });
     }
 
@@ -606,7 +636,7 @@ impl Frontend {
                 format!(
                     "{} cannot be started: {} is not there.",
                     entry.title(),
-                    entry.path.display()
+                    storage::display_path(&entry.path)
                 ),
             );
             return;
