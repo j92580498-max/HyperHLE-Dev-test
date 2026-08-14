@@ -39,6 +39,41 @@ What is measured so far:
 - The client area is nevertheless 1024x768 landscape, and the content fills it
   at the right aspect ratio.
 
+### The lead: `setStatusBarOrientation:` rotates the device, and should not
+
+`-[UIApplication setStatusBarOrientation:]` in `ui_application.rs` calls
+`window.rotate_device(...)`. On iOS that call does not rotate anything: it tells
+UIKit which way the status bar faces, and the app stays responsible for its own
+rendering orientation. openFrameworks calls it, and this is an openFrameworks
+game.
+
+That is the only silent path that can produce what is measured here, and the
+measurements fit it exactly:
+
+- The launch log shows tapHLE starting the app portrait, from the `Info.plist`.
+- The view-controller autorotation added in `126983ce` does not fire: its
+  `log_dbg!` never appears, and tapHLE's default
+  `shouldAutorotateToInterfaceOrientation:` correctly accepts portrait, which
+  ends that path before it rotates anything.
+- The client area is 1024x768 anyway, and `size_for_orientation` can only
+  produce that from a *landscape* device orientation.
+
+So something rotates the device after launch without logging, and
+`setStatusBarOrientation:` is the only candidate. The app then rotates its own
+scene as well; the two agree for everything drawn through the app's transform,
+which is why the layout is landscape and correctly proportioned, and disagree
+for anything that is not, which is why the labels sit a quarter turn out.
+
+**Before changing it, note the blast radius.** Every app that calls
+`setStatusBarOrientation:` currently gets a device rotation out of it, and some
+of them presumably look right *because* of that. Making the call a no-op is a
+shared-path change and needs a full `dev-scripts/regression-sweep.ps1` run
+compared against a previous one, not a check against this app alone. That is
+the mistake this note's sibling entries already record twice.
+
+Forcing an orientation from the command line is not a workaround: with
+`--landscape-left` the app does not survive to a frame at all.
+
 Those three together are the discriminator to chase: an app that renders
 landscape into a window tapHLE believes is portrait, with the labels rotated
 relative to the layout rather than with it. Whatever rotates the text is doing
