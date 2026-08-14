@@ -15,6 +15,14 @@
 - tapHLEdb: App 20, version 20, report 28 (2026-07-26, tapHLE `4e246384`,
   ★☆☆☆☆).
 
+## Clickmap
+
+`dev-docs/clickmaps/jim-and-frank-hd.json` replays launch through profile
+creation, the introduction cutscene and chapter one to the second room. Run it
+with `dev-scripts/clickmap.ps1` before working out a route by hand. Pass
+`-HasSaveState` when a profile already exists: the profile-creation steps are
+skipped and Play lands on Continue instead.
+
 ## 2026-08-04: the menu is on screen. Two stars.
 
 **Everything below this section is history.** It describes a one-star app whose

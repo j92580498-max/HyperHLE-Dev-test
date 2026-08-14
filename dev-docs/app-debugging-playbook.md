@@ -399,6 +399,14 @@ frontier advances. A good click map lets the next agent (or a re-verification
 run) reproduce the milestone mechanically instead of re-discovering the route,
 and it makes a "did this regress?" check objective.
 
+**Write it as a clickmap.** `dev-docs/clickmaps/` holds these as JSON that
+`dev-scripts/clickmap.ps1` can replay, so re-verification is a command rather
+than a reading exercise, and a regression check names the step it stopped on.
+Replay an existing map before working out a route by hand, including the map
+for a different version of the same app. The format and its rules are in
+`dev-docs/clickmaps/protocol.md`; everything below is what a good map records,
+and the format has a field for each of it.
+
 Each click-map step records: the screen it starts on, the client-area tap
 coordinate, and the screen it leads to. Client coordinates are only meaningful
 against a stated **window size and orientation**, because tapHLE maps a client
