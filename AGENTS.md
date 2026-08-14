@@ -475,10 +475,13 @@ branches to accumulate.
 - `src/gui/`: the `tapHLE_gui` package, which builds `tapHLE-gui`, the desktop
   frontend. It is a separate program that launches the emulator as a child
   process; `dev-docs/gui-architecture.md` explains why and how.
-- `dev-docs/`: building, debugging, style, agent workflow, upstream sync, and
-  packaging — how a build becomes something installable.
+- `dev-docs/`: building, debugging, style, agent workflow, and upstream sync.
+- `dev-docs/gui-architecture.md`, `dev-docs/packaging.md`: the frontend's
+  design, and how a build becomes something installable.
 - `dev-docs/app-notes/`: sanitized, provisional cross-agent compatibility
   handoffs; these are not compatibility database claims.
+- `dev-docs/clickmaps/`: replayable routes through an app to a rating
+  milestone. Replay one before exploring a game by hand.
 
 Guest-visible API names and ABI constants may intentionally use Apple's naming
 instead of Rust naming. Check nearby export tables and tests before renaming
