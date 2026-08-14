@@ -78,10 +78,6 @@ pub fn show_about(
                 );
             }
         });
-        ui.label(
-            egui::RichText::new("A high-level emulator for early iPhone OS applications.")
-                .color(theme::LIGHT.text_dim),
-        );
         ui.add_space(6.0);
 
         ui.horizontal(|ui| {
@@ -102,7 +98,7 @@ pub fn show_about(
         crate::ui::settings_dialog::page(ui, 540.0, |ui| match dialog.tab {
             AboutTab::About => about_tab(ui, actions),
             AboutTab::Build => build_tab(ui, info, actions),
-            AboutTab::Credits => credits_tab(ui),
+            AboutTab::Credits => credits_tab(ui, actions),
             AboutTab::Licenses => licenses_tab(ui, dialog),
         });
 
@@ -122,18 +118,78 @@ pub fn show_about(
     }
 }
 
+/// tapHLE's own repository, linked from several places here.
+const PROJECT_URL: &str = "https://github.com/ephun/tapHLE";
+
+/// A hyperlink that opens in the desktop's browser.
+///
+/// egui's own `Hyperlink` opens the link itself; going through an [Action]
+/// keeps every outward-facing thing the frontend does in one place, and means
+/// a link and a menu item reach the browser the same way.
+fn link(ui: &mut Ui, text: &str, url: &str, actions: &mut Vec<Action>) {
+    if ui.link(text).on_hover_text(url).clicked() {
+        actions.push(Action::OpenUrl(url.to_string()));
+    }
+}
+
+/// How wide the project column of the credits is, so the names beside them
+/// line up instead of starting wherever the previous word ended.
+const CREDIT_COLUMN: f32 = 120.0;
+
+/// One credit: a project on the left, the people behind it on the right.
+fn credit(
+    ui: &mut Ui,
+    project: (&str, &str),
+    people: &[(&str, &str)],
+    trailing: &str,
+    with: Option<(&str, &str)>,
+    actions: &mut Vec<Action>,
+) {
+    ui.horizontal(|ui| {
+        // Spacing is applied by hand here: the default word gap would put a
+        // space before each comma.
+        ui.spacing_mut().item_spacing.x = 0.0;
+        let start = ui.cursor().min.x;
+        link(ui, project.0, project.1, actions);
+        let used = ui.cursor().min.x - start;
+        ui.add_space((CREDIT_COLUMN - used).max(8.0));
+
+        for (index, (name, url)) in people.iter().enumerate() {
+            if index > 0 {
+                ui.label(",");
+                ui.add_space(5.0);
+            }
+            link(ui, name, url, actions);
+        }
+        if let Some((text, url)) = with {
+            ui.add_space(5.0);
+            ui.label(egui::RichText::new("with").color(theme::LIGHT.text_dim));
+            ui.add_space(5.0);
+            link(ui, text, url, actions);
+        }
+        if !trailing.is_empty() {
+            ui.add_space(5.0);
+            ui.label(egui::RichText::new(trailing).color(theme::LIGHT.text_dim));
+        }
+    });
+}
+
 fn about_tab(ui: &mut Ui, actions: &mut Vec<Action>) {
     ui.label(
-        "Instead of emulating a whole iPhone, tapHLE runs an app's 32-bit Arm \
-         code and supplies its own implementations of the frameworks it calls \
-         — Foundation, UIKit, OpenGL ES, OpenAL and the rest.",
+        egui::RichText::new("tapHLE: A high level emulator for early iOS applications").strong(),
     );
-    ui.add_space(6.0);
+    theme::hairline(ui);
+    ui.add_space(8.0);
+
     ui.label(
-        "tapHLE is a fork of the touchHLE project, which is where its \
-         architecture and most of its implementation come from.",
+        "tapHLE works by running an app's 32-bit code and then runs its own \
+         implementations of the frameworks it calls — Foundation, UIKit, \
+         OpenGL ES, OpenAL and the rest. More information can be found on the \
+         project's GitHub, which is linked below.",
     );
-    ui.add_space(6.0);
+    ui.add_space(8.0);
+    ui.label("tapHLE is coded with AI assistance.");
+    ui.add_space(8.0);
     ui.label(
         egui::RichText::new(
             "Not affiliated with or endorsed by Apple Inc. iPhone, iOS, iPod, \
@@ -142,21 +198,17 @@ fn about_tab(ui: &mut Ui, actions: &mut Vec<Action>) {
         .small()
         .color(theme::LIGHT.text_dim),
     );
-    ui.add_space(10.0);
+
+    ui.add_space(12.0);
     ui.horizontal(|ui| {
-        if ui.button("Project on GitHub").clicked() {
-            actions.push(Action::OpenUrl(
-                "https://github.com/ephun/tapHLE".to_string(),
-            ));
-        }
-        if ui.button("Compatibility database").clicked() {
-            actions.push(Action::OpenUrl(crate::compat::DATABASE_WEB_URL.to_string()));
-        }
-        if ui.button("touchHLE").clicked() {
-            actions.push(Action::OpenUrl(
-                "https://github.com/touchHLE/touchHLE".to_string(),
-            ));
-        }
+        link(ui, "tapHLE on GitHub", PROJECT_URL, actions);
+        ui.add_space(12.0);
+        link(
+            ui,
+            "Compatibility database",
+            crate::compat::DATABASE_WEB_URL,
+            actions,
+        );
     });
 }
 
@@ -197,26 +249,73 @@ fn build_tab(ui: &mut Ui, info: &AboutInfo, actions: &mut Vec<Action>) {
     });
 }
 
-fn credits_tab(ui: &mut Ui) {
-    ui.label(
-        "tapHLE exists because of the touchHLE project. Its emulator \
-         architecture, its Objective-C runtime and the bulk of its framework \
-         implementations were written there.",
-    );
-    ui.add_space(8.0);
-    ui::field(
+fn credits_tab(ui: &mut Ui, actions: &mut Vec<Action>) {
+    ui.horizontal_wrapped(|ui| {
+        ui.spacing_mut().item_spacing.x = 4.0;
+        ui.label("tapHLE is an unaffiliated fork of the amazing");
+        link(ui, "touchHLE project", "https://touchhle.org/", actions);
+        ui.label("where it bases much of its architecture.");
+    });
+    ui.add_space(10.0);
+
+    credit(
         ui,
-        "touchHLE",
-        "hikari_no_yume, ciciplusplus and contributors",
+        ("touchHLE", "https://github.com/touchHLE/touchHLE"),
+        &[
+            ("hikari_no_yume", "https://github.com/hikari-no-yume"),
+            ("ciciplusplus", "https://github.com/ciciplusplus"),
+        ],
+        "and contributors",
+        None,
+        actions,
     );
-    ui::field(ui, "tapHLE", "ephun and contributors");
-    ui.add_space(8.0);
+    credit(
+        ui,
+        ("tapHLE", PROJECT_URL),
+        &[("ephun", "https://github.com/ephun")],
+        "",
+        Some((
+            "AI assistance",
+            "https://github.com/ephun/tapHLE#a-note-on-ai-from-the-maintainer",
+        )),
+        actions,
+    );
+
+    ui.add_space(12.0);
     ui.label(
-        "Groundwork towards running on modern iOS came from johnny901901901's \
-         touchHLE port, and from the LiveContainer team's LiveExec32 \
-         experiments.",
+        "Special thanks to the following projects for inspiration / tweaks for \
+         implementation in tapHLE:",
     );
-    ui.add_space(8.0);
+    ui.add_space(6.0);
+    credit(
+        ui,
+        (
+            "Applesauce",
+            "https://github.com/johnny901901901/Applesauce",
+        ),
+        &[("johnny901901901", "https://github.com/johnny901901901")],
+        "and contributors",
+        None,
+        actions,
+    );
+    credit(
+        ui,
+        ("HyperHLE", "https://github.com/HyperHLE/HyperHLE"),
+        &[("TimofeyLednev", "https://github.com/TimofeyLednev")],
+        "and contributors",
+        None,
+        actions,
+    );
+    credit(
+        ui,
+        ("LiveExec32", "https://github.com/LiveContainer/LiveExec32"),
+        &[("khanhduytran0", "https://github.com/khanhduytran0")],
+        "and contributors",
+        None,
+        actions,
+    );
+
+    ui.add_space(12.0);
     ui.label(
         egui::RichText::new(
             "Bundled dynamic libraries and fonts carry their own notices in \
