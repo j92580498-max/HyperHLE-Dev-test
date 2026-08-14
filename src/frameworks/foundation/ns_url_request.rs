@@ -66,7 +66,10 @@ fn copy_request_fields(env: &mut Environment, old: id, new: id) {
     let method_copy: id = msg![env; http_method copy];
     let body_copy: id = msg![env; http_body copy];
 
-    let new_fields = env.objc.borrow::<NSURLRequestHostObject>(new).http_header_fields;
+    let new_fields = env
+        .objc
+        .borrow::<NSURLRequestHostObject>(new)
+        .http_header_fields;
     () = msg![env; new_fields addEntriesFromDictionary:http_header_fields];
 
     let new_obj = env.objc.borrow_mut::<NSURLRequestHostObject>(new);
