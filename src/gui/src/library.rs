@@ -518,6 +518,128 @@ mod tests {
         assert!(entry.last_played.is_some());
     }
 
+    /// A real two-pixel PNG, so a test bundle can have an icon that
+    /// actually decodes without carrying an image file around.
+    const TINY_PNG: &[u8] = &[
+        0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44,
+        0x52, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x02, 0x08, 0x06, 0x00, 0x00, 0x00, 0x72,
+        0xB6, 0x0D, 0x24, 0x00, 0x00, 0x00, 0x15, 0x49, 0x44, 0x41, 0x54, 0x78, 0x9C, 0x63, 0x3C,
+        0xA1, 0xA1, 0xF1, 0x9F, 0x81, 0x81, 0x81, 0x81, 0x09, 0x44, 0x80, 0x30, 0x00, 0x20, 0x48,
+        0x02, 0x1B, 0xA1, 0x71, 0x64, 0x29, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4E, 0x44, 0xAE,
+        0x42, 0x60, 0x82,
+    ];
+
+    /// Build a minimal but genuine `.app` bundle in a temporary directory.
+    ///
+    /// A real bundle rather than a stubbed reader: this is the one test that
+    /// proves the whole import path — the emulator's plist reading, the icon
+    /// decode, the identity, the duplicate check — actually fits together.
+    /// It carries no proprietary content, so it runs anywhere.
+    fn write_test_bundle(name: &str, identifier: &str, version: &str) -> PathBuf {
+        let bundle = std::env::temp_dir()
+            .join(format!("tapHLE-gui-test-{name}"))
+            .join(format!("{name}.app"));
+        let _ = std::fs::remove_dir_all(bundle.parent().unwrap());
+        std::fs::create_dir_all(&bundle).unwrap();
+        std::fs::write(bundle.join("Icon.png"), TINY_PNG).unwrap();
+        std::fs::write(bundle.join(name), b"not really an executable").unwrap();
+
+        let mut plist = plist::dictionary::Dictionary::new();
+        for (key, value) in [
+            ("CFBundleIdentifier", identifier),
+            ("CFBundleVersion", version),
+            ("CFBundleShortVersionString", "1.2"),
+            ("CFBundleDisplayName", "Test Game"),
+            ("CFBundleName", name),
+            ("CFBundleExecutable", name),
+            ("CFBundleIconFile", "Icon.png"),
+            ("MinimumOSVersion", "3.0"),
+        ] {
+            plist.insert(key.to_string(), plist::Value::String(value.to_string()));
+        }
+        plist.insert(
+            "UIDeviceFamily".to_string(),
+            plist::Value::Array(vec![plist::Value::Integer(1.into())]),
+        );
+        plist::Value::Dictionary(plist)
+            .to_file_xml(bundle.join("Info.plist"))
+            .unwrap();
+        bundle
+    }
+
+    /// The whole import path over a real bundle: read it, add it, and refuse
+    /// to add it twice.
+    #[test]
+    fn a_real_bundle_imports_once_and_is_then_a_duplicate() {
+        let bundle = write_test_bundle("Importable", "com.example.importable", "1.0");
+        let icons = std::env::temp_dir().join("tapHLE-gui-test-icons");
+        let _ = std::fs::remove_dir_all(&icons);
+        let mut library = Library::default();
+
+        let outcome = library.absorb(read_for_import(&bundle), &icons);
+        assert!(
+            outcome.is_success(),
+            "the bundle should import, got {outcome:?}"
+        );
+        assert_eq!(library.entries.len(), 1);
+
+        let entry = &library.entries[0];
+        assert_eq!(entry.id, "com.example.importable@1.0");
+        assert_eq!(entry.title(), "Test Game");
+        assert_eq!(entry.metadata.version_for_display(), "1.2");
+        assert_eq!(entry.metadata.minimum_os_version.as_deref(), Some("3.0"));
+        assert_eq!(
+            entry.metadata.device_family_summary(),
+            "iPhone / iPod touch"
+        );
+        assert!(
+            entry.icon_cache.is_some(),
+            "the icon should have been read and cached"
+        );
+
+        // The same file again is the same app, not a second copy.
+        let again = library.absorb(read_for_import(&bundle), &icons);
+        assert!(matches!(again, ImportOutcome::Duplicate { .. }));
+        assert_eq!(library.entries.len(), 1);
+
+        let _ = std::fs::remove_dir_all(bundle.parent().unwrap());
+        let _ = std::fs::remove_dir_all(&icons);
+    }
+
+    /// A bundle without the keys tapHLE identifies an app by has to be
+    /// refused with a sentence about the app, not a caught panic from inside
+    /// the reader.
+    #[test]
+    fn a_bundle_missing_its_identity_is_refused_clearly() {
+        let bundle = std::env::temp_dir()
+            .join("tapHLE-gui-test-nameless")
+            .join("Nameless.app");
+        let _ = std::fs::remove_dir_all(bundle.parent().unwrap());
+        std::fs::create_dir_all(&bundle).unwrap();
+        let mut plist = plist::dictionary::Dictionary::new();
+        plist.insert(
+            "CFBundleName".to_string(),
+            plist::Value::String("Nameless".to_string()),
+        );
+        plist::Value::Dictionary(plist)
+            .to_file_xml(bundle.join("Info.plist"))
+            .unwrap();
+
+        let mut library = Library::default();
+        let outcome = library.absorb(read_for_import(&bundle), &std::env::temp_dir());
+        match &outcome {
+            ImportOutcome::Failed { reason, .. } => {
+                assert!(
+                    reason.contains("CFBundleIdentifier"),
+                    "the message should name the missing key, got {reason:?}"
+                );
+            }
+            other => panic!("expected a clear failure, got {other:?}"),
+        }
+        assert!(library.entries.is_empty());
+        let _ = std::fs::remove_dir_all(bundle.parent().unwrap());
+    }
+
     /// Importing the same app twice must not create a second row; the
     /// library keys on the app's identity, not on where the file is.
     #[test]
