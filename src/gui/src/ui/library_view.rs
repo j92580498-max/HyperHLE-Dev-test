@@ -146,7 +146,7 @@ fn grid_cell(
 ) {
     let (rect, response) = ui.allocate_exact_size(cell, Sense::click());
     let selected = context.selected == Some(entry.id.as_str());
-    let running = context.running.iter().any(|id| *id == entry.id);
+    let running = context.running.contains(&entry.id);
     let palette = &theme::LIGHT;
 
     if selected {
@@ -154,7 +154,7 @@ fn grid_cell(
             rect.shrink(3.0),
             4.0,
             palette.selection_fill,
-            Stroke::new(1.0, palette.selection_stroke),
+            Stroke::new(1.0_f32, palette.selection_stroke),
             egui::StrokeKind::Inside,
         );
     } else if response.hovered() {
@@ -163,7 +163,10 @@ fn grid_cell(
     }
 
     let icon_rect = Rect::from_center_size(
-        egui::pos2(rect.center().x, rect.top() + 10.0 + context.icon_points / 2.0),
+        egui::pos2(
+            rect.center().x,
+            rect.top() + 10.0 + context.icon_points / 2.0,
+        ),
         Vec2::splat(context.icon_points),
     );
     draw_entry_icon(ui, context, entry, icon_rect);
@@ -174,10 +177,16 @@ fn grid_cell(
             egui::pos2(icon_rect.right() - 3.0, icon_rect.bottom() - 3.0),
             Vec2::splat(15.0),
         );
-        ui.painter().circle_filled(badge.center(), 7.5, Color32::WHITE);
         ui.painter()
-            .circle_stroke(badge.center(), 7.5, Stroke::new(1.0, palette.accent));
-        ui::draw_icon(ui.painter(), badge.shrink(4.0), ui::Icon::Play, palette.accent);
+            .circle_filled(badge.center(), 7.5, Color32::WHITE);
+        ui.painter()
+            .circle_stroke(badge.center(), 7.5, Stroke::new(1.0_f32, palette.accent));
+        ui::draw_icon(
+            ui.painter(),
+            badge.shrink(4.0),
+            ui::Icon::Play,
+            palette.accent,
+        );
     }
     if entry.favorite {
         let badge = Rect::from_center_size(
@@ -198,7 +207,7 @@ fn grid_cell(
     };
     // Two lines at most, with an ellipsis: long app names are the norm here
     // and must not push the lattice out of alignment.
-    let galley = ui.fonts(|fonts| {
+    let galley = {
         let mut job = egui::text::LayoutJob::simple(
             entry.title().to_string(),
             egui::TextStyle::Small.resolve(ui.style()),
@@ -212,8 +221,8 @@ fn grid_cell(
             break_anywhere: false,
             overflow_character: Some('…'),
         };
-        fonts.layout_job(job)
-    });
+        ui.painter().layout_job(job)
+    };
     ui.painter().galley(
         egui::pos2(label_rect.center().x, label_rect.top()),
         galley,
@@ -223,12 +232,7 @@ fn grid_cell(
     handle_entry_interaction(ui, context, entry, &response, actions);
 }
 
-fn draw_entry_icon(
-    ui: &mut Ui,
-    context: &LibraryContext<'_>,
-    entry: &LibraryEntry,
-    rect: Rect,
-) {
+fn draw_entry_icon(ui: &mut Ui, context: &LibraryContext<'_>, entry: &LibraryEntry, rect: Rect) {
     let palette = &theme::LIGHT;
     match context.icons.get(&entry.id) {
         Some(texture) => {
@@ -248,7 +252,7 @@ fn draw_entry_icon(
                 rect,
                 rect.width() * 0.175,
                 Color32::from_gray(0xE8),
-                Stroke::new(1.0, palette.border),
+                Stroke::new(1.0_f32, palette.border),
                 egui::StrokeKind::Inside,
             );
             let initial = entry
@@ -286,7 +290,14 @@ fn show_list(ui: &mut Ui, context: &LibraryContext<'_>, actions: &mut Vec<Action
             ui.spacing_mut().item_spacing.y = 0.0;
             for row in row_range {
                 let index = context.order[row];
-                list_row(ui, context, &context.library.entries[index], row_height, row, actions);
+                list_row(
+                    ui,
+                    context,
+                    &context.library.entries[index],
+                    row_height,
+                    row,
+                    actions,
+                );
             }
         });
 }
@@ -329,10 +340,7 @@ fn list_row(
     let mut x = rect.left() + 28.0;
     let columns: [(f32, String); 4] = [
         (250.0, entry.title().to_string()),
-        (
-            160.0,
-            entry.metadata.publisher.clone().unwrap_or_default(),
-        ),
+        (160.0, entry.metadata.publisher.clone().unwrap_or_default()),
         (80.0, entry.metadata.version_for_display().to_string()),
         (
             110.0,
@@ -343,21 +351,17 @@ fn list_row(
         ),
     ];
     for (column_width, text) in columns {
-        let galley = ui.fonts(|fonts| {
-            let mut job = egui::text::LayoutJob::simple(
-                text,
-                font.clone(),
-                colour,
-                column_width - 8.0,
-            );
+        let galley = {
+            let mut job =
+                egui::text::LayoutJob::simple(text, font.clone(), colour, column_width - 8.0);
             job.wrap = egui::text::TextWrapping {
                 max_width: column_width - 8.0,
                 max_rows: 1,
                 break_anywhere: false,
                 overflow_character: Some('…'),
             };
-            fonts.layout_job(job)
-        });
+            ui.painter().layout_job(job)
+        };
         ui.painter().galley(
             egui::pos2(x, rect.center().y - galley.size().y / 2.0),
             galley,
@@ -366,10 +370,12 @@ fn list_row(
         x += column_width;
     }
 
-    let rating = entry
-        .local_rating
-        .stars
-        .or_else(|| context.database.find(&entry.metadata.bundle_identifier)?.rating);
+    let rating = entry.local_rating.stars.or_else(|| {
+        context
+            .database
+            .find(&entry.metadata.bundle_identifier)?
+            .rating
+    });
     if let Some(rating) = rating {
         for star in 0..rating.min(5) {
             ui.painter().circle_filled(
@@ -385,7 +391,7 @@ fn list_row(
 
 /// Clicking, double-clicking and the context menu, shared by both views.
 fn handle_entry_interaction(
-    ui: &mut Ui,
+    _ui: &mut Ui,
     context: &LibraryContext<'_>,
     entry: &LibraryEntry,
     response: &egui::Response,
@@ -399,7 +405,7 @@ fn handle_entry_interaction(
     }
     response.clone().context_menu(|ui| {
         ui.set_min_width(190.0);
-        let running = context.running.iter().any(|id| *id == entry.id);
+        let running = context.running.contains(&entry.id);
         if ui
             .add_enabled(!entry.missing, egui::Button::new("Play"))
             .clicked()

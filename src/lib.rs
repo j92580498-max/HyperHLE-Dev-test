@@ -25,29 +25,33 @@
 // so this warning is unhelpful.
 #![allow(rustdoc::private_intra_doc_links)]
 
-// The modules below are `pub` because the desktop frontend (`tapHLE_gui`)
-// links this library to read app bundles, validate launch options and locate
-// tapHLE's files. Sharing them is deliberate: the frontend must not grow a
-// second, drifting copy of bundle parsing or option parsing. Everything else
-// stays private to the emulator.
+// A few modules are `pub` because the desktop frontend (`tapHLE_gui`) links
+// this library rather than growing a second, drifting copy of bundle parsing
+// and option parsing. What it may use is deliberately narrow: `app_bundle` is
+// a facade written for it, and `options`, `paths`, `licenses` and `log` are
+// small and already shaped for outside use. The guest filesystem, the bundle
+// reader and the renderer stay private — they are the emulator's internals,
+// and exposing them would make every one of their signatures part of what
+// tapHLE promises.
 #[macro_use]
 pub mod log;
 mod abi;
+pub mod app_bundle;
 mod audio;
-pub mod bundle;
+mod bundle;
 mod cpu;
 mod debug;
 mod dyld;
 mod environment;
 mod font;
 mod frameworks;
-pub mod fs;
+mod fs;
 mod gdb;
 // Not public: the frontend has no use for it, and exposing it would make
 // Environment publicly reachable and drag half the emulator's internals into
 // the crate's public interface.
 mod gles;
-pub mod image;
+mod image;
 mod libc;
 pub mod licenses;
 mod mach_o;

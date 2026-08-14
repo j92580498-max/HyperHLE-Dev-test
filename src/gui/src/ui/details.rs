@@ -72,25 +72,20 @@ fn header(
                     rect,
                     size * 0.175,
                     egui::Color32::from_gray(0xE8),
-                    egui::Stroke::new(1.0, theme::LIGHT.border),
+                    egui::Stroke::new(1.0_f32, theme::LIGHT.border),
                     egui::StrokeKind::Inside,
                 );
             }
         }
         ui.vertical(|ui| {
-            ui.add(egui::Label::new(
-                egui::RichText::new(entry.title()).heading(),
-            ).wrap());
+            ui.add(egui::Label::new(egui::RichText::new(entry.title()).heading()).wrap());
             if let Some(publisher) = &entry.metadata.publisher {
                 ui.label(egui::RichText::new(publisher).color(theme::LIGHT.text_dim));
             }
             ui.label(
-                egui::RichText::new(format!(
-                    "Version {}",
-                    entry.metadata.version_for_display()
-                ))
-                .small()
-                .color(theme::LIGHT.text_dim),
+                egui::RichText::new(format!("Version {}", entry.metadata.version_for_display()))
+                    .small()
+                    .color(theme::LIGHT.text_dim),
             );
         });
     });
@@ -150,10 +145,7 @@ fn compatibility(
 
     ui.horizontal(|ui| {
         ui.add(
-            egui::Label::new(
-                egui::RichText::new("Database").color(theme::LIGHT.text_dim),
-            )
-            .wrap(),
+            egui::Label::new(egui::RichText::new("Database").color(theme::LIGHT.text_dim)).wrap(),
         );
         match record.and_then(|record| record.rating) {
             Some(rating) => {
@@ -179,10 +171,8 @@ fn compatibility(
 
     ui.horizontal(|ui| {
         ui.add(
-            egui::Label::new(
-                egui::RichText::new("This machine").color(theme::LIGHT.text_dim),
-            )
-            .wrap(),
+            egui::Label::new(egui::RichText::new("This machine").color(theme::LIGHT.text_dim))
+                .wrap(),
         );
         if let Some(new_rating) = ui::star_picker(ui, entry.local_rating.stars) {
             actions.push(Action::SetLocalRating(entry.id.clone(), new_rating));
@@ -251,11 +241,7 @@ fn details(ui: &mut Ui, entry: &LibraryEntry, actions: &mut Vec<Action>) {
         );
     }
     if !metadata.required_capabilities.is_empty() {
-        ui::field(
-            ui,
-            "Requires",
-            &metadata.required_capabilities.join(", "),
-        );
+        ui::field(ui, "Requires", &metadata.required_capabilities.join(", "));
     }
     if let Some(genre) = &metadata.genre {
         ui::field(ui, "Genre", genre);
@@ -287,7 +273,11 @@ fn activity(ui: &mut Ui, entry: &LibraryEntry) {
         None => ui::field(ui, "Last played", "never"),
     }
     if entry.play_seconds > 0 {
-        ui::field(ui, "Time played", &timefmt::format_duration(entry.play_seconds));
+        ui::field(
+            ui,
+            "Time played",
+            &timefmt::format_duration(entry.play_seconds),
+        );
     }
     if entry.play_count > 0 {
         ui::field(ui, "Times launched", &entry.play_count.to_string());

@@ -166,13 +166,16 @@ impl ReleaseProvider for GitHubReleaseProvider {
 }
 
 pub fn parse_releases(body: &str) -> Result<Vec<Release>, String> {
-    let releases: Vec<ApiRelease> = serde_json::from_str(body)
-        .map_err(|e| format!("GitHub sent something unreadable: {e}"))?;
+    let releases: Vec<ApiRelease> =
+        serde_json::from_str(body).map_err(|e| format!("GitHub sent something unreadable: {e}"))?;
     Ok(releases
         .into_iter()
         .filter(|release| !release.draft)
         .filter_map(|release| {
-            let version = release.tag_name.strip_prefix(RELEASE_TAG_PREFIX)?.to_string();
+            let version = release
+                .tag_name
+                .strip_prefix(RELEASE_TAG_PREFIX)?
+                .to_string();
             Some(Release {
                 name: release.name.unwrap_or_else(|| release.tag_name.clone()),
                 tag: release.tag_name,
@@ -200,7 +203,9 @@ pub fn running_version() -> String {
 
 /// Decide what to report from a list of releases.
 pub fn evaluate(releases: &[Release], current: &str) -> UpdateStatus {
-    let Some(latest) = releases.iter().max_by(|a, b| compare_versions(&a.version, &b.version))
+    let Some(latest) = releases
+        .iter()
+        .max_by(|a, b| compare_versions(&a.version, &b.version))
     else {
         return UpdateStatus::NoReleasesPublished;
     };

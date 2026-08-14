@@ -13,8 +13,8 @@
 //!
 //! The one deliberate borrowing from the software tapHLE emulates is in the
 //! library grid, where the icon size and the spacing between icons follow the
-//! iPad's home screen. That belongs in [crate::ui::grid]; the rest of the
-//! window is a desktop program and looks like one.
+//! iPad's home screen. That belongs in [crate::ui::library_view]; the rest
+//! of the window is a desktop program and looks like one.
 
 use egui::{Color32, CornerRadius, FontData, FontDefinitions, FontFamily, Margin, Stroke};
 
@@ -88,7 +88,7 @@ pub fn apply(ctx: &egui::Context, zoom: f32) {
     visuals.extreme_bg_color = palette.content;
     visuals.faint_bg_color = Color32::from_rgb(0xF6, 0xF6, 0xF6);
     visuals.code_bg_color = palette.log_background;
-    visuals.window_stroke = Stroke::new(1.0, palette.border_strong);
+    visuals.window_stroke = Stroke::new(1.0_f32, palette.border_strong);
     visuals.window_corner_radius = CornerRadius::same(RADIUS);
     visuals.menu_corner_radius = CornerRadius::same(RADIUS);
     visuals.error_fg_color = palette.error;
@@ -111,14 +111,14 @@ pub fn apply(ctx: &egui::Context, zoom: f32) {
     };
 
     visuals.selection.bg_fill = palette.selection_fill;
-    visuals.selection.stroke = Stroke::new(1.0, palette.accent);
+    visuals.selection.stroke = Stroke::new(1.0_f32, palette.accent);
 
     let widgets = &mut visuals.widgets;
     // Non-interactive: labels, separators, panel frames.
     widgets.noninteractive.bg_fill = palette.chrome;
     widgets.noninteractive.weak_bg_fill = palette.chrome;
-    widgets.noninteractive.bg_stroke = Stroke::new(1.0, palette.border);
-    widgets.noninteractive.fg_stroke = Stroke::new(1.0, palette.text);
+    widgets.noninteractive.bg_stroke = Stroke::new(1.0_f32, palette.border);
+    widgets.noninteractive.fg_stroke = Stroke::new(1.0_f32, palette.text);
     widgets.noninteractive.corner_radius = CornerRadius::same(RADIUS);
 
     // Idle controls: a flat face with a visible edge, as a desktop button
@@ -126,29 +126,29 @@ pub fn apply(ctx: &egui::Context, zoom: f32) {
     // web interface.
     widgets.inactive.bg_fill = Color32::from_rgb(0xFA, 0xFA, 0xFA);
     widgets.inactive.weak_bg_fill = Color32::from_rgb(0xFA, 0xFA, 0xFA);
-    widgets.inactive.bg_stroke = Stroke::new(1.0, palette.border_strong);
-    widgets.inactive.fg_stroke = Stroke::new(1.0, palette.text);
+    widgets.inactive.bg_stroke = Stroke::new(1.0_f32, palette.border_strong);
+    widgets.inactive.fg_stroke = Stroke::new(1.0_f32, palette.text);
     widgets.inactive.corner_radius = CornerRadius::same(RADIUS);
     widgets.inactive.expansion = 0.0;
 
     widgets.hovered.bg_fill = palette.hover_fill;
     widgets.hovered.weak_bg_fill = palette.hover_fill;
-    widgets.hovered.bg_stroke = Stroke::new(1.0, palette.selection_stroke);
-    widgets.hovered.fg_stroke = Stroke::new(1.0, palette.text);
+    widgets.hovered.bg_stroke = Stroke::new(1.0_f32, palette.selection_stroke);
+    widgets.hovered.fg_stroke = Stroke::new(1.0_f32, palette.text);
     widgets.hovered.corner_radius = CornerRadius::same(RADIUS);
     widgets.hovered.expansion = 0.0;
 
     widgets.active.bg_fill = palette.selection_fill;
     widgets.active.weak_bg_fill = palette.selection_fill;
-    widgets.active.bg_stroke = Stroke::new(1.0, palette.accent);
-    widgets.active.fg_stroke = Stroke::new(1.0, palette.text);
+    widgets.active.bg_stroke = Stroke::new(1.0_f32, palette.accent);
+    widgets.active.fg_stroke = Stroke::new(1.0_f32, palette.text);
     widgets.active.corner_radius = CornerRadius::same(RADIUS);
     widgets.active.expansion = 0.0;
 
     widgets.open.bg_fill = palette.selection_fill;
     widgets.open.weak_bg_fill = palette.selection_fill;
-    widgets.open.bg_stroke = Stroke::new(1.0, palette.selection_stroke);
-    widgets.open.fg_stroke = Stroke::new(1.0, palette.text);
+    widgets.open.bg_stroke = Stroke::new(1.0_f32, palette.selection_stroke);
+    widgets.open.fg_stroke = Stroke::new(1.0_f32, palette.text);
     widgets.open.corner_radius = CornerRadius::same(RADIUS);
 
     let spacing = &mut style.spacing;
@@ -173,11 +173,23 @@ pub fn apply(ctx: &egui::Context, zoom: f32) {
 fn text_styles() -> Vec<(egui::TextStyle, egui::FontId)> {
     use egui::{FontId, TextStyle};
     vec![
-        (TextStyle::Small, FontId::new(11.0, FontFamily::Proportional)),
+        (
+            TextStyle::Small,
+            FontId::new(11.0, FontFamily::Proportional),
+        ),
         (TextStyle::Body, FontId::new(13.0, FontFamily::Proportional)),
-        (TextStyle::Button, FontId::new(13.0, FontFamily::Proportional)),
-        (TextStyle::Heading, FontId::new(16.0, FontFamily::Proportional)),
-        (TextStyle::Monospace, FontId::new(12.0, FontFamily::Monospace)),
+        (
+            TextStyle::Button,
+            FontId::new(13.0, FontFamily::Proportional),
+        ),
+        (
+            TextStyle::Heading,
+            FontId::new(16.0, FontFamily::Proportional),
+        ),
+        (
+            TextStyle::Monospace,
+            FontId::new(12.0, FontFamily::Monospace),
+        ),
     ]
 }
 
@@ -221,7 +233,10 @@ fn system_monospace_candidates() -> &'static [&'static str] {
     }
     #[cfg(target_os = "macos")]
     {
-        &["/System/Library/Fonts/SFNSMono.ttf", "/System/Library/Fonts/Menlo.ttc"]
+        &[
+            "/System/Library/Fonts/SFNSMono.ttf",
+            "/System/Library/Fonts/Menlo.ttc",
+        ]
     }
     #[cfg(all(unix, not(target_os = "macos")))]
     {
@@ -239,9 +254,10 @@ fn install_fonts(ctx: &egui::Context) {
             let Ok(bytes) = std::fs::read(path) else {
                 continue;
             };
-            fonts
-                .font_data
-                .insert(name.to_string(), std::sync::Arc::new(FontData::from_owned(bytes)));
+            fonts.font_data.insert(
+                name.to_string(),
+                std::sync::Arc::new(FontData::from_owned(bytes)),
+            );
             fonts
                 .families
                 .entry(family)
@@ -277,7 +293,7 @@ pub fn hairline(ui: &mut egui::Ui) {
     ui.painter().hline(
         rect.x_range(),
         rect.center().y,
-        Stroke::new(1.0, LIGHT.border),
+        Stroke::new(1.0_f32, LIGHT.border),
     );
 }
 

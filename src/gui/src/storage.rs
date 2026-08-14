@@ -30,6 +30,9 @@ pub const LIBRARY_FILE: &str = "library.json";
 pub const STATE_FILE: &str = "state.json";
 /// Cached icon bitmaps, so a rescan does not reopen every archive.
 pub const ICON_CACHE_DIR: &str = "icons";
+/// The last compatibility ratings read from the database, so they are shown
+/// straight away at startup and while offline.
+pub const COMPAT_CACHE_FILE: &str = "compatibility.json";
 /// The frontend's own log, kept separately from the emulator's
 /// `tapHLE_log.txt` because both may be written at the same time.
 pub const LOG_FILE: &str = "frontend_log.txt";
@@ -97,16 +100,16 @@ pub fn locate_data_dir() -> (PathBuf, Vec<String>) {
             continue;
         }
         if let Err(e) = std::env::set_current_dir(candidate) {
-            notes.push(format!(
-                "Could not switch to {}: {e}",
-                candidate.display()
-            ));
+            notes.push(format!("Could not switch to {}: {e}", candidate.display()));
             continue;
         }
         return (candidate.clone(), notes);
     }
 
-    let fallback = candidates.first().cloned().unwrap_or_else(|| PathBuf::from("."));
+    let fallback = candidates
+        .first()
+        .cloned()
+        .unwrap_or_else(|| PathBuf::from("."));
     notes.push(format!(
         "No tapHLE installation directory was found (looked for a {} directory). \
          Using {}. Launching apps will not work until tapHLE's files are found.",

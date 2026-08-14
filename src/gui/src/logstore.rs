@@ -126,7 +126,13 @@ const ERROR_PATTERNS: &[&str] = &[
 
 /// Wordings that mean something is missing or suspect but the app is still
 /// running. `log!("Warning: ...")` is the emulator's convention.
-const WARNING_PATTERNS: &[&str] = &["warning:", "todo", "unsupported", "ignoring", "unrecognised"];
+const WARNING_PATTERNS: &[&str] = &[
+    "warning:",
+    "todo",
+    "unsupported",
+    "ignoring",
+    "unrecognised",
+];
 
 /// Split a printed line into its module and severity.
 ///
@@ -331,7 +337,10 @@ mod tests {
 
     #[test]
     fn warnings_and_errors_are_told_apart() {
-        assert_eq!(classify("tapHLE::mem: Warning: odd size").2, LogLevel::Warning);
+        assert_eq!(
+            classify("tapHLE::mem: Warning: odd size").2,
+            LogLevel::Warning
+        );
         assert_eq!(
             classify("thread 'main' panicked at src/x.rs:1:1").2,
             LogLevel::Error

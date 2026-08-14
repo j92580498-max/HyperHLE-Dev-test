@@ -29,7 +29,6 @@
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
-use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -55,11 +54,6 @@ impl RunOutcome {
     }
 }
 
-/// A message from a run's watching thread.
-pub enum RunEvent {
-    Ended { run: u64, outcome: RunOutcome },
-}
-
 /// One app running, or one that has just stopped.
 pub struct Run {
     pub id: u64,
@@ -67,6 +61,9 @@ pub struct Run {
     pub app_name: Arc<str>,
     pub started: Instant,
     pub arguments: Vec<String>,
+    /// Set when the frontend asked for this run to end, so its non-zero exit
+    /// is reported as a stop rather than as a crash.
+    stopping: bool,
     child: Option<Child>,
 }
 
@@ -76,11 +73,28 @@ impl Run {
     }
 }
 
+/// What one launch needs to know.
+///
+/// A struct rather than seven parameters: which emulator, where it runs,
+/// which app and what to give it are separate concerns, and a call site
+/// listing them positionally would be easy to get wrong.
+pub struct LaunchRequest<'a> {
+    pub emulator: &'a Path,
+    /// The tapHLE installation directory, which is where the emulator looks
+    /// for its dylibs, fonts and options files.
+    pub working_directory: &'a Path,
+    pub entry_id: &'a str,
+    pub app_name: &'a str,
+    pub app_path: &'a Path,
+    /// The emulator options the settings asked for.
+    pub arguments: &'a [String],
+    pub environment: &'a [(String, String)],
+}
+
 /// Everything currently running, and the plumbing that watches it.
 pub struct Launcher {
     runs: Vec<Run>,
     next_id: u64,
-    events: (Sender<RunEvent>, Receiver<RunEvent>),
     log: SharedLog,
 }
 
@@ -89,7 +103,6 @@ impl Launcher {
         Launcher {
             runs: Vec::new(),
             next_id: 1,
-            events: channel(),
             log,
         }
     }
@@ -107,20 +120,16 @@ impl Launcher {
     }
 
     /// Start an app.
-    ///
-    /// `arguments` are the emulator options the settings asked for, and
-    /// `environment` the variables. The working directory is the tapHLE
-    /// installation, which is where the emulator looks for its resources.
-    pub fn launch(
-        &mut self,
-        emulator: &Path,
-        working_directory: &Path,
-        entry_id: &str,
-        app_name: &str,
-        app_path: &Path,
-        arguments: &[String],
-        environment: &[(String, String)],
-    ) -> Result<u64, String> {
+    pub fn launch(&mut self, request: LaunchRequest<'_>) -> Result<u64, String> {
+        let LaunchRequest {
+            emulator,
+            working_directory,
+            entry_id,
+            app_name,
+            app_path,
+            arguments,
+            environment,
+        } = request;
         if !emulator.exists() {
             return Err(format!(
                 "The tapHLE emulator was not found at {}. Set its location in \
@@ -178,6 +187,7 @@ impl Launcher {
             app_name,
             started: Instant::now(),
             arguments: arguments.to_vec(),
+            stopping: false,
             child: Some(child),
         });
         Ok(id)
@@ -193,14 +203,11 @@ impl Launcher {
         let Some(run) = self.runs.iter_mut().find(|run| run.id == run_id) else {
             return;
         };
+        run.stopping = true;
         if let Some(child) = run.child.as_mut() {
             let name = run.app_name.clone();
             match child.kill() {
-                Ok(()) => logstore::note(
-                    &self.log,
-                    LogLevel::Info,
-                    format!("Stopped {name}."),
-                ),
+                Ok(()) => logstore::note(&self.log, LogLevel::Info, format!("Stopped {name}.")),
                 Err(e) => logstore::note(
                     &self.log,
                     LogLevel::Warning,
@@ -233,8 +240,15 @@ impl Launcher {
                 Ok(Some(status)) => {
                     let outcome = if status.success() {
                         RunOutcome::Finished
+                    } else if self.runs[index].stopping {
+                        // Terminating a process gives it a non-zero status.
+                        // Reporting that as a crash would put a diagnostic
+                        // dialog in front of somebody who pressed Stop.
+                        RunOutcome::Stopped
                     } else {
-                        RunOutcome::Failed { code: status.code() }
+                        RunOutcome::Failed {
+                            code: status.code(),
+                        }
                     };
                     ended.push((self.runs.remove(index), outcome));
                 }
@@ -244,24 +258,11 @@ impl Launcher {
                 }
             }
         }
-        // The event channel is kept for the reader threads' benefit even
-        // though the exit status is collected here; draining it keeps it from
-        // growing if a future change starts sending on it.
-        while self.events.1.try_recv().is_ok() {}
         ended
-    }
-
-    /// A sender for anything that wants to report a run ending.
-    pub fn event_sender(&self) -> Sender<RunEvent> {
-        self.events.0.clone()
     }
 }
 
-fn spawn_reader<R: std::io::Read + Send + 'static>(
-    stream: R,
-    log: SharedLog,
-    origin: LogOrigin,
-) {
+fn spawn_reader<R: std::io::Read + Send + 'static>(stream: R, log: SharedLog, origin: LogOrigin) {
     std::thread::spawn(move || {
         let reader = BufReader::new(stream);
         // Bytes rather than lines: a guest app can print anything, and one
@@ -284,7 +285,11 @@ pub fn find_emulator(configured: Option<&Path>, data_dir: &Path) -> Option<PathB
     if let Some(path) = configured {
         return path.exists().then(|| path.to_path_buf());
     }
-    let name = if cfg!(windows) { "tapHLE.exe" } else { "tapHLE" };
+    let name = if cfg!(windows) {
+        "tapHLE.exe"
+    } else {
+        "tapHLE"
+    };
     let mut candidates = Vec::new();
     if let Ok(exe) = std::env::current_exe() {
         if let Some(dir) = exe.parent() {

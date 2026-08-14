@@ -18,7 +18,7 @@ use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
 use crate::compat::{DatabaseSnapshot, LocalRating};
-use crate::metadata::{self, AppMetadata};
+use crate::metadata::{self, AppMetadata, ReadApp};
 use crate::settings::{EmulatorSettings, SortOrder};
 
 /// One app in the library.
@@ -57,7 +57,9 @@ impl LibraryEntry {
 /// Why an import did not add an app, in the terms the person needs.
 #[derive(Debug, PartialEq)]
 pub enum ImportOutcome {
-    Added(String),
+    /// Added, along with anything that was wrong but not fatal — a missing
+    /// icon, most often. Worth saying, not worth refusing the app over.
+    Added { id: String, warnings: Vec<String> },
     /// The app is already in the library. `path_updated` says whether the
     /// entry was repointed at the newly given file, which is what happens
     /// when the old one has gone missing or the file has moved.
@@ -70,15 +72,27 @@ pub enum ImportOutcome {
 
 impl ImportOutcome {
     pub fn is_success(&self) -> bool {
-        matches!(self, ImportOutcome::Added(_))
+        matches!(self, ImportOutcome::Added { .. })
+    }
+
+    /// The library entry this outcome refers to, when there is one.
+    pub fn entry_id(&self) -> Option<&str> {
+        match self {
+            ImportOutcome::Added { id, .. } | ImportOutcome::Duplicate { id, .. } => Some(id),
+            _ => None,
+        }
     }
 
     /// A sentence for the import report.
     pub fn describe(&self, library: &Library) -> String {
         match self {
-            ImportOutcome::Added(id) => {
+            ImportOutcome::Added { id, warnings } => {
                 let name = library.find(id).map_or(id.as_str(), |e| e.title());
-                format!("Added {name}.")
+                if warnings.is_empty() {
+                    format!("Added {name}.")
+                } else {
+                    format!("Added {name}, but: {}", warnings.join(" "))
+                }
             }
             ImportOutcome::Duplicate { id, path_updated } => {
                 let name = library.find(id).map_or(id.as_str(), |e| e.title());
@@ -106,9 +120,9 @@ fn file_label(path: &Path) -> String {
 
 /// Whether a path is the kind of thing tapHLE opens, and why not if it isn't.
 ///
-/// This mirrors [tapHLE::fs::BundleData::open_any] deliberately: rather than
-/// letting a stray file produce the emulator's terse message, the frontend
-/// says what it accepts.
+/// This mirrors what the emulator's own bundle reader accepts, on purpose:
+/// rather than letting a stray file produce the emulator's terse message,
+/// the frontend says what it accepts.
 pub fn check_supported(path: &Path) -> Result<(), String> {
     let extension = path
         .extension()
@@ -159,27 +173,23 @@ impl Library {
         }
     }
 
-    /// Read an app and add it, returning what happened.
+    /// Add an app that has already been read.
     ///
     /// `icon_dir` is where the icon is cached; a failure to write the cache
     /// is not a failure to import, since the icon can be read again later.
-    pub fn import(&mut self, path: &Path, icon_dir: &Path) -> ImportOutcome {
-        if let Err(reason) = check_supported(path) {
-            return ImportOutcome::Unsupported {
-                path: path.to_path_buf(),
-                reason,
-            };
-        }
-        let canonical = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
-        let read = match metadata::read(&canonical) {
-            Ok(read) => read,
-            Err(reason) => {
-                return ImportOutcome::Failed {
-                    path: path.to_path_buf(),
-                    reason,
-                }
+    ///
+    /// Reading is the slow part — an `.ipa` is an archive, and its icon has
+    /// to be decompressed and decoded — so [read_for_import] does it on a
+    /// worker thread and the result is handed here.
+    pub fn absorb(&mut self, result: ScanResult, icon_dir: &Path) -> ImportOutcome {
+        let (canonical, read) = match result {
+            ScanResult::Unsupported { path, reason } => {
+                return ImportOutcome::Unsupported { path, reason }
             }
+            ScanResult::Failed { path, reason } => return ImportOutcome::Failed { path, reason },
+            ScanResult::Read { path, read } => (path, *read),
         };
+        let warnings = read.warnings.clone();
 
         let id = read.metadata.stable_id();
         if let Some(existing) = self.find_mut(&id) {
@@ -209,7 +219,7 @@ impl Library {
             added: crate::timefmt::now_seconds(),
             ..Default::default()
         });
-        ImportOutcome::Added(id)
+        ImportOutcome::Added { id, warnings }
     }
 
     /// Record that a run finished.
@@ -219,6 +229,40 @@ impl Library {
             entry.play_count += 1;
             entry.last_played = Some(crate::timefmt::now_seconds());
         }
+    }
+}
+
+/// An app read from disk, or the reason it could not be.
+pub enum ScanResult {
+    Unsupported { path: PathBuf, reason: String },
+    Failed { path: PathBuf, reason: String },
+    Read { path: PathBuf, read: Box<ReadApp> },
+}
+
+/// Read one app in preparation for adding it to a library.
+///
+/// This is the expensive half of an import and is meant to be run off the
+/// interface thread.
+pub fn read_for_import(path: &Path) -> ScanResult {
+    if let Err(reason) = check_supported(path) {
+        return ScanResult::Unsupported {
+            path: path.to_path_buf(),
+            reason,
+        };
+    }
+    // A canonical path is what makes the same file given twice by different
+    // routes — a shortcut, a relative path, a drag from a search result —
+    // recognisable as the same file.
+    let canonical = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+    match metadata::read(&canonical) {
+        Ok(read) => ScanResult::Read {
+            path: canonical,
+            read: Box::new(read),
+        },
+        Err(reason) => ScanResult::Failed {
+            path: path.to_path_buf(),
+            reason,
+        },
     }
 }
 
@@ -350,10 +394,22 @@ mod tests {
 
     #[test]
     fn only_ipa_files_and_app_folders_are_accepted() {
-        assert!(check_supported(Path::new("game.txt")).is_err());
-        assert!(check_supported(Path::new("game.ipa")).is_err(), "missing file");
-        let error = check_supported(Path::new("game.zip")).unwrap_err();
-        assert!(error.contains(".ipa"), "the message should say what is accepted");
+        assert!(
+            check_supported(Path::new("game.ipa")).is_err(),
+            "an .ipa that is not there is still not usable"
+        );
+
+        // A file that exists but is the wrong kind is the case where the
+        // message has to say what tapHLE does accept; a path that is simply
+        // absent gets the other message, tested below.
+        let wrong_kind = std::env::temp_dir().join("tapHLE-gui-not-an-app.zip");
+        std::fs::write(&wrong_kind, b"not an app").unwrap();
+        let error = check_supported(&wrong_kind).unwrap_err();
+        let _ = std::fs::remove_file(&wrong_kind);
+        assert!(
+            error.contains(".ipa") && error.contains(".app"),
+            "the message should say what is accepted, got {error:?}"
+        );
     }
 
     /// A missing file and an unsupported file are different problems and
@@ -400,10 +456,7 @@ mod tests {
             descending: false,
         };
         let order = visible_entries(&library, &filter, &DatabaseSnapshot::default());
-        let titles: Vec<&str> = order
-            .iter()
-            .map(|&i| library.entries[i].title())
-            .collect();
+        let titles: Vec<&str> = order.iter().map(|&i| library.entries[i].title()).collect();
         assert_eq!(titles, ["Apple", "banana", "zebra"]);
     }
 
@@ -475,7 +528,10 @@ mod tests {
             id: "com.a@1.0".to_string(),
             path_updated: false,
         };
+        assert_eq!(outcome.entry_id(), Some("com.a@1.0"));
         assert!(!outcome.is_success());
-        assert!(outcome.describe(&library).contains("already in the library"));
+        assert!(outcome
+            .describe(&library)
+            .contains("already in the library"));
     }
 }

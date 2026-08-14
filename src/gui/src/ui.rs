@@ -32,12 +32,13 @@ pub enum Action {
     AddFolder,
     RefreshLibrary,
     Play(String),
-    StopRun(u64),
     StopAll,
     Select(String),
     OpenGlobalSettings,
     OpenAppSettings(String),
     RemoveFromLibrary(String),
+    /// Remove without asking again, which is what the confirmation sends.
+    ConfirmedRemove(String),
     ToggleFavorite(String),
     CopyText(String),
     OpenPath(std::path::PathBuf),
@@ -62,6 +63,9 @@ pub enum Action {
     OpenUserDataFolder,
     OpenAppsFolder,
     Quit,
+    /// Close even though apps are running, which is what the confirmation
+    /// shown on close sends.
+    ConfirmedQuit,
 }
 
 /// The icons drawn on toolbar buttons and in menus.
@@ -77,16 +81,14 @@ pub enum Icon {
     Settings,
     Refresh,
     Log,
-    Folder,
     Grid,
     List,
-    Info,
     Star,
     Search,
 }
 
 pub fn draw_icon(painter: &egui::Painter, rect: Rect, icon: Icon, color: Color32) {
-    let stroke = Stroke::new(1.4, color);
+    let stroke = Stroke::new(1.4_f32, color);
     let centre = rect.center();
     let size = rect.width().min(rect.height());
     let half = size * 0.5;
@@ -97,14 +99,14 @@ pub fn draw_icon(painter: &egui::Painter, rect: Rect, icon: Icon, color: Color32
                     egui::pos2(centre.x - half * 0.7, centre.y),
                     egui::pos2(centre.x + half * 0.7, centre.y),
                 ],
-                Stroke::new(1.8, color),
+                Stroke::new(1.8_f32, color),
             );
             painter.line_segment(
                 [
                     egui::pos2(centre.x, centre.y - half * 0.7),
                     egui::pos2(centre.x, centre.y + half * 0.7),
                 ],
-                Stroke::new(1.8, color),
+                Stroke::new(1.8_f32, color),
             );
         }
         Icon::Play => {
@@ -135,7 +137,7 @@ pub fn draw_icon(painter: &egui::Painter, rect: Rect, icon: Icon, color: Color32
                         egui::pos2(centre.x + cos * inner, centre.y + sin * inner),
                         egui::pos2(centre.x + cos * outer, centre.y + sin * outer),
                     ],
-                    Stroke::new(2.0, color),
+                    Stroke::new(2.0_f32, color),
                 );
             }
             painter.circle_stroke(centre, inner, stroke);
@@ -146,8 +148,7 @@ pub fn draw_icon(painter: &egui::Painter, rect: Rect, icon: Icon, color: Color32
             let radius = half * 0.68;
             let mut points = Vec::new();
             for step in 0..=24 {
-                let angle =
-                    std::f32::consts::TAU * (0.12 + 0.76 * step as f32 / 24.0);
+                let angle = std::f32::consts::TAU * (0.12 + 0.76 * step as f32 / 24.0);
                 let (sin, cos) = angle.sin_cos();
                 points.push(egui::pos2(centre.x + cos * radius, centre.y + sin * radius));
             }
@@ -181,18 +182,9 @@ pub fn draw_icon(painter: &egui::Painter, rect: Rect, icon: Icon, color: Color32
                         egui::pos2(frame.left() + 2.5, y),
                         egui::pos2(frame.right() - 2.5 - row as f32 * 3.0, y),
                     ],
-                    Stroke::new(1.2, color),
+                    Stroke::new(1.2_f32, color),
                 );
             }
-        }
-        Icon::Folder => {
-            let frame = Rect::from_center_size(centre, Vec2::new(size * 0.8, size * 0.62));
-            let tab = Rect::from_min_size(
-                frame.left_top() - Vec2::new(0.0, size * 0.12),
-                Vec2::new(frame.width() * 0.45, size * 0.14),
-            );
-            painter.rect_stroke(tab, 1.0, stroke, egui::StrokeKind::Inside);
-            painter.rect_stroke(frame, 1.0, stroke, egui::StrokeKind::Inside);
         }
         Icon::Grid => {
             for row in 0..2 {
@@ -217,20 +209,9 @@ pub fn draw_icon(painter: &egui::Painter, rect: Rect, icon: Icon, color: Color32
                         egui::pos2(centre.x - half * 0.35, y),
                         egui::pos2(centre.x + half * 0.75, y),
                     ],
-                    Stroke::new(1.3, color),
+                    Stroke::new(1.3_f32, color),
                 );
             }
-        }
-        Icon::Info => {
-            painter.circle_stroke(centre, half * 0.78, stroke);
-            painter.circle_filled(egui::pos2(centre.x, centre.y - half * 0.36), 1.3, color);
-            painter.line_segment(
-                [
-                    egui::pos2(centre.x, centre.y - half * 0.08),
-                    egui::pos2(centre.x, centre.y + half * 0.45),
-                ],
-                Stroke::new(1.6, color),
-            );
         }
         Icon::Star => draw_star(painter, centre, half * 0.9, color, true),
         Icon::Search => {
@@ -244,25 +225,34 @@ pub fn draw_icon(painter: &egui::Painter, rect: Rect, icon: Icon, color: Color32
                     egui::pos2(centre.x + half * 0.2, centre.y + half * 0.2),
                     egui::pos2(centre.x + half * 0.7, centre.y + half * 0.7),
                 ],
-                Stroke::new(1.6, color),
+                Stroke::new(1.6_f32, color),
             );
         }
     }
 }
 
-fn draw_star(painter: &egui::Painter, centre: egui::Pos2, radius: f32, color: Color32, filled: bool) {
+fn draw_star(
+    painter: &egui::Painter,
+    centre: egui::Pos2,
+    radius: f32,
+    color: Color32,
+    filled: bool,
+) {
     let mut points = Vec::with_capacity(10);
     for step in 0..10 {
         let angle = std::f32::consts::TAU * step as f32 / 10.0 - std::f32::consts::FRAC_PI_2;
         let distance = if step % 2 == 0 { radius } else { radius * 0.45 };
         let (sin, cos) = angle.sin_cos();
-        points.push(egui::pos2(centre.x + cos * distance, centre.y + sin * distance));
+        points.push(egui::pos2(
+            centre.x + cos * distance,
+            centre.y + sin * distance,
+        ));
     }
     if filled {
         painter.add(egui::Shape::convex_polygon(points, color, Stroke::NONE));
     } else {
         points.push(points[0]);
-        painter.add(egui::Shape::line(points, Stroke::new(1.2, color)));
+        painter.add(egui::Shape::line(points, Stroke::new(1.2_f32, color)));
     }
 }
 
@@ -277,16 +267,15 @@ pub fn toolbar_button(
     let icon_size = 16.0;
     let padding = 6.0;
     let text_width = label.map_or(0.0, |label| {
-        ui.fonts(|fonts| {
-            fonts
-                .layout_no_wrap(
-                    label.to_string(),
-                    egui::TextStyle::Button.resolve(ui.style()),
-                    Color32::BLACK,
-                )
-                .size()
-                .x
-        }) + 5.0
+        ui.painter()
+            .layout_no_wrap(
+                label.to_string(),
+                egui::TextStyle::Button.resolve(ui.style()),
+                Color32::BLACK,
+            )
+            .size()
+            .x
+            + 5.0
     });
     let size = Vec2::new(icon_size + padding * 2.0 + text_width, 26.0);
     let (rect, response) = ui.allocate_exact_size(size, Sense::click());
@@ -303,7 +292,7 @@ pub fn toolbar_button(
             rect,
             theme::RADIUS,
             fill,
-            Stroke::new(1.0, palette.selection_stroke),
+            Stroke::new(1.0_f32, palette.selection_stroke),
             egui::StrokeKind::Inside,
         );
     }
@@ -351,7 +340,11 @@ pub fn stars(ui: &mut Ui, rating: Option<u8>, size: f32) -> Response {
             ui.painter(),
             centre,
             size * 0.5,
-            if earned { palette.star } else { palette.star_empty },
+            if earned {
+                palette.star
+            } else {
+                palette.star_empty
+            },
             earned,
         );
     }
@@ -367,10 +360,8 @@ pub fn star_picker(ui: &mut Ui, rating: Option<u8>) -> Option<Option<u8>> {
     let mut changed = None;
     ui.horizontal(|ui| {
         for index in 0..5u8 {
-            let (rect, response) =
-                ui.allocate_exact_size(Vec2::splat(size + 2.0), Sense::click());
-            let response =
-                response.on_hover_text(format!("Rate {} of 5", index + 1));
+            let (rect, response) = ui.allocate_exact_size(Vec2::splat(size + 2.0), Sense::click());
+            let response = response.on_hover_text(format!("Rate {} of 5", index + 1));
             let earned = index < rating.unwrap_or(0);
             let color = if response.hovered() {
                 palette.accent
@@ -409,10 +400,8 @@ pub fn field(ui: &mut Ui, label: &str, value: &str) {
             egui::Layout::top_down(egui::Align::LEFT),
             |ui| {
                 ui.add(
-                    egui::Label::new(
-                        egui::RichText::new(label).color(theme::LIGHT.text_dim),
-                    )
-                    .wrap(),
+                    egui::Label::new(egui::RichText::new(label).color(theme::LIGHT.text_dim))
+                        .wrap(),
                 );
             },
         );
@@ -430,18 +419,18 @@ pub fn selectable_field(ui: &mut Ui, label: &str, value: &str) -> Response {
             egui::Layout::top_down(egui::Align::LEFT),
             |ui| {
                 ui.add(
-                    egui::Label::new(
-                        egui::RichText::new(label).color(theme::LIGHT.text_dim),
-                    )
-                    .wrap(),
+                    egui::Label::new(egui::RichText::new(label).color(theme::LIGHT.text_dim))
+                        .wrap(),
                 );
             },
         );
-        response = Some(ui.add(
-            egui::Label::new(egui::RichText::new(value).monospace())
-                .wrap()
-                .sense(Sense::click()),
-        ));
+        response = Some(
+            ui.add(
+                egui::Label::new(egui::RichText::new(value).monospace())
+                    .wrap()
+                    .sense(Sense::click()),
+            ),
+        );
     });
     response.expect("the row always allocates a response")
 }

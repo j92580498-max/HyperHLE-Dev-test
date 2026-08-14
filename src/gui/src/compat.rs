@@ -42,9 +42,6 @@ pub const DATABASE_SITE: &str = "https://taphle.ephun.net";
 pub const DATABASE_APPS_URL: &str = "https://taphle.ephun.net/compatibility/api/apps";
 /// Where a person goes to read or submit records.
 pub const DATABASE_WEB_URL: &str = "https://taphle.ephun.net/compatibility";
-/// Cached copy of the last successful fetch, so ratings survive a restart
-/// and are shown when the machine is offline.
-pub const CACHE_FILE: &str = "compatibility.json";
 
 /// One app as the database describes it.
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -178,7 +175,10 @@ impl TapHledbProvider {
 
 impl CompatibilityProvider for TapHledbProvider {
     fn describe(&self) -> String {
-        format!("tapHLEdb at {DATABASE_SITE} (via {})", self.transport.describe())
+        format!(
+            "tapHLEdb at {DATABASE_SITE} (via {})",
+            self.transport.describe()
+        )
     }
 
     fn fetch(&self) -> Result<DatabaseSnapshot, String> {
@@ -215,10 +215,6 @@ pub struct LocalRating {
 }
 
 impl LocalRating {
-    pub fn is_set(&self) -> bool {
-        self.stars.is_some() || !self.notes.trim().is_empty()
-    }
-
     pub fn set_stars(&mut self, stars: Option<u8>) {
         self.stars = stars.filter(|s| (1..=5).contains(s));
         self.touch();
@@ -337,7 +333,9 @@ mod tests {
     fn the_public_app_list_is_understood() {
         let snapshot = parse_snapshot(SAMPLE, 1000).unwrap();
         assert_eq!(snapshot.entries.len(), 2);
-        let entry = snapshot.find("com.glu.thief3d").expect("entry should be found");
+        let entry = snapshot
+            .find("com.glu.thief3d")
+            .expect("entry should be found");
         assert_eq!(entry.name, "Cops & Robbers");
         assert_eq!(entry.rating, Some(2));
         assert_eq!(entry.developer_publisher.as_deref(), Some("Glu Mobile"));

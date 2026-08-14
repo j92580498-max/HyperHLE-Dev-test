@@ -203,7 +203,9 @@ impl LogView {
             if selection_only && !self.is_selected(*seq) {
                 continue;
             }
-            let Some(line) = store.get(*seq) else { continue };
+            let Some(line) = store.get(*seq) else {
+                continue;
+            };
             if self.show_timestamps {
                 text.push_str(&crate::timefmt::format_clock(line.millis));
                 text.push(' ');
@@ -249,7 +251,12 @@ fn toolbar(ui: &mut Ui, view: &mut LogView, store: &LogStore, actions: &mut Vec<
 
         ui.add_space(6.0);
         let (icon_rect, _) = ui.allocate_exact_size(Vec2::splat(13.0), Sense::hover());
-        ui::draw_icon(ui.painter(), icon_rect, ui::Icon::Search, theme::LIGHT.text_dim);
+        ui::draw_icon(
+            ui.painter(),
+            icon_rect,
+            ui::Icon::Search,
+            theme::LIGHT.text_dim,
+        );
         ui.add(
             egui::TextEdit::singleline(&mut view.search)
                 .desired_width(150.0)
@@ -257,10 +264,15 @@ fn toolbar(ui: &mut Ui, view: &mut LogView, store: &LogStore, actions: &mut Vec<
         );
 
         ui.separator();
-        ui.checkbox(&mut view.show_error, "Errors");
-        ui.checkbox(&mut view.show_warning, "Warnings");
-        ui.checkbox(&mut view.show_info, "Info");
-        ui.checkbox(&mut view.show_debug, "Debug");
+        for (flag, level) in [
+            (&mut view.show_error, LogLevel::Error),
+            (&mut view.show_warning, LogLevel::Warning),
+            (&mut view.show_info, LogLevel::Info),
+            (&mut view.show_debug, LogLevel::Debug),
+        ] {
+            ui.checkbox(flag, level.label())
+                .on_hover_text(format!("Show {} lines", level.label().to_lowercase()));
+        }
 
         ui.separator();
         ui.checkbox(&mut view.only_selected_app, "This app only")
@@ -303,7 +315,12 @@ fn toolbar(ui: &mut Ui, view: &mut LogView, store: &LogStore, actions: &mut Vec<
             ui.checkbox(&mut view.paused, "Pause")
                 .on_hover_text("Stop updating the view. Output is still recorded.");
             ui.checkbox(&mut view.follow_tail, "Follow");
-            ui.checkbox(&mut view.show_timestamps, "Times");
+            ui.checkbox(&mut view.show_timestamps, "Times")
+                .on_hover_text(if crate::timefmt::times_are_utc() {
+                    "Show the time each line arrived (UTC on this platform)"
+                } else {
+                    "Show the time each line arrived"
+                });
             ui.separator();
             let dropped = store.dropped();
             let summary = if dropped > 0 {
@@ -330,7 +347,7 @@ fn rows(ui: &mut Ui, view: &mut LogView, store: &LogStore) {
         .rect_filled(ui.max_rect(), 0.0, palette.log_background);
 
     let font = egui::TextStyle::Monospace.resolve(ui.style());
-    let row_height = ui.fonts(|fonts| fonts.row_height(&font)) + 2.0;
+    let row_height = ui.text_style_height(&egui::TextStyle::Monospace) + 2.0;
 
     // Ctrl+A and Ctrl+C work when the pointer is over the panel, which is
     // what a person expects of a pane they are reading.
@@ -351,6 +368,17 @@ fn rows(ui: &mut Ui, view: &mut LogView, store: &LogStore) {
                 ui.ctx().copy_text(text);
             }
         }
+    }
+
+    if store.is_empty() {
+        ui.add_space(10.0);
+        ui.vertical_centered(|ui| {
+            ui.label(
+                egui::RichText::new("No output yet. Start an app to see its log here.")
+                    .color(palette.text_dim),
+            );
+        });
+        return;
     }
 
     let mut scroll = egui::ScrollArea::both().auto_shrink([false, false]);
@@ -387,9 +415,9 @@ fn rows(ui: &mut Ui, view: &mut LogView, store: &LogStore) {
             };
             let mut x = rect.left() + 6.0;
             let mut put = |text: &str, colour: egui::Color32, gap: f32| {
-                let galley = ui.fonts(|fonts| {
-                    fonts.layout_no_wrap(text.to_string(), font.clone(), colour)
-                });
+                let galley = ui
+                    .painter()
+                    .layout_no_wrap(text.to_string(), font.clone(), colour);
                 let advance = galley.size().x;
                 ui.painter()
                     .galley(egui::pos2(x, rect.top() + 1.0), galley, colour);
@@ -404,6 +432,12 @@ fn rows(ui: &mut Ui, view: &mut LogView, store: &LogStore) {
             }
             if line.level >= LogLevel::Warning {
                 put(line.level.marker(), colour, 6.0);
+            }
+            // With more than one app's output in view, say which is which.
+            if !view.only_selected_app {
+                if let crate::logstore::LogOrigin::Run { .. } = &line.origin {
+                    put(line.origin.label(), palette.accent, 6.0);
+                }
             }
             if let Some(module) = &line.module {
                 // The `tapHLE::` prefix is on every line and carries no

@@ -87,7 +87,8 @@ pub enum DeviceFamilyPref {
 }
 
 impl DeviceFamilyPref {
-    pub const ALL: &'static [DeviceFamilyPref] = &[DeviceFamilyPref::IPhone, DeviceFamilyPref::IPad];
+    pub const ALL: &'static [DeviceFamilyPref] =
+        &[DeviceFamilyPref::IPhone, DeviceFamilyPref::IPad];
 
     pub fn label(self) -> &'static str {
         match self {
@@ -289,7 +290,12 @@ impl EmulatorSettings {
             "--enable-direct-memory-access",
             "--disable-direct-memory-access",
         );
-        flag(&mut args, self.error_popup, "--error-popup", "--no-error-popup");
+        flag(
+            &mut args,
+            self.error_popup,
+            "--error-popup",
+            "--no-error-popup",
+        );
         if let Some(languages) = self
             .preferred_languages
             .as_deref()

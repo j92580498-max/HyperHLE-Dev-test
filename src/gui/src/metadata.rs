@@ -5,23 +5,20 @@
  */
 //! Reading what an app says about itself, and caching its icon.
 //!
-//! Every field here is read from the app: from its `Info.plist` through the
-//! emulator's own [tapHLE::bundle::Bundle], or from the `iTunesMetadata.plist`
-//! the App Store wraps a download in. Nothing is guessed. An app that does not
-//! record its publisher simply has no publisher, and the details panel says
-//! nothing rather than inventing something.
+//! The reading is the emulator's, through `tapHLE::app_bundle`, so the
+//! identity the library shows is the identity a run and a compatibility
+//! report use. What this module adds is the App Store wrapper — the publisher
+//! and genre, which an app's own `Info.plist` never records — and the shape
+//! the library stores.
 //!
-//! The emulator's bundle reader assumes a well-formed `Info.plist` and panics
-//! on a malformed one, which is reasonable when a run is about to fail anyway
-//! but not when a library is being scanned. Reading is therefore wrapped in
-//! [std::panic::catch_unwind], and a bundle that cannot be read becomes an
-//! import error the interface can show.
+//! Nothing is guessed. An app that does not record its publisher simply has
+//! no publisher, and the details panel leaves the row out rather than
+//! inventing one.
 
 use std::io::{Read, Write};
 use std::path::Path;
 
-use tapHLE::bundle::Bundle;
-use tapHLE::fs::BundleData;
+use tapHLE::app_bundle;
 
 /// What an app says about itself.
 #[derive(Clone, Default, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -51,7 +48,7 @@ pub struct AppMetadata {
     pub genre: Option<String>,
     /// `releaseDate` from the App Store wrapper.
     pub release_date: Option<String>,
-    /// Size of the `.ipa` or bundle directory in bytes, when it could be read.
+    /// Size of the `.ipa` in bytes, when it could be read.
     pub size_bytes: Option<u64>,
 }
 
@@ -108,6 +105,16 @@ pub struct AppIcon {
     pub rgba: Vec<u8>,
 }
 
+impl From<app_bundle::IconBitmap> for AppIcon {
+    fn from(bitmap: app_bundle::IconBitmap) -> Self {
+        AppIcon {
+            width: bitmap.width,
+            height: bitmap.height,
+            rgba: bitmap.rgba,
+        }
+    }
+}
+
 /// What one app contributed to the library.
 pub struct ReadApp {
     pub metadata: AppMetadata,
@@ -116,102 +123,44 @@ pub struct ReadApp {
     pub warnings: Vec<String>,
 }
 
-/// Read an app bundle or `.ipa`.
+/// Read an app bundle or `.ipa` through the emulator's own reader.
 pub fn read(path: &Path) -> Result<ReadApp, String> {
-    let path = path.to_path_buf();
-    // The emulator's readers assert their way through a plist; a malformed
-    // one must not take the frontend with it.
-    let result = std::panic::catch_unwind(move || read_inner(&path));
-    match result {
-        Ok(result) => result,
-        Err(payload) => Err(format!(
-            "The app bundle could not be read: {}",
-            panic_message(&payload)
-        )),
-    }
-}
-
-fn panic_message(payload: &Box<dyn std::any::Any + Send>) -> String {
-    if let Some(text) = payload.downcast_ref::<&str>() {
-        (*text).to_string()
-    } else if let Some(text) = payload.downcast_ref::<String>() {
-        text.clone()
-    } else {
-        "the file is not a readable app bundle".to_string()
-    }
-}
-
-fn read_inner(path: &Path) -> Result<ReadApp, String> {
-    let mut warnings = Vec::new();
-    let mut bundle_data = BundleData::open_any(path)?;
-
-    // The App Store wrapper has to be read before the bundle is consumed.
-    let store_metadata = bundle_data
-        .read_ipa_root_file("iTunesMetadata.plist")
+    let contents = app_bundle::read(path)?;
+    let store = contents
+        .store_metadata
         .and_then(|bytes| plist::Value::from_reader(std::io::Cursor::new(bytes)).ok())
         .and_then(|value| value.into_dictionary());
-
-    let (bundle, fs) = Bundle::new_bundle_and_fs_from_host_path(bundle_data, true)?;
-
-    let icon = match bundle.load_icon(&fs) {
-        Ok(image) => {
-            let (width, height) = image.dimensions();
-            Some(AppIcon {
-                width,
-                height,
-                rgba: image.pixels().to_vec(),
-            })
-        }
-        Err(e) => {
-            warnings.push(format!("The app's icon could not be read: {e}"));
-            None
-        }
-    };
-
-    let string_from_store = |key: &str| -> Option<String> {
-        store_metadata
+    let from_store = |key: &str| -> Option<String> {
+        store
             .as_ref()
-            .and_then(|d| d.get(key))
-            .and_then(|v| v.as_string())
+            .and_then(|dictionary| dictionary.get(key))
+            .and_then(|value| value.as_string())
             .map(str::to_string)
-            .filter(|s| !s.trim().is_empty())
+            .filter(|text| !text.trim().is_empty())
     };
 
-    let metadata = AppMetadata {
-        display_name: bundle.display_name().to_string(),
-        bundle_name: bundle
-            .canonical_bundle_name()
-            .unwrap_or_else(|| bundle.bundle_name())
-            .to_string(),
-        bundle_identifier: bundle.bundle_identifier().to_string(),
-        bundle_version: bundle.bundle_version().to_string(),
-        short_version: bundle.short_version().map(str::to_string),
-        minimum_os_version: bundle.minimum_os_version().map(str::to_string),
-        device_families: bundle
-            .device_family_array()
-            .iter()
-            .map(|family| family.to_string())
-            .collect(),
-        required_capabilities: bundle
-            .required_device_capabilities()
-            .iter()
-            .map(|c| c.to_string())
-            .collect(),
-        supported_orientations: bundle
-            .supported_interface_orientations()
-            .iter()
-            .map(|o| o.to_string())
-            .collect(),
-        publisher: string_from_store("artistName"),
-        genre: string_from_store("genre"),
-        release_date: string_from_store("releaseDate"),
-        size_bytes: std::fs::metadata(path).ok().map(|m| m.len()).filter(|_| path.is_file()),
-    };
-
+    let info = contents.info;
     Ok(ReadApp {
-        metadata,
-        icon,
-        warnings,
+        metadata: AppMetadata {
+            display_name: info.display_name,
+            bundle_name: info.bundle_name,
+            bundle_identifier: info.bundle_identifier,
+            bundle_version: info.bundle_version,
+            short_version: info.short_version,
+            minimum_os_version: info.minimum_os_version,
+            device_families: info.device_families,
+            required_capabilities: info.required_capabilities,
+            supported_orientations: info.supported_orientations,
+            publisher: from_store("artistName"),
+            genre: from_store("genre"),
+            release_date: from_store("releaseDate"),
+            size_bytes: path
+                .is_file()
+                .then(|| std::fs::metadata(path).ok().map(|m| m.len()))
+                .flatten(),
+        },
+        icon: contents.icon.map(AppIcon::from),
+        warnings: contents.warnings,
     })
 }
 
@@ -256,8 +205,7 @@ const ICON_CACHE_MAGIC: &[u8; 4] = b"THIC";
 
 pub fn write_icon_cache(dir: &Path, name: &str, icon: &AppIcon) -> Result<(), String> {
     std::fs::create_dir_all(dir).map_err(|e| format!("Could not create {}: {e}", dir.display()))?;
-    let mut encoder =
-        flate2::write::ZlibEncoder::new(Vec::new(), flate2::Compression::default());
+    let mut encoder = flate2::write::ZlibEncoder::new(Vec::new(), flate2::Compression::default());
     encoder
         .write_all(ICON_CACHE_MAGIC)
         .and_then(|()| encoder.write_all(&icon.width.to_le_bytes()))
@@ -282,7 +230,9 @@ pub fn read_icon_cache(dir: &Path, name: &str) -> Option<AppIcon> {
     }
     let width = u32::from_le_bytes(plain[4..8].try_into().ok()?);
     let height = u32::from_le_bytes(plain[8..12].try_into().ok()?);
-    let expected = (width as usize).checked_mul(height as usize)?.checked_mul(4)?;
+    let expected = (width as usize)
+        .checked_mul(height as usize)?
+        .checked_mul(4)?;
     if plain.len() - 12 != expected {
         return None;
     }
@@ -311,7 +261,10 @@ mod tests {
     /// library row with no name in it is useless.
     #[test]
     fn a_missing_display_name_falls_back() {
-        assert_eq!(metadata_with("Ricky", "RickyApp", "com.x.r").title(), "Ricky");
+        assert_eq!(
+            metadata_with("Ricky", "RickyApp", "com.x.r").title(),
+            "Ricky"
+        );
         assert_eq!(metadata_with("", "RickyApp", "com.x.r").title(), "RickyApp");
         assert_eq!(metadata_with("", "", "com.x.r").title(), "com.x.r");
     }

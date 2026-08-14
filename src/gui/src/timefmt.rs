@@ -211,9 +211,7 @@ fn plural(count: u64) -> &'static str {
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        civil_from_days, days_from_civil, format_duration, format_relative, plural,
-    };
+    use super::{civil_from_days, days_from_civil, format_duration, format_relative, plural};
 
     /// The two calendar conversions have to be exact inverses; every
     /// displayed date depends on it, and an off-by-one would only show up as
