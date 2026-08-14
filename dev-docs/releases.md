@@ -81,8 +81,9 @@ reads is maintained worst. Keeping a single source also means the entries are
 written on the branch that earned them, while the reasoning is still to hand,
 rather than reconstructed from the log at tag time.
 
-At release, rename `## Unreleased` to `## <version> — <date>`, open a fresh
-empty `## Unreleased` above it, and paste that section into the published
+At release, rename `## Unreleased` to `## <version> - YYYY-MM-DD` — the exact
+form `dev-scripts/release_version.py` validates, ASCII hyphen included — open a
+fresh empty `## Unreleased` above it, and paste that section into the published
 release. If a release would have no changelog section, that is a sign it should
 not be published.
 
@@ -109,8 +110,15 @@ for example `v0.3.0-alpha.1`. The Windows archive is named:
 tapHLE-v0.3.0-alpha.1-Windows-x86_64.zip
 ```
 
-Windows x86_64 is the only release artifact. macOS remains a best-effort
-development validation target, and Android is not a release target.
+Windows x86_64 is the only release artifact today. Linux and macOS are
+intended desktop platforms that nothing has been released for; Android is not a
+release target. `packaging.md` records what each would need.
+
+A release artifact contains both programs: `tapHLE-gui`, the desktop frontend,
+and `tapHLE`, the emulator it launches. A Windows release should also carry the
+installer built from `dev-scripts/tapHLE.iss`, which has been written but not
+yet built — do not publish one without checking its shortcut, its uninstall
+entry and an upgrade over an existing installation.
 
 The repository pins its Rust compiler, Clippy, and Rustfmt version in
 `rust-toolchain.toml`. Update that file deliberately, run the full lint and

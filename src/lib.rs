@@ -116,7 +116,8 @@ Usage:
 
 PATH should be a path to a .app bundle or .ipa file.
 
-If no app path or special option is specified, a GUI app picker is displayed.
+If no app path or special option is specified, a simple built-in app picker is
+displayed. For a library, settings and a log, run tapHLE-gui instead.
 
 Special options:
     --help
@@ -211,7 +212,7 @@ pub fn main<T: Iterator<Item = String>>(mut args: T) -> Result<(), String> {
             );
         }
         echo!(
-            "No app specified, opening app picker. Use the --help flag to see command-line usage."
+            "No app specified, opening the built-in app picker. Use the --help flag to see              command-line usage, or run tapHLE-gui for the desktop frontend."
         );
         let (bundle_path, mut extra_options) = environment::app_picker::app_picker(options)?;
         option_args.append(&mut extra_options);
