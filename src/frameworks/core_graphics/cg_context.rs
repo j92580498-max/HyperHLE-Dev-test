@@ -495,6 +495,18 @@ fn CGContextSetAllowsAntialiasing(_env: &mut Environment, context: CGContextRef,
     );
 }
 
+// The per-context switch, as against the allows-antialiasing one above which
+// says whether it may happen at all. tapHLE's rasterisers do not offer the
+// choice, so both are accepted and recorded rather than acted on; refusing
+// either ends an app over the quality of its edges.
+fn CGContextSetShouldAntialias(_env: &mut Environment, context: CGContextRef, should: bool) {
+    log!(
+        "TODO: CGContextSetShouldAntialias({:?}, {})",
+        context,
+        should
+    );
+}
+
 fn CGContextSetShouldSmoothFonts(_env: &mut Environment, context: CGContextRef, should: bool) {
     log!(
         "TODO: CGContextSetShouldSmoothFonts({:?}, {})",
@@ -1116,6 +1128,7 @@ pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(CGContextRestoreGState(_)),
     export_c_func!(CGContextSetInterpolationQuality(_, _)),
     export_c_func!(CGContextSetAllowsAntialiasing(_, _)),
+    export_c_func!(CGContextSetShouldAntialias(_, _)),
     export_c_func!(CGContextSetShouldSmoothFonts(_, _)),
     export_c_func!(CGContextSetFont(_, _)),
     export_c_func!(CGContextSetFontSize(_, _)),
