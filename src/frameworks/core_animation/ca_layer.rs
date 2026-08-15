@@ -119,7 +119,13 @@ pub const kCAGravityResize: &str = "resize";
 pub const kCAGravityResizeAspect: &str = "resizeAspect";
 pub const kCAGravityResizeAspectFill: &str = "resizeAspectFill";
 
+/// The action key a layer looks up when it is about to be replaced on screen.
+/// It is an ordinary string like the gravity and filter names, and apps read it
+/// to install or ask for a transition rather than to compare against.
+pub const kCATransition: &str = "transition";
+
 pub const CONSTANTS: ConstantExports = &[
+    ("_kCATransition", HostConstant::NSString(kCATransition)),
     ("_kCAFilterLinear", HostConstant::NSString(kCAFilterLinear)),
     (
         "_kCAFilterNearest",

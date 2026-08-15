@@ -41,6 +41,11 @@
   nothing — but tapHLE treated it as a mistake and quit. Tap Tap Revenge 3 did
   this while opening its main menu and never got there.
 
+- Let games slide one screen in over another. The names for which edge such a
+  slide comes from were missing, and a missing name reads as nothing at all, so
+  a game asking for one stopped dead — nowhere near anything to do with
+  animation. Tap Tap Revenge 3 did this the moment its song list opened.
+
 - Let a game set up an object from a whole block of saved settings at once,
   rather than one setting at a time. Games that keep the description of a
   scene in a data file hand the whole description over in one go, and that
