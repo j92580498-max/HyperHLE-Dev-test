@@ -12,7 +12,7 @@ use std::time::Instant;
 use crate::audio::openal::al_types::{ALuint, ALvoid};
 use crate::audio::openal::{AL_BUFFERS_PROCESSED, AL_PLAYING, AL_SOURCE_STATE};
 
-use crate::abi::CallFromHost;
+use crate::abi::{CallFromHost, GuestFunction};
 use crate::dyld::FunctionExports;
 use crate::environment::Environment;
 use crate::export_c_func;
@@ -509,7 +509,48 @@ pub fn render_audio_unit(env: &mut Environment, audio_unit: AudioUnit) {
     audio_unit_host_object.is_running_handler = false;
 }
 
+/// A render notification is called around each render cycle, before and after
+/// the unit produces its audio. Apps use them to meter, to visualise, and to
+/// tap the output; none of that is the audio itself, which the render callback
+/// tapHLE does implement produces.
+///
+/// The registration is accepted and recorded rather than honoured. The callback
+/// is never called, so an app that draws a level meter from one will see
+/// silence — but refusing the call ends the app outright, which loses the audio
+/// as well as the meter.
+fn AudioUnitAddRenderNotify(
+    _env: &mut Environment,
+    in_unit: AudioUnit,
+    in_proc: GuestFunction,
+    in_proc_user_data: MutVoidPtr,
+) -> OSStatus {
+    log!(
+        "TODO: AudioUnitAddRenderNotify({:?}, {:?}, {:?}); the notification will never be called",
+        in_unit,
+        in_proc,
+        in_proc_user_data
+    );
+    0 // success
+}
+
+fn AudioUnitRemoveRenderNotify(
+    _env: &mut Environment,
+    in_unit: AudioUnit,
+    in_proc: GuestFunction,
+    in_proc_user_data: MutVoidPtr,
+) -> OSStatus {
+    log!(
+        "TODO: AudioUnitRemoveRenderNotify({:?}, {:?}, {:?})",
+        in_unit,
+        in_proc,
+        in_proc_user_data
+    );
+    0 // success
+}
+
 pub const FUNCTIONS: FunctionExports = &[
+    export_c_func!(AudioUnitAddRenderNotify(_, _, _)),
+    export_c_func!(AudioUnitRemoveRenderNotify(_, _, _)),
     export_c_func!(AudioUnitInitialize(_)),
     export_c_func!(AudioUnitUninitialize(_)),
     export_c_func!(AudioUnitSetProperty(_, _, _, _, _, _)),
