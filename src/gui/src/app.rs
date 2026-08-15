@@ -242,27 +242,51 @@ impl Frontend {
         folders
     }
 
-    /// Read every cached icon on a worker thread.
+    /// Read every cached icon on a worker thread, rebuilding the ones whose
+    /// cache file has gone.
     fn load_cached_icons(&self) {
         let sender = self.background_sender();
-        let wanted: Vec<(String, String)> = self
+        let wanted: Vec<(String, String, PathBuf)> = self
             .library
             .entries
             .iter()
-            .filter_map(|entry| Some((entry.id.clone(), entry.icon_cache.clone()?)))
+            .filter_map(|entry| {
+                Some((
+                    entry.id.clone(),
+                    entry.icon_cache.clone()?,
+                    entry.path.clone(),
+                ))
+            })
             .collect();
         if wanted.is_empty() {
             return;
         }
         let dir = storage::icon_cache_dir();
         std::thread::spawn(move || {
-            for (id, name) in wanted {
-                if let Some(icon) = crate::metadata::read_icon_cache(&dir, &name) {
-                    sender.send(Background::Icon {
-                        id,
-                        icon: Box::new(icon),
-                    });
+            let mut rebuilt = 0_usize;
+            for (id, name, path) in wanted {
+                let cached = crate::metadata::read_icon_cache(&dir, &name).is_some();
+                let Some(icon) = crate::metadata::icon_or_rebuild(&dir, &name, &path) else {
+                    continue;
+                };
+                if !cached {
+                    rebuilt += 1;
                 }
+                sender.send(Background::Icon {
+                    id,
+                    icon: Box::new(icon),
+                });
+            }
+            // Rereading archives is slow enough to be worth admitting to,
+            // and a cache that keeps vanishing is worth noticing.
+            if rebuilt > 0 {
+                sender.send(Background::Note(
+                    LogLevel::Info,
+                    format!(
+                        "Rebuilt {rebuilt} icon{} whose cached copy was missing",
+                        if rebuilt == 1 { "" } else { "s" }
+                    ),
+                ));
             }
         });
     }

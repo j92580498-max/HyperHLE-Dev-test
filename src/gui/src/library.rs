@@ -569,6 +569,59 @@ mod tests {
 
     /// The whole import path over a real bundle: read it, add it, and refuse
     /// to add it twice.
+    /// An app already in the library is a duplicate on every later scan, so
+    /// nothing reads its icon again. If the cached copy disappears the icon
+    /// has to be rebuilt from the app itself, or the placeholder letter is
+    /// permanent — which is what a library copied without its `icons`
+    /// directory looks like.
+    #[test]
+    fn a_missing_icon_cache_is_rebuilt_from_the_app() {
+        let bundle = write_test_bundle("Rebuildable", "com.example.rebuildable", "1.0");
+        let icons = std::env::temp_dir().join("tapHLE-gui-test-rebuild-icons");
+        let _ = std::fs::remove_dir_all(&icons);
+        let mut library = Library::default();
+        library.absorb(read_for_import(&bundle), &icons);
+
+        let entry = &library.entries[0];
+        let name = entry.icon_cache.clone().expect("the import should cache");
+        let path = entry.path.clone();
+        let cached = metadata::read_icon_cache(&icons, &name).expect("cache should be readable");
+
+        std::fs::remove_file(icons.join(&name)).unwrap();
+        assert!(
+            metadata::read_icon_cache(&icons, &name).is_none(),
+            "the cache file should be gone"
+        );
+
+        let rebuilt = metadata::icon_or_rebuild(&icons, &name, &path)
+            .expect("the icon should come back from the app itself");
+        assert_eq!(
+            (rebuilt.width, rebuilt.height),
+            (cached.width, cached.height)
+        );
+        assert_eq!(rebuilt.rgba, cached.rgba);
+        assert!(
+            metadata::read_icon_cache(&icons, &name).is_some(),
+            "rebuilding should put the cache back, so the next launch is cheap"
+        );
+
+        let _ = std::fs::remove_dir_all(bundle.parent().unwrap());
+        let _ = std::fs::remove_dir_all(&icons);
+    }
+
+    /// An app whose file has gone cannot have its icon rebuilt, and asking
+    /// must fail quietly rather than panicking on the missing path.
+    #[test]
+    fn an_icon_cannot_be_rebuilt_from_an_app_that_is_gone() {
+        let icons = std::env::temp_dir().join("tapHLE-gui-test-noapp-icons");
+        let _ = std::fs::remove_dir_all(&icons);
+        std::fs::create_dir_all(&icons).unwrap();
+        let gone = std::env::temp_dir().join("tapHLE-gui-test-no-such-app.ipa");
+        let _ = std::fs::remove_file(&gone);
+        assert!(metadata::icon_or_rebuild(&icons, "whatever.icon", &gone).is_none());
+        let _ = std::fs::remove_dir_all(&icons);
+    }
+
     #[test]
     fn a_real_bundle_imports_once_and_is_then_a_duplicate() {
         let bundle = write_test_bundle("Importable", "com.example.importable", "1.0");

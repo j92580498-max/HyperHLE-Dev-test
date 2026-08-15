@@ -243,6 +243,27 @@ pub fn read_icon_cache(dir: &Path, name: &str) -> Option<AppIcon> {
     })
 }
 
+/// An app's icon, from the cache when it is there and from the app itself
+/// when it is not.
+///
+/// A library outlives its icon cache more easily than it looks: copied to
+/// another machine without the `icons` directory beside it, restored from a
+/// backup that skipped it, or tidied up by hand. Reading the cache and giving
+/// up on a miss is not enough, because an app already in the library is a
+/// duplicate on the next scan and its icon is never read again — so the
+/// placeholder letter would be permanent. Rebuilding costs one read of an
+/// archive that is already on disk, and only for the entries that need it.
+pub fn icon_or_rebuild(dir: &Path, name: &str, path: &Path) -> Option<AppIcon> {
+    if let Some(icon) = read_icon_cache(dir, name) {
+        return Some(icon);
+    }
+    let icon = read(path).ok()?.icon?;
+    // A cache that cannot be written is not worth failing over: the icon is
+    // in hand, and the next launch will simply rebuild it again.
+    let _ = write_icon_cache(dir, name, &icon);
+    Some(icon)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
