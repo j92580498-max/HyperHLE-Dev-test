@@ -36,6 +36,10 @@
 
 - Running tapHLE from a terminal is unchanged.
 
+- Stop ending a game when it compares a piece of text against a setting it does
+  not have. Looking something up, finding nothing, and comparing anyway is
+  harmless — the missing one simply sorts first — and it used to end the game.
+
 - Read a text file without being told what encoding it is in, and say which one
   it turned out to be. This is the modern way to load a text file a game did not
   write itself, and it did not exist, so the game stopped there.
