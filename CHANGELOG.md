@@ -36,6 +36,10 @@
 
 - Running tapHLE from a terminal is unchanged.
 
+- Read a text file without being told what encoding it is in, and say which one
+  it turned out to be. This is the modern way to load a text file a game did not
+  write itself, and it did not exist, so the game stopped there.
+
 - Support the plain "collection of unique things" games keep in the older,
   lower-level style — creating one, adding to it, counting it, emptying it and
   walking it. None of it existed, so a game that kept, say, the set of notes
