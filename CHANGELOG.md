@@ -36,6 +36,12 @@
 
 - Running tapHLE from a terminal is unchanged.
 
+- Support the plain "collection of unique things" games keep in the older,
+  lower-level style — creating one, adding to it, counting it, emptying it and
+  walking it. None of it existed, so a game that kept, say, the set of notes
+  currently on screen ended the moment it made one. Tap Tap Revenge 3 does this
+  as a song starts loading.
+
 - Show the contents of a list a game builds once and never refreshes. Lists
   filled in as a screen is prepared came up empty, because tapHLE only ever
   asked a game for its rows when the game explicitly demanded a refresh —
