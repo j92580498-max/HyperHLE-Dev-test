@@ -63,6 +63,9 @@ struct UITableViewHostObject {
     /// 0 in a plain one, and tapHLE lays out neither, so 0 is the honest start.
     section_header_height: f32,
     section_footer_height: f32,
+    /// Whether the rows have ever been built. A table loads them the first
+    /// time it is laid out, so this says whether that has happened yet.
+    has_loaded: bool,
     /// The cells currently built, in display order, each retained.
     cells: Vec<id>,
     /// Parallel to `cells`: the index path each was built for, each retained.
@@ -78,6 +81,7 @@ impl Default for UITableViewHostObject {
             row_height: DEFAULT_ROW_HEIGHT,
             section_header_height: 0.0,
             section_footer_height: 0.0,
+            has_loaded: false,
             cells: Vec::new(),
             index_paths: Vec::new(),
         }
@@ -103,6 +107,10 @@ impl_HostObject_with_superclass!(UITableViewCellHostObject);
 /// the only thing that has to be called after the data changes — which is also
 /// true of the real one.
 fn reload(env: &mut Environment, table: id) {
+    env.objc
+        .borrow_mut::<UITableViewHostObject>(table)
+        .has_loaded = true;
+
     // Tear down what is there. The cells are subviews, so they have to leave
     // the hierarchy as well as the list, or they would keep drawing.
     let (old_cells, old_paths) = {
@@ -402,6 +410,20 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 - (())reloadData {
     reload(env, this);
+}
+
+// A table view loads its rows the first time it is laid out, not when its data
+// source is set. That is why an app can build a table in a nib, point it at a
+// data source, and never call -reloadData: by the time the table is on screen
+// UIKit has already asked. Loading only on the first pass keeps a later layout
+// from rebuilding cells underneath an app that is holding one.
+- (())layoutSubviews {
+    () = msg_super![env; this layoutSubviews];
+    let &UITableViewHostObject { has_loaded, data_source, .. } =
+        env.objc.borrow::<UITableViewHostObject>(this);
+    if !has_loaded && data_source != nil {
+        reload(env, this);
+    }
 }
 
 // Always nil, and deliberately. A real table view returns nil whenever its

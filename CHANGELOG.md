@@ -36,6 +36,12 @@
 
 - Running tapHLE from a terminal is unchanged.
 
+- Show the contents of a list a game builds once and never refreshes. Lists
+  filled in as a screen is prepared came up empty, because tapHLE only ever
+  asked a game for its rows when the game explicitly demanded a refresh —
+  something a game has no reason to do the first time. Tap Tap Revenge 3's song
+  list was blank and now shows its three songs with their artwork.
+
 - Stop ending a game when it prepares a call and leaves some of its arguments
   empty. Leaving them out is ordinary — the missing ones simply count as
   nothing — but tapHLE treated it as a mistake and quit. Tap Tap Revenge 3 did
