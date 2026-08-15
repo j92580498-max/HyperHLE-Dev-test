@@ -132,7 +132,10 @@ fn CFNumberGetType(env: &mut Environment, num: CFNumberRef) -> CFNumberType {
         "f" => kCFNumberFloatType,
         "d" => kCFNumberDoubleType,
         other => {
-            log!("Warning: CFNumberGetType() for unexpected encoding {:?}, reporting int", other);
+            log!(
+                "Warning: CFNumberGetType() for unexpected encoding {:?}, reporting int",
+                other
+            );
             kCFNumberIntType
         }
     }
