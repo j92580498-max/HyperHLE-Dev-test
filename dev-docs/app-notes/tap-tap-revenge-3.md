@@ -71,3 +71,74 @@ Do **not** assume the new table view is the cause without evidence. It is the
 newest code in the path and therefore the obvious suspect, which is exactly why
 it deserves a measurement rather than a hunch — the eight-app regression sweep
 and Ragdoll Blaster Lite both exercise it without faulting.
+
+## 2026-08-15: the song list is populated and a song loads
+
+Still 2 stars — no gameplay yet — but the frontier moved a long way, and six
+general gaps were closed to do it. Every one of them was a tapHLE gap rather
+than something about this app.
+
+The `MemoryError` recorded above is **gone**, and so is a regression that had
+appeared since: the app could not even reach its main menu, aborting inside
+`-[NSInvocation invoke]`, which asserted every argument slot had been set. It
+does not need to be, and Apple's does not require it.
+
+Closed on `trunk`, in this order, each one the next thing that stopped the app:
+
+1. `-[NSInvocation invoke]` passes an unset argument as zero.
+2. The `kCATransition*` subtype names and `kCATransition` are exported. The
+   fault was the classic unbound non-lazy slot: `ldr r2,[r2]` at `0x60e28`
+   reading the null slot at `0x18135c`.
+3. `UITableView` loads its rows on its first layout, not only in `-reloadData`.
+   **This was the empty song list**: the app sets a data source in a nib and
+   never calls `-reloadData`, because on a device it does not have to.
+4. `CFSet` — the whole type was missing.
+5. `+[NSString stringWithContentsOfFile:usedEncoding:error:]`, which is how the
+   app loads the Lua configuration in `game_defaults.cfg` and `theme.cfg`.
+6. `-[NSString compare:]` with a nil argument no longer aborts, and the
+   clipping and truncating line break modes no longer abort.
+
+### The route
+
+Window is 320x480 portrait, ~35 s to the menu.
+
+1. Menu: Play at client `(159, 390)`.
+2. Song list (Career, with Easy/Medium/Hard/Extreme tabs across the top): the
+   first song row is at about `(160, 120)`, the second `(160, 200)`.
+3. That reaches the **loading screen**: the song's artwork and title, a
+   "Loading" banner and a gameplay tip.
+
+### Current frontier: the loading screen never finishes
+
+The app is alive there — it is not a crash and not a hang in the emulator — but
+after 50 s it is still loading, and the tail of the log is only
+`pthread_testcancel()` and `Attempting to grow heap.` repeating. Something is
+looping and allocating without bound.
+
+What is known about that point:
+
+- The song file opens (`AudioFileOpenURL()` succeeds on the track's `audio.m4a`,
+  and tapHLE does have AAC/MP4 support), an output queue is created, its volume
+  is set, and the queue is **Reset** — and then nothing. No buffers are
+  allocated and it is never started.
+- `AudioQueueAddPropertyListener(..., 'aqsr', ...)` is a TODO, so if the app is
+  waiting to be told a queue property changed, it will wait forever. That is a
+  hypothesis, not a finding.
+- The app's own log says `Warning: Receiver method signature is nil, for
+  receiver TTRLuaCallGameEntity` once, which is its Lua-to-Objective-C bridge
+  failing to build an invocation for something. Worth identifying: log the nil
+  return in `-methodSignatureForSelector:` and see which selector it wants.
+
+Next discriminator: find which of those two is the loop. The cheapest cut is to
+log the nil case in `-[NSObject methodSignatureForSelector:]` and, separately,
+to see whether the allocating loop stops if the audio queue is left out — but
+do not start by implementing the property listener, because nothing yet shows
+the app is waiting on it.
+
+### A rendering bug worth its own branch
+
+Text that tapHLE draws itself comes out **mirrored left-to-right** on this app's
+screens: the song titles, the tip text, the nav bar titles and the difficulty
+tab labels all read backwards, while text baked into the app's own images is
+correct. Some labels ("Loading", "Tip") are correct, so it is not every path.
+This is general, not specific to this app, and is not investigated here.
