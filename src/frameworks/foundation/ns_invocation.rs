@@ -220,12 +220,11 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (())invoke {
-    // Safeguard: all arguments must be set (except first two)
-    let arguments: &Vec<Option<MutVoidPtr>> = env.objc.borrow::<NSInvocationHostObject>(this).arguments.as_ref();
-    let set_count = arguments.iter().flatten().count();
-    let all_count = arguments.len();
-    assert_eq!(set_count + 2, all_count);
-
+    // An argument that was never set is passed as zero, and that is not a
+    // caller error: the real runtime allocates the invocation's argument
+    // buffer zero-filled, so a caller that sets only the arguments it cares
+    // about gets nil or 0 for the rest. Requiring every slot to be set turned
+    // that ordinary pattern into an abort during launch.
 
     // `call_from_host` re-use
     // TODO: retval_ptr
@@ -274,50 +273,46 @@ pub const CLASSES: ClassExports = objc_classes! {
             write_next_arg::<SEL>(&mut reg_offset, regs, &mut env.mem, selector);
             continue;
         }
-        let arg_slot = arguments[i].unwrap();
+        let arg_slot = arguments[i];
         let arg_type = argument_types[i].as_str();
         // TODO: refactor and simplify
         match arg_type {
             "@" => {
-                let arg: ConstPtr<id> = arg_slot.cast().cast_const();
-                let arg_val = env.mem.read(arg);
+                let arg_val = arg_slot.map_or(nil, |slot| env.mem.read(slot.cast().cast_const()));
                 let regs = env.cpu.regs_mut();
                 write_next_arg::<id>(&mut reg_offset, regs, &mut env.mem, arg_val);
             }
             ":" => {
-                let arg: ConstPtr<SEL> = arg_slot.cast().cast_const();
-                let arg_val = env.mem.read(arg);
+                let arg_val = arg_slot
+                    .map_or_else(SEL::null, |slot| env.mem.read(slot.cast().cast_const()));
                 let regs = env.cpu.regs_mut();
                 write_next_arg::<SEL>(&mut reg_offset, regs, &mut env.mem, arg_val);
             }
             "f" => {
-                let arg: ConstPtr<f32> = arg_slot.cast().cast_const();
-                let arg_val = env.mem.read(arg);
+                let arg_val = arg_slot.map_or(0f32, |slot| env.mem.read(slot.cast().cast_const()));
                 let regs = env.cpu.regs_mut();
                 write_next_arg::<f32>(&mut reg_offset, regs, &mut env.mem, arg_val);
             },
             "c" | "C" | "B" | "s" | "S" | "i" | "I" | "l" | "L" => {
-                let arg: ConstPtr<u32> = arg_slot.cast().cast_const();
-                let arg_val = env.mem.read(arg);
+                let arg_val = arg_slot.map_or(0u32, |slot| env.mem.read(slot.cast().cast_const()));
                 let regs = env.cpu.regs_mut();
                 write_next_arg::<u32>(&mut reg_offset, regs, &mut env.mem, arg_val);
             }
             "q" | "Q" | "d" => {
-                let arg: ConstPtr<u64> = arg_slot.cast().cast_const();
-                let arg_val = env.mem.read(arg);
+                let arg_val = arg_slot.map_or(0u64, |slot| env.mem.read(slot.cast().cast_const()));
                 let regs = env.cpu.regs_mut();
                 write_next_arg::<u64>(&mut reg_offset, regs, &mut env.mem, arg_val);
             }
             "*" => {
-                let arg: ConstPtr<MutPtr<u8>> = arg_slot.cast().cast_const();
-                let arg_val = env.mem.read(arg);
+                let arg_val = arg_slot
+                    .map_or(MutPtr::null(), |slot| env.mem.read(slot.cast().cast_const()));
                 let regs = env.cpu.regs_mut();
                 write_next_arg::<MutPtr<u8>>(&mut reg_offset, regs, &mut env.mem, arg_val);
             }
             // pointer cases
             _ if arg_type.starts_with('^') => {
-                let arg: ConstPtr<MutVoidPtr> = arg_slot.cast().cast_const();
-                let arg_val = env.mem.read(arg);
+                let arg_val = arg_slot
+                    .map_or(MutVoidPtr::null(), |slot| env.mem.read(slot.cast().cast_const()));
                 let regs = env.cpu.regs_mut();
                 write_next_arg::<MutVoidPtr>(&mut reg_offset, regs, &mut env.mem, arg_val);
             }
