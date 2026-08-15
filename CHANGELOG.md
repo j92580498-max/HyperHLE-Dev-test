@@ -36,6 +36,12 @@
 
 - Running tapHLE from a terminal is unchanged.
 
+- Let a game get past the sliding menu of choices that comes up from the bottom
+  of the screen — the one for "share", "restart", "delete" and the like. tapHLE
+  cannot draw it, and it did not exist at all, so a game that offered one ended
+  there. It is now reported as dismissed by its Cancel button, the same as the
+  pop-ups above, so nothing is ever chosen on the player's behalf.
+
 - Stop ending a game when it compares a piece of text against a setting it does
   not have. Looking something up, finding nothing, and comparing anyway is
   harmless — the missing one simply sorts first — and it used to end the game.
