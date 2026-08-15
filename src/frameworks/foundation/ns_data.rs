@@ -104,6 +104,20 @@ pub const CLASSES: ClassExports = objc_classes! {
     autorelease(env, new)
 }
 
+// The URL form of the options/error variant, for the same reasons as the file
+// one above: the reading options are performance hints, and a failure is
+// reported by returning nil with the error left nil rather than by inventing an
+// NSError tapHLE cannot fill in truthfully.
++ (id)dataWithContentsOfURL:(id)url // NSURL*
+                    options:(NSUInteger)_options
+                      error:(MutPtr<id>)error { // NSError**
+    let new: id = msg![env; this dataWithContentsOfURL:url];
+    if new == nil && !error.is_null() {
+        env.mem.write(error, nil);
+    }
+    new
+}
+
 + (id)dataWithData:(id)data {
     let new: id = msg![env; this alloc];
     let new: id = msg![env; new initWithData:data];
