@@ -117,6 +117,9 @@ Add-Type -AssemblyName System.Drawing
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -Namespace ClickMap -Name Native -MemberDefinition @'
 [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);
+[DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+[DllImport("user32.dll")] public static extern IntPtr WindowFromPoint(System.Drawing.Point p);
+[DllImport("user32.dll")] public static extern IntPtr GetAncestor(IntPtr h, uint flags);
 [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);
 [DllImport("user32.dll")] public static extern void mouse_event(uint f, uint dx, uint dy, uint d, System.IntPtr e);
 [DllImport("user32.dll")] public static extern void keybd_event(byte vk, byte scan, uint flags, System.UIntPtr extra);
@@ -129,6 +132,8 @@ $MOUSE_LEFTDOWN = 0x0002
 $MOUSE_LEFTUP   = 0x0004
 $KEY_KEYUP      = 0x0002
 $KEY_SCANCODE   = 0x0008
+$VK_MENU        = 0x12
+$GA_ROOT        = 2
 
 $argList = @("`"$App`"")
 $proc = Start-Process -FilePath $Exe -ArgumentList $argList -WorkingDirectory $WorkDir `
@@ -146,6 +151,29 @@ function Client-ToScreen($hwnd, $x, $y) {
     $p = New-Object System.Drawing.Point $x, $y
     [ClickMap.Native]::ClientToScreen($hwnd, [ref]$p) | Out-Null
     return $p
+}
+
+# Synthetic input goes wherever the focus and the cursor actually are, not
+# where this script meant them to go, so both are checked before anything is
+# pressed. SetForegroundWindow cannot be trusted for that: Windows refuses
+# foreground changes requested by a process that is not already in front, and
+# it refuses by returning true and doing nothing. Tapping ALT lifts that lock.
+# The cost of skipping the check is not a bad screenshot -- a replay once put
+# a brush stroke on an unsaved document in another application.
+function Set-WindowForeground($hwnd) {
+    [ClickMap.Native]::keybd_event($VK_MENU, 0, 0, [UIntPtr]::Zero)
+    [ClickMap.Native]::keybd_event($VK_MENU, 0, $KEY_KEYUP, [UIntPtr]::Zero)
+    [ClickMap.Native]::SetForegroundWindow($hwnd) | Out-Null
+    Start-Sleep -Milliseconds 120
+    return ([ClickMap.Native]::GetForegroundWindow() -eq $hwnd)
+}
+
+# A window can be foreground and still not be the thing under the cursor, so
+# pointer steps check the point itself. GA_ROOT because the hit test lands on
+# whichever child control is there, not on the top-level window.
+function Test-PointOverWindow($hwnd, $p) {
+    $hit = [ClickMap.Native]::WindowFromPoint($p)
+    return ([ClickMap.Native]::GetAncestor($hit, $GA_ROOT) -eq $hwnd)
 }
 
 function Capture-Frame($hwnd, $path) {
@@ -191,23 +219,40 @@ foreach ($step in $cm.steps) {
         'wait' { }
         'capture' { }
         'tap' {
-            [ClickMap.Native]::SetForegroundWindow($hwnd) | Out-Null
-            Start-Sleep -Milliseconds 120
+            if (-not (Set-WindowForeground $hwnd)) {
+                $failed = $name
+                Write-Output ("{0,-24} FAILED   the app never came to the front" -f $name)
+                break
+            }
             $p = Client-ToScreen $hwnd ([int]$step.at[0]) ([int]$step.at[1])
             [ClickMap.Native]::SetCursorPos($p.X, $p.Y) | Out-Null
             Start-Sleep -Milliseconds 60
+            if (-not (Test-PointOverWindow $hwnd $p)) {
+                $failed = $name
+                Write-Output ("{0,-24} FAILED   another window is at ({1}, {2}); not clicking" -f $name, $p.X, $p.Y)
+                break
+            }
             [ClickMap.Native]::mouse_event($MOUSE_LEFTDOWN, 0, 0, 0, [IntPtr]::Zero)
             Start-Sleep -Milliseconds $press
             [ClickMap.Native]::mouse_event($MOUSE_LEFTUP, 0, 0, 0, [IntPtr]::Zero)
         }
         'swipe' {
-            [ClickMap.Native]::SetForegroundWindow($hwnd) | Out-Null
-            Start-Sleep -Milliseconds 120
+            if (-not (Set-WindowForeground $hwnd)) {
+                $failed = $name
+                Write-Output ("{0,-24} FAILED   the app never came to the front" -f $name)
+                break
+            }
             $a = Client-ToScreen $hwnd ([int]$step.from_xy[0]) ([int]$step.from_xy[1])
             $b = Client-ToScreen $hwnd ([int]$step.to_xy[0])   ([int]$step.to_xy[1])
             $ms = if ($step.duration_ms) { [int]$step.duration_ms } else { 400 }
             $frames = [Math]::Max(2, [int]($ms / 16))
             [ClickMap.Native]::SetCursorPos($a.X, $a.Y) | Out-Null
+            Start-Sleep -Milliseconds 60
+            if (-not (Test-PointOverWindow $hwnd $a)) {
+                $failed = $name
+                Write-Output ("{0,-24} FAILED   another window is at ({1}, {2}); not dragging" -f $name, $a.X, $a.Y)
+                break
+            }
             [ClickMap.Native]::mouse_event($MOUSE_LEFTDOWN, 0, 0, 0, [IntPtr]::Zero)
             for ($f = 1; $f -le $frames; $f++) {
                 $t = $f / $frames
@@ -219,15 +264,21 @@ foreach ($step in $cm.steps) {
             [ClickMap.Native]::mouse_event($MOUSE_LEFTUP, 0, 0, 0, [IntPtr]::Zero)
         }
         'type' {
-            [ClickMap.Native]::SetForegroundWindow($hwnd) | Out-Null
-            Start-Sleep -Milliseconds 120
+            if (-not (Set-WindowForeground $hwnd)) {
+                $failed = $name
+                Write-Output ("{0,-24} FAILED   the app never came to the front" -f $name)
+                break
+            }
             [System.Windows.Forms.SendKeys]::SendWait($step.text)
         }
         'key' {
             # A scancode, not a virtual key: SDL does not see a virtual-key-only
             # synthetic press, which is why maps record scancodes.
-            [ClickMap.Native]::SetForegroundWindow($hwnd) | Out-Null
-            Start-Sleep -Milliseconds 120
+            if (-not (Set-WindowForeground $hwnd)) {
+                $failed = $name
+                Write-Output ("{0,-24} FAILED   the app never came to the front" -f $name)
+                break
+            }
             $sc = [byte][int]$step.scancode
             [ClickMap.Native]::keybd_event(0, $sc, $KEY_SCANCODE, [UIntPtr]::Zero)
             Start-Sleep -Milliseconds 60

@@ -9,7 +9,7 @@ policies.
 ## Mission and priorities
 
 tapHLE is a high-level emulator with a broad goal: make as many early iPhone OS
-games as possible work on Windows. Contributors choose
+games as possible work on the desktop. Contributors choose
 concrete games as practical compatibility targets. A target is one step toward
 the broad goal, not a limit on the games tapHLE aims to support.
 
@@ -33,11 +33,31 @@ safer than a broad redesign. Isolate it, state which observed behavior it
 models, and add the smallest useful regression check. Do not use the rapid
 iteration policy as a reason to make unrelated changes.
 
-Windows is the product target and the primary development and compatibility
-environment. macOS support is a development convenience for compiling,
-debugging and comparing behavior; it is not a release target of its own.
-Android is out of scope; its inherited source remains in the tree, but agents
-should not develop, test, or refactor it unless the maintainer explicitly asks.
+### Platforms
+
+The desktop — Windows, Linux and macOS — is the priority. iOS and Android are
+intended eventually and are on the back burner.
+
+Intent is not the same as state, and the two must not be confused in anything
+tapHLE writes down. What is true today:
+
+| Platform | Builds | Tested | Packaged |
+| --- | --- | --- | --- |
+| Windows x86_64 | yes | yes, continuously | yes; installer scripted, not yet built |
+| macOS x86_64 | yes | built in CI, not played on | bundle script, emulator only |
+| Linux x86_64 | not tried yet | no | no |
+| iOS | on `feat/ios-host` | no | no |
+| Android | inherited source only | no | no |
+
+Windows is the primary development and compatibility environment, and a
+compatibility result means a result on Windows unless it says otherwise. macOS
+is useful for compiling, debugging and comparing behaviour against Apple's own
+frameworks. Linux is intended and untried; write portable code, and do not
+claim it works until somebody has run it.
+
+Do not develop, test or refactor the inherited Android source unless the
+maintainer explicitly asks. `dev-docs/packaging.md` records what each platform
+would need.
 
 A modern iOS host is expected to become a product target eventually, but there
 is not one now. An experimental host was merged on 2026-08-01 and withdrawn
@@ -447,7 +467,10 @@ branches to accumulate.
 
 ## Code map
 
-- `src/bin.rs`, `src/lib.rs`: desktop entry point and main control flow.
+- `src/bin.rs`, `src/lib.rs`: emulator entry point and main control flow.
+- `src/app_bundle.rs`: the narrow, public reader other tapHLE programs use to
+  learn what an app says about itself. `bundle` and `fs` stay private behind
+  it on purpose.
 - `src/options.rs`, `src/paths.rs`, `src/log.rs`: configuration, host paths,
   and diagnostic output.
 - `src/bundle.rs`, `src/mach_o.rs`, `src/dyld.rs`, `src/abi.rs`: guest app
@@ -460,9 +483,16 @@ branches to accumulate.
   and audio paths.
 - `src/fs.rs`, `src/environment.rs`: guest filesystem and process state.
 - `tests/integration.rs`, `tests/TestApp_source/`: emulator integration probes.
+- `src/gui/`: the `tapHLE_gui` package, which builds `tapHLE-gui`, the desktop
+  frontend. It is a separate program that launches the emulator as a child
+  process; `dev-docs/gui-architecture.md` explains why and how.
 - `dev-docs/`: building, debugging, style, agent workflow, and upstream sync.
+- `dev-docs/gui-architecture.md`, `dev-docs/packaging.md`: the frontend's
+  design, and how a build becomes something installable.
 - `dev-docs/app-notes/`: sanitized, provisional cross-agent compatibility
   handoffs; these are not compatibility database claims.
+- `dev-docs/clickmaps/`: replayable routes through an app to a rating
+  milestone. Replay one before exploring a game by hand.
 
 Guest-visible API names and ABI constants may intentionally use Apple's naming
 instead of Rust naming. Check nearby export tables and tests before renaming
@@ -532,7 +562,7 @@ that exact game version.
 
 ### No app is named in the emulator's source
 
-Code under `src/` must not name a specific app — not in a comment, not in a
+Code under `src/` must not name a specific app — not in a comment, not in an
 identifier, not in a log message, and above all not in a condition. Describe
 the behaviour instead: what an app did, what iPhone OS guarantees, what shape
 of call arrives. "A game that keeps its scene layout in a property list stores
@@ -628,8 +658,8 @@ uncredited. Write the message to a file and pass it with `-F`, because unlike
 `git commit`, `git merge` does **not** accept `-F -` for stdin:
 
 ```sh
-printf '%s
-' 'Merge <branch>' '' 'Agent-model: ...' 'Agent-surface: ...'     'Co-authored-by: ...' > "$msg"
+printf '%s\n' 'Merge <branch>' '' \
+    'Agent-model: ...' 'Agent-surface: ...' 'Co-authored-by: ...' > "$msg"
 git merge --no-ff <branch> -F "$msg"
 ```
 
@@ -637,8 +667,9 @@ Check the result with:
 
 ```sh
 git log --format='%h %s coauthor=%(trailers:key=Co-authored-by,valueonly)' -10
-``` Older
-agent-created commits that predate this rule are recorded without history
+```
+
+Older agent-created commits that predate this rule are recorded without history
 rewrites in `dev-docs/agent-provenance.md`.
 
 When the exact model and agent surface are known, also add `Agent-model:` and

@@ -1,7 +1,9 @@
 # tapHLE
 
 tapHLE is a high-level emulator for early iPhone OS applications. Its goal is
-to make as many early iPhone games as possible run well on Windows.
+to make as many early iPhone games as possible run well on the desktop.
+
+Open tapHLE, see your apps, pick one, press Play.
 
 ## Want a game to work?
 
@@ -37,15 +39,33 @@ Bounded compatibility workarounds are acceptable. Elegance is welcome, but a
 large from-the-ground-up implementation is not a prerequisite for a useful
 fix.
 
-Windows is the supported product target. macOS support is retained as a
-convenient way to compile, debug, and compare behavior. The inherited Android
-source remains in the repository, but Android development and releases are out
-of scope.
+## Platforms
+
+The desktop — Windows, Linux and macOS — is the priority. iOS and Android are
+intended eventually and are not being worked on now.
+
+That is a statement of intent, so here is the state of each one separately.
+Nothing in this table is a promise about the next row along.
+
+| Platform | Builds | Tested | Packaged |
+| --- | --- | --- | --- |
+| Windows x86_64 | yes | yes, continuously | yes; installer scripted but not yet built |
+| macOS x86_64 | yes | built in CI, not played on | bundle script, emulator only |
+| Linux x86_64 | not tried yet | no | no |
+| iOS | on the `feat/ios-host` branch | no | no |
+| Android | inherited source only | no | no |
+
+Windows is where tapHLE is developed and where compatibility is judged, so it
+is the platform to expect things to work on. macOS compiles and is useful for
+comparing behaviour against Apple's own frameworks. Linux has not been tried;
+nothing in the code is Windows-specific by design, and `dev-docs/packaging.md`
+lists what a first attempt would run into.
 
 Running on modern iOS is a likely future direction rather than something tapHLE
 does today. An experimental host was tried and withdrawn from `trunk` because it
-was unfinished and could not be built or tested on Windows; that work continues
-on the `feat/ios-host` branch.
+was unfinished and could not be built or tested; that work continues on the
+`feat/ios-host` branch. The inherited Android source remains in the repository
+and is not being developed.
 
 ## Status
 
@@ -55,16 +75,18 @@ Apple software, decryption keys, or other proprietary material.
 
 The first tapHLE release line is `0.3`; numbered alpha/beta/RC/stable builds are
 Windows x86_64 releases, while green `trunk` builds are commit-identified
-previews. The versioning and packaging policy is documented in
-`dev-docs/releases.md`.
+previews. **No release has been published yet**, so tapHLE's update check
+correctly reports that there is nothing to compare against. The versioning and
+packaging policy is documented in `dev-docs/releases.md`.
 
 **[See the compatibility ratings (1–5 stars)](https://taphle.ephun.net/compatibility).**
-That live database is the current record. The legacy JSON records remain only
-until they are migrated. Every result names the
-exact app build it was earned on, read from the bundle metadata of the file that
-was actually run. For an old game that is no longer sold, a record may also note
-where that file came from. Read `compatibility/README.md` for the full rules. These rules do not cover a game that is still sold, and the project
-respects DMCA notices and rightsholder requests.
+That live database is the current record; the legacy JSON records remain only
+until they are migrated. Every result names the exact app build it was earned
+on, read from the bundle metadata of the file that was actually run, and a
+record for a game that is no longer sold may also note where that file came
+from. Those rules do not cover a game that is still sold, and the project
+respects DMCA notices and rightsholder requests. `compatibility/README.md` is
+the full protocol.
 
 The project is not affiliated with or endorsed by Apple Inc. iPhone, iOS,
 iPod, iPod touch, and iPad are Apple trademarks.
@@ -81,33 +103,60 @@ cd tapHLE
 cargo build --release
 ```
 
-The executable is `target\release\tapHLE.exe`. A distributable directory also
-needs `tapHLE_dylibs`, `tapHLE_fonts`, and `tapHLE_default_options.txt`; the
-Windows bundle script assembles those files in CI.
+That produces two programs in `target\release`:
 
-To open the graphical app picker, run the executable with no app path from the
-repository (or unpacked Windows bundle) directory:
+- `tapHLE-gui.exe` — the desktop frontend: your app library, settings and an
+  integrated log.
+- `tapHLE.exe` — the emulator itself, which the frontend launches and which
+  you can also run directly from a terminal.
+
+A distributable directory also needs `tapHLE_dylibs`, `tapHLE_fonts`,
+`res\icon.png` and `tapHLE_default_options.txt`; `dev-scripts/make-windows-bundle.sh`
+assembles those, and `dev-docs/packaging.md` covers the installer.
+
+## Using it
+
+Put `.ipa` files or `.app` bundles in `tapHLE_apps`, or drop them onto the
+window, or use **Add App**. Those files are ignored by Git, so you can keep
+playtest targets there without committing or redistributing them.
 
 ```powershell
-.\target\release\tapHLE.exe
+.\target\release\tapHLE-gui.exe
 ```
 
-That directory must contain `tapHLE_dylibs`, `tapHLE_fonts`, and
-`tapHLE_default_options.txt`. The picker scans `tapHLE_apps` for `.ipa` and
-`.app` entries and labels them using each bundle's embedded display name.
-Those app files are intentionally local and ignored by Git, so you can keep
-any playtest targets there without committing or redistributing them. To
-bypass the picker, launch a path directly:
+Select an app and press **Play**. It opens in its own window; the library stays
+open, so you can close the app and start another without restarting anything.
+
+**Settings** are global, and any app can override any of them from its own
+**Settings…** button. Anything you do not override follows the global default,
+then `tapHLE_options.txt`, then the per-app entries in
+`tapHLE_default_options.txt` that make particular games work.
+
+**View ▸ Log / Output** opens a panel along the bottom carrying the emulator's
+own output, with severity, subsystem and text filters. It is hidden by default
+and keeps recording while hidden, so it is worth opening after something goes
+wrong as well as before. If an app stops unexpectedly, tapHLE says so and
+offers the log rather than letting its window vanish.
+
+The frontend keeps its library, settings and window state in `tapHLE_frontend`,
+as readable JSON. Guest save data is in `tapHLE_sandbox`. Neither is touched by
+an uninstall.
+
+### From the command line
+
+The emulator is unchanged and still runs on its own:
 
 ```powershell
-.\target\release\tapHLE.exe "C:\path\to\Game.ipa"
+.\target\release\tapHLE.exe "C:\path\to\Game.ipa" --landscape-native
 ```
 
-The version and numbered Windows release rules are in `dev-docs/releases.md`.
+With no app path it opens its own built-in picker. `--help` lists every option,
+`OPTIONS_HELP.txt` explains them, and `--info` prints what an app says about
+itself without running it. The frontend passes exactly these options, so
+anything it does can be reproduced by hand — and `tapHLE_options.txt` applies
+to both.
 
-Run `.\target\release\tapHLE.exe --help` for command-line options. User options
-can be placed in `tapHLE_options.txt`; `OPTIONS_HELP.txt` documents each option.
-Guest save data is stored in `tapHLE_sandbox`.
+The version and numbered release rules are in `dev-docs/releases.md`.
 
 ## Contributing
 
@@ -117,8 +166,7 @@ Agents must read `AGENTS.md`. Human contributors can find more detail in
 
 Game compatibility reports are especially useful when they identify the exact
 game version, supported host environment, reproduction steps, and sanitized
-tapHLE log. Read `compatibility/README.md` before referencing Archive.org or recording
-a result in the compatibility database. Never attach an app binary or raw log.
+tapHLE log. Never attach an app binary or raw log.
 
 ## Origin and license
 

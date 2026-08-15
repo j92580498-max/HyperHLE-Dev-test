@@ -40,6 +40,15 @@ The runner launches the app, executes each step, captures a frame after every
 step into `-OutDir`, and prints one line per step. It exits non-zero if the app
 died, and names the step it died on.
 
+A replay drives real synthetic input at the real desktop, so before every tap,
+drag or keypress the runner checks that tapHLE is actually in front and, for
+pointer steps, that tapHLE is the window under the point. If either check
+fails the step fails and nothing is pressed. Treat that failure as a fact
+about the machine rather than about the app: something else took the
+foreground. Do not remove the check to make a replay finish — a run that
+skipped it once left a brush stroke on an unsaved document in another
+application.
+
 What it does **not** do is decide whether a step worked. It cannot: `expect` is
 prose, and comparing frames is what
 `dev-docs/app-debugging-playbook.md` warns about — a screen that animates on

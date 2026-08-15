@@ -17,15 +17,19 @@ repeating runtime or static-analysis work.
 
 ## What the project wants
 
-The product goal is broad compatibility with early iPhone OS games on Windows.
-The fastest way to move toward it is often to fix a real blocker in one game.
-Contributors may choose games they care about. Nobody is required to take a
-game request from someone else.
+The product goal is broad compatibility with early iPhone OS games on the
+desktop. The fastest way to move toward it is often to fix a real blocker in
+one game. Contributors may choose games they care about. Nobody is required to
+take a game request from someone else.
 
-macOS changes are welcome when they enable compilation, debugging, behavioral
-comparison, or shared code needed by Windows. Android development is not in
-scope. Broad framework-completeness projects, aesthetic rewrites, and
-speculative abstractions are lower priority than a working game.
+Windows, Linux and macOS are the intended desktop platforms; Windows is where
+tapHLE is developed and where compatibility is judged, and Linux has not been
+tried yet. `AGENTS.md` has the honest per-platform state, and
+`dev-docs/packaging.md` says what each one would need. Portable code is
+welcome; a claim that a platform works is not, until somebody has run it there.
+Android development is not in scope. Broad framework-completeness projects,
+aesthetic rewrites, and speculative abstractions are lower priority than a
+working game.
 
 Pragmatic fixes are welcome. If a game needs a narrow workaround, keep it
 local, document the evidence behind it, and add a regression check when
@@ -39,7 +43,7 @@ For a game compatibility report, include:
 
 - exact game title, version, and build when known;
 - tapHLE commit or release;
-- Windows version, CPU, and GPU;
+- operating system and version, CPU, and GPU;
 - exact launch steps and relevant options;
 - the last visible or logged successful behavior;
 - expected and actual results; and
@@ -141,28 +145,28 @@ rightsholder requests, and re-check current availability before every new
 report.
 
 Use the exact Archive.org item URL supplied by the maintainer or reporter; do
-not search for or guess one. Verify its canonical identifier, exact IPA
-filename, and published hashes through the Archive metadata endpoint. Once the
-exact designated original is confirmed, an agent may download only that file
-to an external cache and must hash-match it before opening it. The Archive
-filename remains canonical even if Windows needs a different local cache name.
-Keep the IPA outside Git, content-hash the local file, inspect its embedded
-`Info.plist`, and cross-check the same file with `tapHLE --info` when possible.
-Only a hash-verified artifact run on a committed tapHLE revision may become a
-compatibility report. Append reports; never overwrite an earlier result.
+not search for or guess one. Verify its canonical identifier and exact IPA
+filename against the Archive metadata endpoint, then download only that exact
+original into the gitignored `tapHLE_apps/` — not a cache directory of your own,
+and never one outside the checkout. Record a locally computed SHA-256 so a later
+run can confirm it tested the same bytes; matching a fresh download against the
+same host's published hashes is not required and gates nothing. Read the app's
+identity with `tapHLE --info` before composing any report — a report may claim a
+result only for an artifact identified that way on a committed tapHLE revision.
+Append reports; never overwrite an earlier result.
 
 App work belongs on `compat/<app-slug>` (for example, `compat/ricky`).
 Exploratory checkpoint commits are allowed there. Keep unfinished, unverified,
 or unstable experiments on that branch. Merge a stable checkpoint to `trunk`
-once the exact hash-verified app reproduces a useful milestone, the database
-honestly records what works and what remains, and normal regression checks
-pass. Full playability is not required. Dirty-worktree observations are
+once the exact `--info`-identified app reproduces a useful milestone, the
+database honestly records what works and what remains, and normal regression
+checks pass. Full playability is not required. Dirty-worktree observations are
 provisional and must not enter the database.
 
 ## Development workflow
 
 1. Create a focused branch from `trunk`; use `compat/<app-slug>` for app work.
-2. Initialize submodules with `git submodule update --init`.
+2. Initialize submodules with `git submodule update --init --recursive`.
 3. Reproduce the failure or create a small synthetic probe.
 4. Make the smallest complete change that advances the target game.
 5. Add or update a focused test when practical.

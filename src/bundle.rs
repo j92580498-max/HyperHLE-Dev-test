@@ -79,6 +79,17 @@ impl Bundle {
         self.plist["CFBundleVersion"].as_string().unwrap()
     }
 
+    /// The marketing version string, if the app has one.
+    ///
+    /// This is the version a store listing and a compatibility record show,
+    /// and it is frequently different from `CFBundleVersion`, which is a build
+    /// number. Plenty of apps of this era omit it entirely.
+    pub fn short_version(&self) -> Option<&str> {
+        self.plist
+            .get("CFBundleShortVersionString")
+            .and_then(|v| v.as_string())
+    }
+
     pub fn bundle_localizations(&self) -> &[Value] {
         static EMPTY_VAL: Vec<Value> = Vec::new();
         self.plist

@@ -2,6 +2,40 @@
 
 ## Unreleased for 0.3.0-alpha.1
 
+- tapHLE now has a proper window. Open it, see your apps laid out with their
+  icons, click one, and press Play. The app opens in its own window and the
+  library stays where it is, so closing a game and starting another does not
+  mean starting tapHLE again. Add apps with a button, a menu, or by dropping
+  them onto the window. Selecting one shows what it is: who made it, which
+  version, which device it was written for, how long you have played it, and
+  what the compatibility database says about it.
+
+- Settings you set once apply to everything, and any app can disagree. Each
+  app has its own settings page, and anything you do not change there follows
+  the general setting — so getting one awkward game to behave does not mean
+  configuring the rest of them.
+
+- The emulator's output has somewhere to go. A Log panel along the bottom of
+  the window carries everything tapHLE prints, with search and filters for
+  errors, warnings and the part of the emulator a message came from. It is
+  hidden until you ask for it, and it keeps recording while hidden. If an app
+  stops unexpectedly, tapHLE now says so and offers you the log, instead of
+  its window simply disappearing.
+
+- Compatibility ratings from the tapHLE database are shown beside each app,
+  and you can keep your own rating separately without either overwriting the
+  other. Reporting a result assembles everything a report needs — including
+  whether the app already has a record, so a second one is not created by
+  accident — ready to paste into the database. Submitting from inside tapHLE
+  is not built yet and says so.
+
+- Every option that could be switched on can now be switched off again:
+  `--windowed`, `--portrait`, `--no-landscape-native` and seven more. This
+  matters wherever options come from more than one place, because previously
+  a setting turned on for a particular game could not be turned back off.
+
+- Running tapHLE from a terminal is unchanged.
+
 - Let a game set up an object from a whole block of saved settings at once,
   rather than one setting at a time. Games that keep the description of a
   scene in a data file hand the whole description over in one go, and that

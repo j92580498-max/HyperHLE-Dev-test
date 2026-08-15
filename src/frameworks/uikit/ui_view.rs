@@ -34,8 +34,8 @@ use crate::frameworks::core_foundation::time::CFTimeInterval;
 use crate::frameworks::core_graphics::cg_affine_transform::CGAffineTransform;
 use crate::frameworks::core_graphics::cg_color::CGColorRef;
 use crate::frameworks::core_graphics::cg_context::{
-    CGContextClearRect, CGContextRef, CGContextRestoreGState, CGContextSaveGState, CGContextScaleCTM,
-    CGContextTranslateCTM,
+    CGContextClearRect, CGContextRef, CGContextRestoreGState, CGContextSaveGState,
+    CGContextScaleCTM, CGContextTranslateCTM,
 };
 use crate::frameworks::core_graphics::{CGFloat, CGPoint, CGRect, CGSize};
 use crate::frameworks::foundation::ns_string::{from_rust_string, get_static_str, to_rust_string};

@@ -2,6 +2,11 @@
 /build
 /vendor/boost
 /tapHLE_sandbox
+
+# The desktop frontend's own state: which apps this machine knows about, how
+# long they have been played, this user's ratings and window geometry. All of
+# it is local, and the library file names the paths of a personal collection.
+/tapHLE_frontend
 /tapHLE_apps/*
 !/tapHLE_apps/README.txt
 *.ipa
