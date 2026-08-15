@@ -397,6 +397,50 @@ mod tests {
         assert!(text.contains("--landscape-native"));
     }
 
+    /// Fetch the real database, through the real transport, and check that
+    /// every record it sends is understood.
+    ///
+    /// Ignored by default: it needs the network, and a test suite that fails
+    /// when a server is down is a test suite people stop believing. Run it
+    /// deliberately with `cargo test -p tapHLE_gui -- --ignored` after
+    /// changing anything about the API or this parser. SAMPLE above pins the
+    /// shape for the offline suite; this checks the shape is still real.
+    #[test]
+    #[ignore = "requires the network"]
+    fn the_live_database_is_understood() {
+        let provider = TapHledbProvider::new(Arc::new(crate::http::CurlTransport));
+        let snapshot = provider.fetch().expect("the database should answer");
+        assert!(
+            !snapshot.is_empty(),
+            "the database answered with no entries at all"
+        );
+        for entry in &snapshot.entries {
+            assert!(!entry.name.trim().is_empty(), "an entry has no name");
+            assert!(
+                entry.url.starts_with("https://"),
+                "{} kept a relative address: {}",
+                entry.name,
+                entry.url
+            );
+            if let Some(stars) = entry.rating {
+                assert!((1..=5).contains(&stars), "{} rated {stars}", entry.name);
+            }
+        }
+        let rated = snapshot.entries.iter().filter(|e| e.rating.is_some());
+        assert!(
+            rated.count() > 0,
+            "no entry carried a rating, so the rating column would be blank"
+        );
+        let identified = snapshot
+            .entries
+            .iter()
+            .filter(|e| e.bundle_identifier.is_some());
+        assert!(
+            identified.count() > 0,
+            "no entry carried a bundle identifier, so nothing could ever match a library app"
+        );
+    }
+
     /// When the database could not be reached, the draft must not claim that
     /// no entry exists — that is how duplicates get created.
     #[test]
