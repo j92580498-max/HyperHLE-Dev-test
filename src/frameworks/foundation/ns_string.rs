@@ -452,6 +452,35 @@ pub const CLASSES: ClassExports = objc_classes! {
     autorelease(env, new)
 }
 
+// The variant that asks the file what encoding it is in rather than being told.
+// It is the modern replacement for the deprecated one-argument form, so an app
+// that reads a text file it did not write itself usually calls this one.
++ (id)stringWithContentsOfFile:(id)path // NSString*
+                  usedEncoding:(MutPtr<NSStringEncoding>)used_encoding
+                         error:(MutPtr<id>)error { // NSError**
+    if path == nil {
+        report_no_error(env, error);
+        return nil;
+    }
+    let path_string = to_rust_string(env, path).to_string();
+    let Ok(bytes) = env.fs.read(GuestPath::new(&path_string)) else {
+        report_no_error(env, error);
+        return nil;
+    };
+    let encoding = sniff_encoding(env, &bytes);
+    // Written before the string is built, and only on success, which is what
+    // Apple documents: a caller reads this to decide how to write the file back
+    // out again.
+    if !used_encoding.is_null() {
+        env.mem.write(used_encoding, encoding);
+    }
+    let new: id = msg![env; this alloc];
+    let new: id = msg![env; new initWithContentsOfFile:path
+                                              encoding:encoding
+                                                 error:error];
+    autorelease(env, new)
+}
+
 + (id)stringWithContentsOfURL:(id)url { // NSURL*
     let new: id = msg![env; this alloc];
     let new: id = msg![env; new initWithContentsOfURL:url];
