@@ -13,10 +13,11 @@ use crate::frameworks::core_graphics::cg_color_space::{
     CGColorSpaceCreateDeviceRGB, CGColorSpaceRelease,
 };
 use crate::frameworks::core_graphics::cg_context::{
-    CGContextRef, CGContextRelease, CGContextRetain,
+    kCGBlendModeCopy, CGBlendMode, CGContextFillRect, CGContextRef, CGContextRelease,
+    CGContextRestoreGState, CGContextRetain, CGContextSaveGState, CGContextSetBlendMode,
 };
 use crate::frameworks::core_graphics::cg_image::{kCGImageAlphaPremultipliedLast, CGImageRelease};
-use crate::frameworks::core_graphics::{CGFloat, CGSize};
+use crate::frameworks::core_graphics::{CGFloat, CGRect, CGSize};
 use crate::mem::{GuestUSize, Ptr};
 use crate::objc::{id, msg_class, nil};
 use crate::Environment;
@@ -124,7 +125,36 @@ fn UIGraphicsEndImageContext(env: &mut Environment) {
     UIGraphicsPopContext(env);
 }
 
+/// `UIRectFillUsingBlendMode` — fill a rectangle in the current context with
+/// the current fill colour and a given blend mode.
+///
+/// The blend mode is set for the fill and put back afterwards, which is what
+/// UIKit documents: this is a drawing convenience, not a state change the
+/// caller has to undo.
+fn UIRectFillUsingBlendMode(env: &mut Environment, rect: CGRect, blend_mode: CGBlendMode) {
+    let context = UIGraphicsGetCurrentContext(env);
+    if context == nil {
+        // Drawing outside a -drawRect: or an image context has nowhere to go.
+        // UIKit logs and does nothing, and so does this.
+        log!("Warning: UIRectFill outside a drawing context, ignoring");
+        return;
+    }
+    CGContextSaveGState(env, context);
+    CGContextSetBlendMode(env, context, blend_mode);
+    CGContextFillRect(env, context, rect);
+    CGContextRestoreGState(env, context);
+}
+
+/// `UIRectFill` — the same thing with the blend mode UIKit uses by default.
+/// Copy rather than normal, so filling with a transparent colour clears the
+/// rectangle instead of leaving what was underneath.
+fn UIRectFill(env: &mut Environment, rect: CGRect) {
+    UIRectFillUsingBlendMode(env, rect, kCGBlendModeCopy)
+}
+
 pub const FUNCTIONS: FunctionExports = &[
+    export_c_func!(UIRectFill(_)),
+    export_c_func!(UIRectFillUsingBlendMode(_, _)),
     export_c_func!(UIGraphicsPushContext(_)),
     export_c_func!(UIGraphicsPopContext()),
     export_c_func!(UIGraphicsGetCurrentContext()),

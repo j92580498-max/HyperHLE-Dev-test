@@ -142,7 +142,12 @@ pub fn CGContextRetain(env: &mut Environment, c: CGContextRef) -> CGContextRef {
     }
 }
 
-fn CGContextSetBlendMode(env: &mut Environment, context: CGContextRef, blend_mode: CGBlendMode) {
+// Public so UIKit's rectangle-filling helpers can set the mode for one fill.
+pub fn CGContextSetBlendMode(
+    env: &mut Environment,
+    context: CGContextRef,
+    blend_mode: CGBlendMode,
+) {
     env.objc
         .borrow_mut::<CGContextHostObject>(context)
         .blend_mode = blend_mode;
