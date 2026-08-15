@@ -270,37 +270,56 @@ impl Environment {
         // should be handled before creating the window because handling of
         // window rotation after-the-fact is somewhat glitchy.
         // This also ensures the splash screen is correctly oriented.
+        // Only override the default when the app cannot actually do portrait.
+        // Checking "is there a non-portrait entry?" is not the same question:
+        // an app that supports portrait *and* something else — very commonly
+        // portrait plus upside-down — would be rotated away from the
+        // orientation it already handles. That rotates input as well as
+        // display, so every touch arrives mirrored and nothing can be tapped.
+        let supported = bundle.supported_interface_orientations();
+        let supports_portrait = supported
+            .iter()
+            .any(|&o| o == "UIInterfaceOrientationPortrait" || o == "UIDeviceOrientationPortrait");
         if options.initial_orientation == window::DeviceOrientation::Portrait {
-            if let Some(&non_portrait_orientation) = bundle
-                .supported_interface_orientations()
-                .iter()
-                .find(|&&o| o != "UIInterfaceOrientationPortrait")
-            {
+            // An app that names the orientation it launches in is believed,
+            // even when it also says it supports portrait: those are different
+            // claims, and a game that rotates to portrait later still has to
+            // start the way it says. Ignore a launch orientation the same app
+            // lists as unsupported, which is a contradiction rather than an
+            // instruction.
+            let declared = bundle
+                .initial_interface_orientation()
+                .filter(|o| supported.contains(o));
+            // Otherwise, only override the default when the app cannot actually
+            // do portrait. Checking "is there a non-portrait entry?" is not the
+            // same question: an app that supports portrait *and* something else
+            // — very commonly portrait plus upside-down — would be rotated away
+            // from the orientation it already handles. That rotates input as
+            // well as display, so every touch arrives mirrored and nothing can
+            // be tapped.
+            let chosen = declared.or_else(|| {
+                (!supports_portrait)
+                    .then(|| {
+                        supported
+                            .iter()
+                            .copied()
+                            .find(|&o| o != "UIInterfaceOrientationPortrait")
+                    })
+                    .flatten()
+            });
+            if let Some(interface_orientation) = chosen {
                 // TODO: Overwriting the options might not be ideal; do we need
                 //       to distinguish this kind of orientation change from
                 //       others?
-                options.initial_orientation = match non_portrait_orientation {
-                    // UIInterfaceOrientation values are flipped relative to
-                    // (UI)DeviceOrientation values (content has to rotate in
-                    // the opposite direction to how the device rotates).
-                    "UIInterfaceOrientationPortrait" | "UIDeviceOrientationPortrait" => {
-                        window::DeviceOrientation::Portrait
+                match bundle::device_orientation_for_interface_orientation(interface_orientation) {
+                    Some(device_orientation) => {
+                        options.initial_orientation = device_orientation;
+                        log!("App launches in user interface orientation {:?}, applying device orientation {:?}.", interface_orientation, device_orientation);
                     }
-                    "UIInterfaceOrientationPortraitUpsideDown" => {
-                        window::DeviceOrientation::PortraitUpsideDown
+                    None => {
+                        log!("Warning: app names an unrecognised interface orientation {:?}; launching portrait.", interface_orientation);
                     }
-                    "UIInterfaceOrientationLandscapeLeft" => {
-                        window::DeviceOrientation::LandscapeRight
-                    }
-                    "UIInterfaceOrientationLandscapeRight" => {
-                        window::DeviceOrientation::LandscapeLeft
-                    }
-                    // This appears to be an older way set the orientation.
-                    // From testing, it seems to correspond to left.
-                    "UIInterfaceOrientationLandscape" => window::DeviceOrientation::LandscapeLeft,
-                    other => unimplemented!("Unsupported startup orientation: {:?}", other),
-                };
-                log!("App needs non-portrait user interface orientation {:?}, applying device orientation {:?}.", non_portrait_orientation, options.initial_orientation);
+                }
             }
         }
 
@@ -340,21 +359,31 @@ impl Environment {
                 log!("Warning: {}", e);
             }
 
-            let launch_image_path = bundle.launch_image_path();
-            let launch_image = if fs.is_file(&launch_image_path) {
-                let res = fs
-                    .read(launch_image_path)
-                    .map_err(|_| "Could not read launch image file".to_string())
-                    .and_then(|bytes| {
-                        image::Image::from_bytes(&bytes)
-                            .map_err(|e| format!("Could not parse launch image: {e}"))
-                    });
-                if let Err(ref e) = res {
-                    log!("Warning: {}", e);
-                };
-                res.ok()
-            } else {
-                None
+            // Ask for the launch image that matches the orientation the app is
+            // about to start in, most specific name first. A landscape app
+            // ships one, and its plain `Default.png` is the portrait image the
+            // real launcher would never show it.
+            let launch_image_suffixes = bundle::launch_image_suffixes(options.initial_orientation);
+            let launch_image = match bundle
+                .launch_image_paths(launch_image_suffixes)
+                .into_iter()
+                .find(|path| fs.is_file(path))
+            {
+                Some(launch_image_path) => {
+                    log_dbg!("Launch image: {:?}", launch_image_path);
+                    let res = fs
+                        .read(launch_image_path)
+                        .map_err(|_| "Could not read launch image file".to_string())
+                        .and_then(|bytes| {
+                            image::Image::from_bytes(&bytes)
+                                .map_err(|e| format!("Could not parse launch image: {e}"))
+                        });
+                    if let Err(ref e) = res {
+                        log!("Warning: {}", e);
+                    };
+                    res.ok()
+                }
+                None => None,
             };
 
             Some(Box::new(window::Window::new(
@@ -1962,7 +1991,9 @@ impl Environment {
             unsafe {
                 let yielder = self.yielder.as_ref().unwrap();
                 let wrapped = WindowWrapper {
-                    window: self.window.as_mut().unwrap(),
+                    window: self.window.as_mut().expect(
+                        "Tried to do something that needs a window, but tapHLE is running in headless mode!",
+                    ),
                 };
                 let res = yielder.on_parent_stack(|| {
                     let wrapped = wrapped;
@@ -1976,7 +2007,40 @@ impl Environment {
             if let Some(w) = self.window.as_mut() {
                 w.on_main_stack = true;
             }
-            f(self.window.as_mut().unwrap(), self.options.as_mut())
+            f(
+                self.window.as_mut().expect(
+                    "Tried to do something that needs a window, but tapHLE is running in headless mode!",
+                ),
+                self.options.as_mut(),
+            )
+        }
+    }
+
+    /// Run a function on the parent stack, for work that does not involve the
+    /// window.
+    ///
+    /// Not everything that needs the parent stack is about the window. Asking
+    /// SDL for the host's preferred locales, or handing it a URL to open, needs
+    /// the main stack because SDL requires it, and nothing more.
+    ///
+    /// Routing those through [Environment::on_parent_stack_in_coroutine] meant
+    /// they took a `&mut Window` they never touched, which made them panic in
+    /// headless mode for no reason: two of four sampled apps died on it during
+    /// `UIApplicationMain`, before reaching anything that wanted a window.
+    /// `-[NSBundle preferredLocalizations]` reaches the locale query on almost
+    /// every launch, so this was close to a blanket failure of `--headless`
+    /// rather than an edge case.
+    pub fn on_parent_stack_in_coroutine_windowless<F, R>(&mut self, f: F) -> R
+    where
+        F: FnOnce(&mut options::Options) -> R + Send,
+    {
+        if !self.yielder.is_null() {
+            unsafe {
+                let yielder = self.yielder.as_ref().unwrap();
+                yielder.on_parent_stack(|| f(self.options.as_mut()))
+            }
+        } else {
+            f(self.options.as_mut())
         }
     }
 }

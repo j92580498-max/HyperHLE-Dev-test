@@ -113,12 +113,26 @@ pub const CLASSES: ClassExports = objc_classes! {
 // They are all from the NSCoder abstract class and they return default values
 // if the key is unknown.
 
+// The numeric decoders accept any numeric variant, not only the one whose name
+// matches the selector. A nib archive stores a value in whatever variant is
+// smallest for it, so a float-valued key routinely arrives as an integer and a
+// boolean one as Int8. Insisting on an exact variant match aborted the app on
+// an archive that is perfectly well-formed.
 - (bool)decodeBoolForKey:(id)key { // NSString *
     get_value_to_decode_for_key(env, this, key).is_some_and(|value| {
-        let &ValueVariant::Bool(b) = value.value() else {
-            unreachable!()
-        };
-        b
+        match value.value() {
+            ValueVariant::Bool(b) => *b,
+            ValueVariant::Int8(i) => *i != 0,
+            ValueVariant::Int16(i) => *i != 0,
+            ValueVariant::Int32(i) => *i != 0,
+            ValueVariant::Int64(i) => *i != 0,
+            ValueVariant::Float(f) => *f != 0.0,
+            ValueVariant::Double(d) => *d != 0.0,
+            other => {
+                log!("Warning: decodeBoolForKey: got non-numeric {:?}, returning false", other);
+                false
+            }
+        }
     })
 }
 
@@ -127,10 +141,19 @@ pub const CLASSES: ClassExports = objc_classes! {
     get_value_to_decode_for_key(env, this, key).map_or(
         0.0,
         |value| {
-            let &ValueVariant::Float(f) = value.value() else {
-                unreachable!()
-            };
-            f
+            match value.value() {
+                ValueVariant::Float(f) => *f,
+                ValueVariant::Double(d) => *d as f32,
+                ValueVariant::Int8(i) => (*i).into(),
+                ValueVariant::Int16(i) => (*i).into(),
+                ValueVariant::Int32(i) => *i as f32,
+                ValueVariant::Int64(i) => *i as f32,
+                ValueVariant::Bool(b) => if *b { 1.0 } else { 0.0 },
+                other => {
+                    log!("Warning: decodeFloatForKey: got non-numeric {:?}, returning 0", other);
+                    0.0
+                }
+            }
         }
     )
 }
@@ -145,7 +168,13 @@ pub const CLASSES: ClassExports = objc_classes! {
                 ValueVariant::Int16(i) => (*i).into(),
                 ValueVariant::Int32(i) => *i,
                 ValueVariant::Int64(i) => (*i).try_into().unwrap(),
-                _ => unreachable!() // Not sure what should happen here?
+                ValueVariant::Bool(b) => (*b).into(),
+                ValueVariant::Float(f) => *f as NSInteger,
+                ValueVariant::Double(d) => *d as NSInteger,
+                other => {
+                    log!("Warning: decodeIntegerForKey: got non-numeric {:?}, returning 0", other);
+                    0
+                }
             }
         }
     )

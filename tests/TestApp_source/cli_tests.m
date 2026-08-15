@@ -7005,8 +7005,8 @@ int test_NSMutableSet_setAlgebra() {
 }
 
 // A nil counterpart in the co-ordinate conversion methods means the window's
-// space, but it must not require the receiver to actually be in a window: a view
-// built from a nib converts before it is ever mounted. With no window, the
+// space, but it must not require the receiver to actually be in a window: a
+// view built from a nib converts before it is ever mounted. With no window, the
 // conversion resolves against the top of the view's own hierarchy.
 int test_UIView_convert_nilView_withoutWindow() {
   NSAutoreleasePool *pool = [NSAutoreleasePool new];

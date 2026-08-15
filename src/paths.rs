@@ -182,7 +182,7 @@ pub fn url_for_opening_user_data_dir() -> Result<String, String> {
 /// doesn't exist, and populate it with templates or README files. (On other
 /// platforms these are simply bundled with tapHLE in a ZIP file.)
 pub fn prepopulate_user_data_dir() {
-    if std::env::consts::OS != "android" && std::env::consts::OS != "macos" {
+    if !matches!(std::env::consts::OS, "android" | "macos") {
         return;
     }
     let base_path = user_data_base_path();

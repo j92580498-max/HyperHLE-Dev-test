@@ -1,8 +1,22 @@
 # Building tapHLE
 
-Windows is tapHLE's only product target. The macOS build is retained as a
-development convenience for debugging and behavioral comparison. Android is
-not an active target.
+Windows is tapHLE's primary development and compatibility environment, and its
+build instructions are below. macOS builds and is useful for debugging and
+behavioural comparison. Linux is an intended desktop platform that nobody has
+built yet. Android is not an active target. A modern iOS host is a likely
+future target; the experimental one is not on `trunk` and lives on the
+`feat/ios-host` branch, with its own build instructions there. `AGENTS.md` has
+the honest per-platform state and `packaging.md` says what each would need.
+
+`cargo build` produces two programs: `tapHLE`, the emulator, and `tapHLE-gui`,
+the desktop frontend. Both are workspace default members, so an ordinary build
+makes both and the lint and format scripts cover both. To build one on its own,
+use `cargo build -p tapHLE` or `cargo build -p tapHLE_gui`.
+
+The frontend needs nothing beyond the emulator's own prerequisites on Windows
+and macOS. On Linux it would additionally need X11 or Wayland development
+libraries for `eframe`, and GTK 3 for `rfd`'s file dialogs. Its design is
+described in `gui-architecture.md`.
 
 If you are building to contribute, also read `../CONTRIBUTING.md` and the root
 `AGENTS.md`.
@@ -28,7 +42,7 @@ Clone and initialize the native submodules:
 ```powershell
 git clone https://github.com/ephun/tapHLE.git
 cd tapHLE
-git submodule update --init
+git submodule update --init --recursive
 ```
 
 ## Build and run
@@ -104,7 +118,8 @@ bash dev-scripts/lint.sh
 ## macOS development build
 
 macOS is useful for comparing guest behavior with host Apple frameworks and
-for debugging shared code, but it is not a tapHLE release target. Install Rust,
+for debugging shared code. It builds in CI and nobody plays games on it, so
+treat a macOS result as unverified. Install Rust,
 Git, CMake, a C/C++ toolchain, and Boost (for example, `brew install boost`),
 then initialize submodules and use the same Cargo commands.
 
@@ -117,13 +132,17 @@ dev-scripts/make-macos-bundle.sh \
     "$(cargo run --package tapHLE_version -- --branding)"
 ```
 
+That helper predates the frontend and bundles the emulator only;
+`packaging.md` says what a frontend-carrying bundle would need.
+
 macOS failures should not displace Windows game work unless they block a
-debugging path needed for that work.
+debugging or iOS-build path needed for that work.
 
 ## Troubleshooting
 
 - If CMake cannot find Boost, confirm `vendor/boost/boost/version.hpp` exists.
-- If Cargo reports missing native source, rerun `git submodule update --init`.
+- If Cargo reports missing native source, rerun
+  `git submodule update --init --recursive`.
 - If the executable cannot open fonts or dynamic libraries, run it from the
   repository root or copy all three runtime resources beside it.
 - If a game fails, preserve the full tapHLE log and follow

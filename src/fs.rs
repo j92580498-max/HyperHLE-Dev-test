@@ -848,7 +848,25 @@ impl Fs {
                 }
                 _ => unimplemented!(),
             },
-            _ => unimplemented!(),
+            // Directories have modification times too, and apps ask for them:
+            // a game listing its save folder sorts the worlds by when they were
+            // last played, which is the directory's date, not any one file's.
+            FsNode::Directory { writeable, .. } => match writeable {
+                Some(host_path) => fs::metadata(host_path)
+                    .and_then(|m| m.modified())
+                    .map(|t| {
+                        t.duration_since(UNIX_EPOCH)
+                            .unwrap()
+                            .as_secs()
+                            .try_into()
+                            .unwrap()
+                    })
+                    .map_err(|_| ()),
+                // A directory tapHLE synthesised — inside an app bundle, say —
+                // has no host counterpart to ask, and inventing a timestamp
+                // would be worse than reporting that there isn't one.
+                None => Err(()),
+            },
         }
     }
 

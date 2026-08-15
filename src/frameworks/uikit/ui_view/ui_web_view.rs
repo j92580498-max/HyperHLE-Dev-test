@@ -7,7 +7,7 @@
 
 use crate::frameworks::foundation::ns_string::{get_static_str, to_rust_string};
 use crate::msg;
-use crate::objc::{id, nil, objc_classes, ClassExports};
+use crate::objc::{id, msg_super, nil, objc_classes, ClassExports};
 use std::borrow::Cow;
 
 pub const CLASSES: ClassExports = objc_classes! {
@@ -17,8 +17,18 @@ pub const CLASSES: ClassExports = objc_classes! {
 @implementation UIWebView: UIView
 
 // NSCoding implementation
-- (id)initWithCoder:(id)_coder {
-    todo!()
+//
+// A web view in a nib is just a UIView as far as tapHLE is concerned: there is
+// no web engine behind it, so none of the keys a real UIWebView decodes
+// (scaling, data detectors, delegate) would change anything. Decoding the
+// UIView half and stopping there gives a correctly sized, correctly placed,
+// blank view — which is what this class does when constructed in code too.
+//
+// The point is that it no longer aborts. A nib with a web view in it usually
+// also holds the screen the app actually wants, and refusing to unarchive the
+// whole thing over one view that was always going to be blank throws that away.
+- (id)initWithCoder:(id)coder {
+    msg_super![env; this initWithCoder:coder]
 }
 
 - (())setScalesPageToFit:(bool)_scales {
@@ -36,6 +46,19 @@ pub const CLASSES: ClassExports = objc_classes! {
         Cow::default()
     };
     log!("TODO: [(UIWebView*) {:?} loadRequest:{:?} ({})]", this, request, url_string);
+}
+
+// There is no engine to render the HTML into, so the string is logged and
+// dropped. The view stays blank, which is what this class does with every other
+// kind of content.
+- (())loadHTMLString:(id)html // NSString*
+             baseURL:(id)_base_url { // NSURL*
+    let length: crate::frameworks::foundation::NSUInteger = if html == nil {
+        0
+    } else {
+        msg![env; html length]
+    };
+    log!("TODO: [(UIWebView*) {:?} loadHTMLString:(NSString* of {} characters) baseURL:_]", this, length);
 }
 
 - (id)stringByEvaluatingJavaScriptFromString:(id)_script { // NSString*

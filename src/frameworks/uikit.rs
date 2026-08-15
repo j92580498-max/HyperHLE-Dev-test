@@ -24,6 +24,7 @@ pub mod ui_graphics;
 pub mod ui_image;
 pub mod ui_image_picker_controller;
 pub mod ui_local_notification;
+pub mod ui_localized_indexed_collation;
 pub mod ui_nib;
 pub mod ui_pasteboard;
 pub mod ui_responder;
@@ -63,15 +64,21 @@ pub const DYLIB: crate::dyld::HostDylib = crate::dyld::HostDylib {
         ui_view::ui_label::CLASSES,
         ui_view::ui_picker_view::CLASSES,
         ui_view::ui_scroll_view::CLASSES,
+        ui_localized_indexed_collation::CLASSES,
+        ui_view::ui_scroll_view::ui_table_view::CLASSES,
         ui_view::ui_scroll_view::ui_text_view::CLASSES,
         ui_view::ui_web_view::CLASSES,
         ui_view::ui_window::CLASSES,
         ui_view_controller::CLASSES,
         ui_view_controller::ui_navigation_controller::CLASSES,
+        ui_view_controller::ui_tab_bar_controller::CLASSES,
     ],
     constant_exports: &[
         ui_application::CONSTANTS,
         ui_device::CONSTANTS,
+        ui_geometry::CONSTANTS,
+        ui_image_picker_controller::CONSTANTS,
+        ui_pasteboard::CONSTANTS,
         ui_view::ui_control::ui_text_field::CONSTANTS,
         ui_view::ui_window::CONSTANTS,
     ],
@@ -270,6 +277,7 @@ mod tests {
 
 #[derive(Default)]
 pub struct State {
+    ui_localized_indexed_collation: ui_localized_indexed_collation::State,
     ui_accelerometer: ui_accelerometer::State,
     ui_application: ui_application::State,
     ui_color: ui_color::State,

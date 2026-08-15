@@ -34,6 +34,7 @@ pub mod ns_exception;
 pub mod ns_file_handle;
 pub mod ns_file_manager;
 pub mod ns_garbage_collector;
+pub mod ns_http_cookie_storage;
 pub mod ns_index_path;
 pub mod ns_invocation;
 pub mod ns_keyed_archiver;
@@ -84,6 +85,7 @@ pub const DYLIB: crate::dyld::HostDylib = crate::dyld::HostDylib {
         ns_date::CLASSES,
         ns_counted_set::CLASSES,
         ns_date_formatter::CLASSES,
+        ns_http_cookie_storage::CLASSES,
         ns_net_service::CLASSES,
         ns_number_formatter::CLASSES,
         ns_sort_descriptor::CLASSES,
@@ -125,16 +127,21 @@ pub const DYLIB: crate::dyld::HostDylib = crate::dyld::HostDylib {
     ],
     constant_exports: &[
         CONSTANTS,
+        ns_calendar::CONSTANTS,
         ns_error::CONSTANTS,
         ns_exception::CONSTANTS,
         ns_file_manager::CONSTANTS,
         ns_keyed_unarchiver::CONSTANTS,
         ns_locale::CONSTANTS,
+        ns_object::CONSTANTS,
         ns_run_loop::CONSTANTS,
+        ns_url_connection::CONSTANTS,
+        ns_user_defaults::CONSTANTS,
     ],
     function_exports: &[
         FUNCTIONS,
         ns_exception::FUNCTIONS,
+        ns_object::FUNCTIONS,
         ns_file_manager::FUNCTIONS,
         ns_log::FUNCTIONS,
         ns_objc_runtime::FUNCTIONS,
@@ -144,10 +151,12 @@ pub const DYLIB: crate::dyld::HostDylib = crate::dyld::HostDylib {
 #[derive(Default)]
 pub struct State {
     ns_bundle: ns_bundle::State,
+    ns_http_cookie_storage: ns_http_cookie_storage::State,
     ns_file_manager: ns_file_manager::State,
     ns_locale: ns_locale::State,
     ns_notification_center: ns_notification_center::State,
     ns_null: ns_null::State,
+    ns_operation: ns_operation::State,
     ns_process_info: ns_process_info::State,
     ns_string: ns_string::State,
     ns_thread: ns_thread::State,
@@ -244,11 +253,8 @@ const CONSTANTS: ConstantExports = &[
                 .cast_const()
         }),
     ),
-    // `NSGregorianCalendar` (the pre-iOS-8 calendar identifier) is an NSString
-    // whose value is "gregorian"; apps pass it to
-    // -[NSCalendar initWithCalendarIdentifier:]. Previously an unhandled
-    // non-lazy symbol left null, so dereferencing it crashed.
-    ("_NSGregorianCalendar", HostConstant::NSString("gregorian")),
+    // `NSGregorianCalendar` and its sibling calendar identifiers now live with
+    // the class that consumes them, in ns_calendar::CONSTANTS.
     // NSHTTPCookie property keys. Their values are the documented dictionary
     // keys; apps (e.g. via networking SDKs) reference them, and an unhandled
     // non-lazy symbol left null crashes on dereference.
