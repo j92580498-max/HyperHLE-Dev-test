@@ -812,7 +812,16 @@ pub const CLASSES: ClassExports = objc_classes! {
         num
     }
 
-    assert_ne!(other, nil);
+    // Comparing against nil is a programming error Apple answers with an
+    // exception, and tapHLE has nowhere to raise one, so the choice is between
+    // ending the app and giving the comparison a defined answer. A defined
+    // answer is far better: an app that looks up a setting that is not there
+    // and compares the nil it got back is doing something harmless, and killing
+    // it loses everything after that point. Any string sorts after nothing.
+    if other == nil {
+        log!("Warning: -[NSString compare:] with a nil argument; ordering it after nil");
+        return NSOrderedDescending;
+    }
 
     // TODO: support foreign subclasses (perhaps via a helper function that
     // copies the string first)
