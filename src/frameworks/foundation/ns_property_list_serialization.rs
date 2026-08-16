@@ -78,6 +78,20 @@ pub const CLASSES: ClassExports = objc_classes! {
           mutabilityOption:(NSPropertyListMutabilityOptions)opt
                     format:(MutPtr<NSPropertyListFormat>)format
           errorDescription:(MutPtr<id>)error_string { // NSString **
+    // Nil data is not a caller error worth aborting over: it is what an app
+    // holds after a file it expected turns out not to be there, and it hands it
+    // straight on. Apple answers nil with an error description, which is the
+    // same answer as unparseable data, and the caller already has to handle it.
+    if data == nil {
+        if !error_string.is_null() {
+            let error_message =
+                ns_string::from_rust_string(env, String::from("Cannot parse a NULL data object"));
+            env.mem.write(error_string, error_message);
+            autorelease(env, error_message);
+        }
+        return nil;
+    }
+
     let slice = ns_data::to_rust_slice(env, data);
 
     if let Ok(root) = Value::from_reader_xml(Cursor::new(slice)) {

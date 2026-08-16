@@ -36,6 +36,9 @@
 
 - Running tapHLE from a terminal is unchanged.
 
+- Stop games quitting when they read settings from a file that is not there.
+  Handing on the nothing they got back is ordinary, and it used to be fatal.
+
 - Stop games quitting over the parts of their sound setup tapHLE does not
   provide. A game that asks for a mixer, or configures a channel that is not
   there, or leaves a sound format unset because another part of its audio chain
