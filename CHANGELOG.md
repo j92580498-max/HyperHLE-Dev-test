@@ -48,6 +48,9 @@
   list that looked slightly fancier than plain text was fatal.
 - Let a game say one background job must finish before another. Saying so used
   to end the game.
+- Answer a game asking where a shortcut points, instead of quitting. There are
+  no shortcuts in the emulated filesystem, and saying so is an answer a game
+  knows how to take.
 
 - Answer truthfully when a game asks whether one of its objects supports a
   particular set of features, instead of ending the game over the question. The
