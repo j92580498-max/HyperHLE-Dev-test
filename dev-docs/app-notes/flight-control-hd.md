@@ -75,3 +75,64 @@ The lesson is narrow and practical: **read the app's click map before
 concluding anything from a tap that did nothing.** A blind tap landing on
 nothing is indistinguishable from broken input, and this note has had the right
 coordinates in it the whole time.
+
+## 2026-08-15: REGRESSION — it no longer starts at all
+
+The three-star result above does not reproduce. The app now dies during
+startup, before any frame, with a guest `MemoryError`:
+
+```text
+Attempted null-page access at 0x34 (0x4 bytes)
+PC 0x0006dad2   R2 0x00000000
+```
+
+Disassembling the faulting instruction (`dev-scripts/disasm-guest-fault.py`):
+
+```text
+0x0006dace  tst.w  r1, #2
+0x0006dad2  str    r0, [r2, #0x34]   <== FAULT, R2 = 0
+```
+
+So the guest stores through a null pointer. The stack trace is
+`0x6dad3 (PC) / [host function] (LR) / 0x2617 / 0x25d0`, so this guest function
+was entered *from* tapHLE rather than from guest code — a callback or a message
+send into a guest method. The last host activity before it is
+`-[NSFileManager fileAttributesAtPath:traverseLink:]`.
+
+**This is not caused by the 2026-08-15 session's work.** It reproduces exactly
+on `8ec4049e`, the commit that session started from, and the app references none
+of the APIs that session changed.
+
+### Ruled out
+
+Filling in the file attributes the method did not report — owner, group and
+POSIX permissions, which an app reads and then uses without checking — was the
+obvious candidate given where the log stops. It is a real gap and is now fixed
+on `trunk`, but **the app still dies in the same place**, so it is not this.
+
+### Where the bisect got to
+
+`git bisect` between `87acd74a` (good, the 2026-07-27 re-verification) and
+`8ec4049e` (bad), driving the app with `dev-scripts/clickmap.ps1`:
+
+- `87acd74a` — good
+- `341c6e7c` (Merge compat/cubed-rally-redline) — good
+- `69f05bde` (CoreGraphics: interpret component arrays in the context's colour
+  space) — good
+
+That leaves roughly 53 revisions between `69f05bde` and `8ec4049e`. Resume with:
+
+```powershell
+git bisect start; git bisect bad 8ec4049e; git bisect good 69f05bde
+git bisect run powershell -NoProfile -ExecutionPolicy Bypass -File <the step script>
+```
+
+The step script builds `--release` and replays a boot-only clickmap, exiting
+non-zero when the app dies. Each step is about five minutes, almost all of it
+the build.
+
+### Reporting
+
+Not yet filed. The rating has changed and a regression is a result worth
+publishing, so this needs a report against a pushed revision naming the startup
+crash as the frontier.
