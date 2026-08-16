@@ -224,9 +224,9 @@ pub const CLASSES: ClassExports = objc_classes! {
         // Ask whether it *is* a directory, not whether it fails to be a file.
         // `!is_file` is true for a path that does not exist at all, so a first
         // launch was told every missing folder was already a directory. An app
-        // that trusts the out-parameter — Crafted checks it and skips creating
-        // what it believes is there — then never creates its save folder, and
-        // fails much later with a nonexistent parent directory.
+        // that trusts the out-parameter — checking it and skipping the creation
+        // of what it believes is already there — then never creates its save
+        // folder, and fails much later with a nonexistent parent directory.
         (env.fs.exists(guest_path), env.fs.is_dir(guest_path))
     };
 
