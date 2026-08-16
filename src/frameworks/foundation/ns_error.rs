@@ -79,6 +79,14 @@ pub const CLASSES: ClassExports = objc_classes! {
     this
 }
 
+// NSObject's -description is what NSLog("%@") and every diagnostic path reach
+// for, and NSError's is documented to be the localized description. Without it
+// an app logging an error it had handled perfectly well died on an unrecognised
+// selector instead.
+- (id)description {
+    msg![env; this localizedDescription]
+}
+
 - (id)localizedDescription {
     let user_info =  env.objc.borrow::<ErrorHostObject>(this).user_info;
     let key = ns_string::get_static_str(env, NSLocalizedDescriptionKey);
