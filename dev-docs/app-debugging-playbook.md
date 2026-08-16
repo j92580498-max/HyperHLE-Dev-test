@@ -46,6 +46,35 @@ show one boundary at a time, and record the coordinate/timing recipe. Automated
 screenshots and clicks support what a person can observe; they do not replace a
 human playtest for menu, input, gameplay, orientation, or audio claims.
 
+### A tap that does nothing is usually the harness, not the app
+
+On a display with scaling — this one runs at 175% — tapHLE's window is
+DPI-unaware, so Windows virtualises its coordinates. A harness that is itself
+DPI-aware and converts client coordinates with `ClientToScreen` therefore puts
+the cursor well away from the button it aimed at, and every control in every app
+looks unresponsive.
+
+That cost four apps a wrong conclusion in one session on 2026-08-16, and the
+wrong conclusion was convincing: the touch really was delivered, the app's
+`hitTest:` and `pointInside:` really did run, and they honestly answered "not in
+this button". One of those apps went from "its buttons do not respond" to three
+stars on the strength of the coordinate change alone.
+
+So: **measure the target on a screen capture and click at that offset from the
+window's origin.** Then diff the frames either side of the tap; a tap that
+changed nothing is a fact about the pixels, not yet a fact about the app. If
+several apps in a row appear to ignore taps, suspect the harness first.
+
+Note that a clickmap records *client* coordinates by design, so its numbers have
+to be converted before a harness of this kind can use them.
+
+### Screen capture, not PrintWindow, for anything drawn with OpenGL
+
+`PrintWindow` copies a window's GDI surface. An accelerated OpenGL window has
+nothing there, so it can come back black while the game is plainly visible.
+Copy from the screen instead when the result matters, and treat a black
+`PrintWindow` capture of a GL app as no evidence at all.
+
 ### Antigravity CLI interactive-desktop harness
 
 This harness is for **Google Antigravity CLI (AGY) only**. Codex and other
