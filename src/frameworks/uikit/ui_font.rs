@@ -8,6 +8,10 @@
 use super::ui_graphics::UIGraphicsGetCurrentContext;
 use crate::font::{Font, TextAlignment, WrapMode};
 use crate::frameworks::core_graphics::cg_bitmap_context::CGBitmapContextDrawer;
+use crate::frameworks::core_graphics::cg_context::{
+    CGContextGetCTM, CGContextRef, CGContextRestoreGState, CGContextSaveGState, CGContextScaleCTM,
+    CGContextTranslateCTM,
+};
 use crate::frameworks::core_graphics::{CGFloat, CGPoint, CGRect, CGSize};
 use crate::frameworks::foundation::ns_string::{from_rust_string, get_static_str, to_rust_string};
 use crate::frameworks::foundation::NSInteger;
@@ -395,6 +399,38 @@ pub fn draw_font_glyph(
     }
 }
 
+/// Undo a y-axis flip in the context, about the horizontal band the text is
+/// about to occupy. Returns whether anything was changed, so the caller knows
+/// whether to restore.
+///
+/// Text layout here runs y-downward: lines are placed one below the next and a
+/// glyph's bitmap rows run top to bottom. UIKit hands `-drawRect:` a context
+/// whose y axis is flipped for exactly that convention, and `UIView` installs
+/// that flip around every `-drawRect:` — including tapHLE's own `UILabel` and
+/// button title drawing, which is already written y-downward. The result was
+/// text mirrored top to bottom: whole strings upside down, and a wrapped
+/// paragraph with its lines in reverse order.
+///
+/// Flipping again about the text's own band turns the two flips into a pure
+/// translation, so the text lands upright *and* in the place it was asked for.
+/// Doing it here, rather than per glyph, is what keeps line order right:
+/// mirroring each glyph on its own fixes the letters and leaves the lines
+/// stacked upwards.
+fn counter_flip_for_text(
+    env: &mut Environment,
+    context: CGContextRef,
+    band_origin_y: CGFloat,
+    band_height: CGFloat,
+) -> bool {
+    if CGContextGetCTM(env, context).d >= 0.0 {
+        return false;
+    }
+    CGContextSaveGState(env, context);
+    CGContextTranslateCTM(env, context, 0.0, band_origin_y * 2.0 + band_height);
+    CGContextScaleCTM(env, context, 1.0, -1.0);
+    true
+}
+
 /// Called by the `drawAtPoint:` method family on `NSString`.
 pub fn draw_at_point(
     env: &mut Environment,
@@ -405,25 +441,31 @@ pub fn draw_at_point(
 ) -> CGSize {
     let context = UIGraphicsGetCurrentContext(env);
 
-    let host_object = env.objc.borrow::<UIFontHostObject>(font);
-
-    let font = get_font(
-        &mut env.framework_state.uikit.ui_font,
-        host_object.kind,
-        text,
-    );
+    let font_id = font;
+    let &UIFontHostObject {
+        size: font_size,
+        kind,
+        ..
+    } = env.objc.borrow::<UIFontHostObject>(font_id);
 
     let width_and_line_break_mode =
         width_and_line_break_mode.map(|(width, ui_mode)| (width, convert_line_break_mode(ui_mode)));
     let clip_x = width_and_line_break_mode.map(|(width, _)| point.x..(point.x + width));
-    let (width, height) =
-        font.calculate_text_size(host_object.size, text, width_and_line_break_mode);
+    let (width, height) = {
+        let font = get_font(&mut env.framework_state.uikit.ui_font, kind, text);
+        font.calculate_text_size(font_size, text, width_and_line_break_mode)
+    };
 
+    // The context is flipped back for the duration of the drawing; see
+    // [counter_flip_for_text].
+    let flipped = counter_flip_for_text(env, context, point.y, height);
+
+    let font = get_font(&mut env.framework_state.uikit.ui_font, kind, text);
     let mut drawer = CGBitmapContextDrawer::new(&env.objc, &mut env.mem, context);
     let fill_color = drawer.rgb_fill_color();
 
     font.draw(
-        host_object.size,
+        font_size,
         text,
         (point.x, point.y),
         width_and_line_break_mode,
@@ -438,6 +480,10 @@ pub fn draw_at_point(
             )
         },
     );
+
+    if flipped {
+        CGContextRestoreGState(env, context);
+    }
 
     CGSize { width, height }
 }
@@ -455,13 +501,18 @@ pub fn draw_in_rect(
 
     let text_size = size_with_font(env, font, text, Some((rect.size, line_break_mode)));
 
-    let host_object = env.objc.borrow::<UIFontHostObject>(font);
+    let &UIFontHostObject {
+        size: font_size,
+        kind,
+        ..
+    } = env.objc.borrow::<UIFontHostObject>(font);
 
-    let font = get_font(
-        &mut env.framework_state.uikit.ui_font,
-        host_object.kind,
-        text,
-    );
+    // The context is flipped back for the duration of the drawing; see
+    // [counter_flip_for_text]. The band is the rect the caller asked for, so
+    // clipping below still refers to the same place.
+    let flipped = counter_flip_for_text(env, context, rect.origin.y, rect.size.height);
+
+    let font = get_font(&mut env.framework_state.uikit.ui_font, kind, text);
 
     let mut drawer = CGBitmapContextDrawer::new(&env.objc, &mut env.mem, context);
     let fill_color = drawer.rgb_fill_color();
@@ -474,7 +525,7 @@ pub fn draw_in_rect(
     };
 
     font.draw(
-        host_object.size,
+        font_size,
         text,
         (rect.origin.x + origin_x_offset, rect.origin.y),
         Some((rect.size.width, convert_line_break_mode(line_break_mode))),
@@ -489,6 +540,10 @@ pub fn draw_in_rect(
             )
         },
     );
+
+    if flipped {
+        CGContextRestoreGState(env, context);
+    }
 
     text_size
 }
