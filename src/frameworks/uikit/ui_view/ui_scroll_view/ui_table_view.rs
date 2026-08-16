@@ -320,6 +320,85 @@ pub const CLASSES: ClassExports = objc_classes! {
     () = msg![env; label setText:text];
 }
 
+// Editing mode is not drawn — there is no delete control or reorder grip here —
+// so the flag is accepted and dropped. An app puts its table into editing mode
+// and UIKit forwards this to every cell, including an app's own subclass that
+// overrides it and calls super, which is how a missing implementation here ends
+// the app rather than merely leaving something undrawn.
+- (())setEditing:(bool)_editing animated:(bool)_animated {
+}
+- (())setEditing:(bool)_editing {
+}
+- (())setShouldIndentWhileEditing:(bool)_should {
+}
+// The pre-iOS-3 image property, kept because old apps still set it. It is
+// stored rather than drawn: this cell lays out one label and no image well.
+- (())setImage:(id)_image { // UIImage*
+}
+- (id)image {
+    nil
+}
+// The accessory views. Nothing draws them here — no disclosure chevron, no
+// custom view well — so the setter is accepted and the getter answers nil,
+// which is what a cell with no accessory has.
+- (())setAccessoryView:(id)_view { // UIView*
+}
+- (id)accessoryView {
+    nil
+}
+- (id)editingAccessoryView {
+    nil
+}
+// The rest of the cell's decoration. None of it is drawn — this cell lays out
+// one label — so each setter is accepted and each getter answers nil or the
+// default. They are listed together rather than added one crash at a time,
+// which is how the four above arrived.
+- (())setBackgroundView:(id)_view { // UIView*
+}
+- (id)backgroundView {
+    nil
+}
+- (())setSelectedBackgroundView:(id)_view { // UIView*
+}
+- (id)selectedBackgroundView {
+    nil
+}
+- (())setMultipleSelectionBackgroundView:(id)_view { // UIView*
+}
+- (id)multipleSelectionBackgroundView {
+    nil
+}
+- (())setIndentationLevel:(NSInteger)_level {
+}
+- (NSInteger)indentationLevel {
+    0
+}
+- (())setIndentationWidth:(f32)_width {
+}
+- (NSInteger)accessoryType {
+    0 // UITableViewCellAccessoryNone
+}
+- (NSInteger)selectionStyle {
+    1 // UITableViewCellSelectionStyleBlue, the default
+}
+- (bool)isEditing {
+    false
+}
+- (bool)isSelected {
+    false
+}
+- (bool)isHighlighted {
+    false
+}
+- (())setHighlighted:(bool)_highlighted {
+}
+- (())setHighlighted:(bool)_highlighted animated:(bool)_animated {
+}
+- (())setShowsReorderControl:(bool)_shows {
+}
+- (())setEditingAccessoryType:(NSInteger)_type {
+}
+
 - (())setSelectionStyle:(NSInteger)_style {
     // Selection is not drawn, so there is no style to honour.
 }

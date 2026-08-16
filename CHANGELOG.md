@@ -43,6 +43,9 @@
 - Build web and file addresses from text the way games actually write it,
   instead of quitting: any character encoding, and addresses that are already
   complete rather than only bare file paths.
+- Show lists whose rows are decorated — with a picture, an accessory, a
+  background or an editing control. Setting any of those ended the game, so a
+  list that looked slightly fancier than plain text was fatal.
 
 - Answer truthfully when a game asks whether one of its objects supports a
   particular set of features, instead of ending the game over the question. The
