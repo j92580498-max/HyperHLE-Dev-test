@@ -613,6 +613,38 @@ presentation bug, and both rendered wrong the whole time.
 
 ## Change discipline
 
+### Commit checklist
+
+Run this before every commit. It is short because every line on it is a rule
+stated elsewhere in this guide that has actually been broken in practice — the
+list exists so that following the rules does not depend on remembering to
+re-read them.
+
+1. **No app is named in anything under `src/`.** Not in a comment, not in an
+   identifier, not in a log message, not in a condition. Grep the files you
+   changed for the app you were working on before you stage them. The app's name
+   belongs in the commit message, the changelog, the app note and the database —
+   all of which are outside `src/`. See "No app is named in the emulator's
+   source".
+2. **One branch, one subject.** Everything staged belongs to the branch's single
+   deliverable. `git status` before committing and `git show --stat` after:
+   an unrelated file in the diff means it belongs on another branch, and `git
+   add -A` is how it gets there by accident.
+3. **A milestone gets its clickmap in the same commit as its report.** If this
+   run drove an app to a rating milestone, `dev-docs/clickmaps/<slug>.json`
+   exists and replays. See "Replay a clickmap before exploring for one".
+4. **A rating change gets its report, now.** Every star boundary, in either
+   direction, at the time it is crossed — including a regression found on a
+   revision you did not write. See "Every star boundary gets its own report".
+5. **The changelog entry is written on the branch that earns it**, in a user's
+   terms, if a user would notice the change at all.
+6. **Trailers are one contiguous block with `Co-authored-by:` last**, on merge
+   commits too.
+7. **Checks proportional to the change have run**, and on the merge result
+   rather than only on the branch.
+8. **No transient artifact is staged** — no logs, captures, dumps or throwaway
+   scripts. A clean `git status` afterwards.
+
 ### Finish by pushing
 
 Push your work. When commits are made and their checks pass, push the branch
