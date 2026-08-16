@@ -2,6 +2,7 @@
 
 use super::ns_string;
 use crate::dyld::{export_c_func, FunctionExports};
+use crate::mem::ConstPtr;
 use crate::objc::{id, nil, Class, SEL};
 use crate::Environment;
 
@@ -70,9 +71,45 @@ fn NSClassFromString(env: &mut Environment, string: id) -> Class {
     }
 }
 
+/// `NSStringFromProtocol(Protocol *)`.
+///
+/// tapHLE's runtime has no notion of a protocol, so there is no object here to
+/// ask for its name. What the guest passes is the protocol structure the
+/// compiler emitted into the binary, and in both the legacy and the modern
+/// Objective-C layouts that structure begins with an `isa` word followed by a
+/// pointer to the protocol's name — so the name can be read out of it without
+/// modelling protocols at all.
+///
+/// This is narrow on purpose: it answers the one question apps ask (what is
+/// this protocol called, usually to build a key or log a line) rather than
+/// pretending to a protocol runtime that does not exist.
+fn NSStringFromProtocol(env: &mut Environment, protocol: ConstPtr<ConstPtr<u8>>) -> id {
+    if protocol.is_null() {
+        return nil;
+    }
+    let name_ptr = env.mem.read(protocol + 1);
+    if name_ptr.is_null() {
+        log!(
+            "NSStringFromProtocol({:?}): no name in the protocol structure, returning nil",
+            protocol
+        );
+        return nil;
+    }
+    let Ok(name) = env.mem.cstr_at_utf8(name_ptr) else {
+        log!(
+            "NSStringFromProtocol({:?}): name is not UTF-8, returning nil",
+            protocol
+        );
+        return nil;
+    };
+    let name = name.to_string();
+    ns_string::from_rust_string(env, name)
+}
+
 pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(NSStringFromSelector(_)),
     export_c_func!(NSSelectorFromString(_)),
     export_c_func!(NSClassFromString(_)),
     export_c_func!(NSStringFromClass(_)),
+    export_c_func!(NSStringFromProtocol(_)),
 ];

@@ -36,6 +36,10 @@
 
 - Running tapHLE from a terminal is unchanged.
 
+- Let a game ask what one of its interfaces is called. Games use the answer to
+  build keys and log lines, and the question had no answer at all, so asking it
+  ended the game.
+
 - Text is the right way up. Every piece of writing tapHLE draws for a game —
   button labels, menu items, messages, whole paragraphs — was coming out
   mirrored top to bottom, with the lines of a paragraph stacked in reverse
