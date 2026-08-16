@@ -36,6 +36,11 @@
 
 - Running tapHLE from a terminal is unchanged.
 
+- Answer truthfully when a game asks whether one of its objects supports a
+  particular set of features, instead of ending the game over the question. The
+  answer is read from what the game itself declared, so it is the same one a
+  device would give.
+
 - Stop games quitting over the parts of their sound setup tapHLE does not
   provide. A game that asks for a mixer, or configures a channel that is not
   there, or leaves a sound format unset because another part of its audio chain

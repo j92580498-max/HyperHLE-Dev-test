@@ -45,6 +45,10 @@ pub(super) struct ClassHostObject {
     /// its entry in the binary's property table. Only the class's own
     /// properties; the superclass chain is walked at lookup time.
     pub(super) properties: Vec<(String, objc_property_t)>,
+    /// The class's own adopted-protocol list in the binary, or null. Read on
+    /// demand rather than expanded at load time: only `-conformsToProtocol:`
+    /// asks, and most classes are never asked.
+    pub(super) base_protocols: ConstPtr<protocol_list_t>,
     /// Offset into the allocated memory for the object where the ivars of
     /// instances of this class or metaclass (respectively: normal objects or
     /// classes) should live. This is always >= the value in the superclass.
@@ -162,12 +166,34 @@ struct class_rw_t {
     _reserved: u32,
     name: ConstPtr<u8>,
     base_methods: ConstPtr<method_list_t>,
-    _base_protocols: ConstVoidPtr, // protocol list (TODO)
+    base_protocols: ConstPtr<protocol_list_t>,
     ivars: ConstPtr<ivar_list_t>,
     _weak_ivar_layout: u32,
     base_properties: ConstPtr<property_list_t>,
 }
 unsafe impl SafeRead for class_rw_t {}
+
+/// The layout of a protocol list in an app binary: a count followed by that
+/// many pointers to protocols. Both the class's own list and a protocol's list
+/// of protocols it adopts have this shape.
+#[repr(C, packed)]
+struct protocol_list_t {
+    count: GuestUSize,
+    // Followed by `count` pointers to protocol_t, read individually.
+}
+unsafe impl SafeRead for protocol_list_t {}
+
+/// As much of a protocol as answering "does this class adopt it?" needs: its
+/// name, and the protocols it adopts itself. A protocol carries its method
+/// lists after these, which nothing here reads.
+#[repr(C, packed)]
+#[allow(dead_code)]
+struct protocol_t {
+    isa: ConstVoidPtr,
+    name: ConstPtr<u8>,
+    protocols: ConstPtr<protocol_list_t>,
+}
+unsafe impl SafeRead for protocol_t {}
 
 /// The layout of a category in an app binary.
 ///
@@ -402,6 +428,42 @@ macro_rules! objc_classes {
 }
 pub use crate::objc_classes; // #[macro_export] is weird...
 
+/// Whether a protocol list, or any protocol it leads to, names `wanted`.
+///
+/// A protocol may itself adopt protocols, and conformance is inherited through
+/// them, so this follows those lists too. The depth limit is protection against
+/// a malformed or circular list in a binary rather than a real nesting bound;
+/// protocol hierarchies are a couple of levels deep in practice.
+fn protocol_list_contains(
+    mem: &Mem,
+    list: ConstPtr<protocol_list_t>,
+    wanted: &str,
+    depth: u32,
+) -> bool {
+    if list.is_null() || depth > 8 {
+        return false;
+    }
+    let protocol_list_t { count } = mem.read(list);
+    // The pointers follow the count in memory.
+    let entries: ConstPtr<ConstPtr<protocol_t>> = (list + 1u32).cast();
+    for i in 0..count {
+        let protocol = mem.read(entries + i);
+        if protocol.is_null() {
+            continue;
+        }
+        let protocol_t {
+            name, protocols, ..
+        } = mem.read(protocol);
+        if !name.is_null() && mem.cstr_at_utf8(name) == Ok(wanted) {
+            return true;
+        }
+        if protocol_list_contains(mem, protocols, wanted, depth + 1) {
+            return true;
+        }
+    }
+    false
+}
+
 impl ClassHostObject {
     fn from_template(
         template: &ClassTemplate,
@@ -417,6 +479,7 @@ impl ClassHostObject {
             name: template.name.to_string(),
             is_metaclass,
             superclass,
+            base_protocols: Ptr::null(),
             methods: HashMap::from_iter(
                 (if is_metaclass {
                     template.class_methods
@@ -450,6 +513,7 @@ impl ClassHostObject {
             instance_size,
             name,
             base_methods,
+            base_protocols,
             ivars,
             base_properties,
             ..
@@ -461,6 +525,7 @@ impl ClassHostObject {
             name,
             is_metaclass,
             superclass,
+            base_protocols,
             methods: HashMap::new(),
             guest_method_signatures: HashMap::new(),
             instance_start,
@@ -1073,6 +1138,7 @@ impl ObjC {
                         name: Default::default(),
                         is_metaclass: Default::default(),
                         superclass: nil,
+                        base_protocols: Ptr::null(),
                         methods: Default::default(),
                         guest_method_signatures: Default::default(),
                         instance_start: Default::default(),
@@ -1111,6 +1177,30 @@ impl ObjC {
         } else {
             self.borrow::<ClassHostObject>(class).superclass
         }
+    }
+
+    /// Whether `class` or any of its superclasses adopts the protocol named
+    /// `protocol_name`.
+    ///
+    /// Only classes that came from an app binary can adopt anything: tapHLE's
+    /// own classes are built from templates that carry no protocol list, so
+    /// they answer `false`. That is a real limit rather than an oversight — a
+    /// host class genuinely has no declared conformance to consult — and it is
+    /// why this returns what it found rather than a guess.
+    pub fn class_conforms_to_protocol(&self, mem: &Mem, class: Class, protocol_name: &str) -> bool {
+        let mut class = class;
+        while class != nil {
+            let &ClassHostObject {
+                base_protocols,
+                superclass,
+                ..
+            } = self.borrow(class);
+            if protocol_list_contains(mem, base_protocols, protocol_name, 0) {
+                return true;
+            }
+            class = superclass;
+        }
+        false
     }
 
     pub fn class_is_subclass_of(&self, class: Class, superclass: Class) -> bool {
@@ -1330,6 +1420,9 @@ pub(super) fn objc_allocateClassPair(
         name: name.clone(),
         is_metaclass,
         superclass,
+        // A class created at run time adopts nothing until something declares
+        // it does, and nothing here can.
+        base_protocols: Ptr::null(),
         methods: HashMap::new(),
         guest_method_signatures: HashMap::new(),
         ivars: HashMap::new(),
