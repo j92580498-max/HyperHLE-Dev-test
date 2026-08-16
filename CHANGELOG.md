@@ -36,6 +36,9 @@
 
 - Running tapHLE from a terminal is unchanged.
 
+- Let a game send its own log to a file. Redirecting output that way was not
+  supported and ended the game at the attempt.
+
 - Answer truthfully when a game asks whether one of its objects supports a
   particular set of features, instead of ending the game over the question. The
   answer is read from what the game itself declared, so it is the same one a
