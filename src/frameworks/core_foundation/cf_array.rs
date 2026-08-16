@@ -69,6 +69,31 @@ fn CFArrayCreateMutable(
     }
 }
 
+/// The immutable counterpart, built from a C array of values. An app that has
+/// its values to hand builds one of these rather than creating a mutable array
+/// and appending; the result is an ordinary array here, because tapHLE has no
+/// separate immutable representation to put it in.
+fn CFArrayCreate(
+    env: &mut Environment,
+    allocator: CFAllocatorRef,
+    values: ConstPtr<ConstVoidPtr>,
+    num_values: CFIndex,
+    callbacks: ConstPtr<CFArrayCallBacks>,
+) -> CFArrayRef {
+    assert!(allocator == kCFAllocatorDefault || env.mem.read(allocator).is_system_default()); // unimplemented
+
+    let array = CFArrayCreateMutable(env, allocator, num_values, callbacks);
+    // A NULL values pointer with a count of zero is legal and means an empty
+    // array; with a non-zero count it is a caller error, and reading from it
+    // would be worse than saying so.
+    assert!(num_values == 0 || !values.is_null());
+    for i in 0..num_values {
+        let value = env.mem.read(values + i.try_into().unwrap());
+        CFArrayAppendValue(env, array, value);
+    }
+    array
+}
+
 fn CFArrayGetCount(env: &mut Environment, array: CFArrayRef) -> CFIndex {
     let count: NSUInteger = msg![env; array count];
     count.try_into().unwrap()
@@ -140,6 +165,10 @@ fn CFArrayRemoveValueAtIndex(env: &mut Environment, array: CFMutableArrayRef, id
     msg![env; array removeObjectAtIndex:idx]
 }
 
+fn CFArrayRemoveAllValues(env: &mut Environment, array: CFMutableArrayRef) {
+    msg![env; array removeAllObjects]
+}
+
 // Default CFArray callbacks, matching `kCFTypeArrayCallBacks`. tapHLE does not
 // call these itself (retaining is handled by the chosen array class), but the
 // guest may read the struct or invoke the callbacks directly, so they behave as
@@ -200,6 +229,7 @@ pub const CONSTANTS: ConstantExports = &[(
 )];
 
 pub const FUNCTIONS: FunctionExports = &[
+    export_c_func!(CFArrayCreate(_, _, _, _)),
     export_c_func!(CFArrayCreateMutable(_, _, _)),
     export_c_func!(CFArrayGetCount(_)),
     export_c_func!(CFArrayGetValueAtIndex(_, _)),
@@ -208,4 +238,5 @@ pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(CFArrayInsertValueAtIndex(_, _, _)),
     export_c_func!(CFArraySetValueAtIndex(_, _, _)),
     export_c_func!(CFArrayRemoveValueAtIndex(_, _)),
+    export_c_func!(CFArrayRemoveAllValues(_)),
 ];

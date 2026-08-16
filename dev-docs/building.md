@@ -33,6 +33,15 @@ Install:
 - [CMake](https://cmake.org/) available on `PATH`; and
 - Boost headers.
 
+CMake 4 dropped support for projects declaring a minimum policy version below
+3.5, which the vendored SDL, Dynarmic and OpenAL sources all do. `.cargo/config.toml`
+sets `CMAKE_POLICY_VERSION_MINIMUM=3.5` so those configure steps succeed; if you
+build outside cargo, set it yourself. Without it the failure is
+"Compatibility with CMake < 3.5 has been removed" during a from-scratch build,
+which reads like a broken checkout rather than a newer CMake — and a release
+build that already has its native artifacts will keep working while a debug one
+fails, which makes it look like a profile problem instead.
+
 The native Dynarmic dependency currently expects Boost 1.81 in the repository
 on Windows. Download Boost 1.81 and extract/rename its top-level directory to
 `vendor/boost`, so `vendor/boost/boost/` exists.

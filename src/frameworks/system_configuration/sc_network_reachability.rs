@@ -34,16 +34,9 @@ pub const CLASSES: ClassExports = objc_classes! {
 // [SCNetworkReachabilityScheduleWithRunLoop] so the caller finishes scheduling
 // before its own callback re-enters it, which is the order a device produces.
 - (())tapHLE_deliverInitialReachability {
-    let &SCNetworkReachabilityHostObject { callout, context, .. } = env.objc.borrow(this);
+    let &SCNetworkReachabilityHostObject { callout, info, .. } = env.objc.borrow(this);
     let Some(callout) = callout else {
         return;
-    };
-    // The context's `info` is the second word of SCNetworkReachabilityContext,
-    // after its `version`. A null context means no user pointer.
-    let info: MutVoidPtr = if context.is_null() {
-        Ptr::null()
-    } else {
-        env.mem.read(context.cast::<MutVoidPtr>() + 1)
     };
     let flags = current_flags(env);
     log_dbg!(
@@ -62,9 +55,9 @@ struct SCNetworkReachabilityHostObject {
     /// `SCNetworkReachabilityCallBack`, set by
     /// [SCNetworkReachabilitySetCallback].
     callout: Option<GuestFunction>,
-    /// The `SCNetworkReachabilityContext *` that came with it, unretained: this
-    /// never outlives the scheduling call that reads it.
-    context: MutVoidPtr,
+    /// The context's `info` pointer, copied when the callback was registered.
+    /// Copied rather than pointed at: see [SCNetworkReachabilitySetCallback].
+    info: MutVoidPtr,
 }
 impl HostObject for SCNetworkReachabilityHostObject {}
 
@@ -104,7 +97,7 @@ fn SCNetworkReachabilityCreateWithName(
         Box::new(SCNetworkReachabilityHostObject {
             address: None, // TODO
             callout: None,
-            context: Ptr::null(),
+            info: Ptr::null(),
         }),
         &mut env.mem,
     );
@@ -133,7 +126,7 @@ fn SCNetworkReachabilityCreateWithAddress(
         Box::new(SCNetworkReachabilityHostObject {
             address: Some(address_val.to_sockaddr_v4()),
             callout: None,
-            context: Ptr::null(),
+            info: Ptr::null(),
         }),
         &mut env.mem,
     );
@@ -237,6 +230,23 @@ fn SCNetworkReachabilitySetCallback(
         callout,
         context
     );
+    // The context's `info` is copied **now**, not remembered as a pointer to
+    // the caller's struct. A caller almost always builds the context as a local
+    // variable and lets it go out of scope the moment this returns — which is
+    // safe on a device, because SystemConfiguration copies the struct here — so
+    // reading it later, from the deferred delivery below, reads a dead stack
+    // frame — and the failure it produces is a null store deep inside the app's
+    // own callback, nowhere near anything to do with networking.
+    //
+    // The context's retain and release callbacks are not invoked. They exist to
+    // keep `info` alive for longer than the caller's scope, and here the single
+    // delivery happens on the next turn of the run loop, while the object that
+    // owns `info` is still alive by construction.
+    let info: MutVoidPtr = if context.is_null() {
+        Ptr::null()
+    } else {
+        env.mem.read(context.cast::<MutVoidPtr>() + 1)
+    };
     let host_object = env
         .objc
         .borrow_mut::<SCNetworkReachabilityHostObject>(target);
@@ -245,7 +255,7 @@ fn SCNetworkReachabilitySetCallback(
     } else {
         Some(callout)
     };
-    host_object.context = context;
+    host_object.info = info;
     true
 }
 

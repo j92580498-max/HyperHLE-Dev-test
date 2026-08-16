@@ -36,6 +36,23 @@
 
 - Running tapHLE from a terminal is unchanged.
 
+- Stop games crashing on startup the moment they ask to be told about the
+  network. tapHLE remembered *where* the game had put the details of that
+  request rather than the details themselves, and by the time it answered, the
+  game had reused that memory — so the answer went to the wrong place and the
+  game stopped. Flight Control HD could not start at all, and now plays again.
+
+- Tell a game who owns its files and what they may do, instead of nothing. A
+  game that asks a file for its owner, its group or its permissions used to get
+  no answer at all, and a game that then uses the answer without checking stops
+  on the spot — a long way from anything to do with files.
+
+- Let a game get past the sliding menu of choices that comes up from the bottom
+  of the screen — the one for "share", "restart", "delete" and the like. tapHLE
+  cannot draw it, and it did not exist at all, so a game that offered one ended
+  there. It is now reported as dismissed by its Cancel button, the same as the
+  pop-ups above, so nothing is ever chosen on the player's behalf.
+
 - Stop ending a game when it compares a piece of text against a setting it does
   not have. Looking something up, finding nothing, and comparing anyway is
   harmless — the missing one simply sorts first — and it used to end the game.
