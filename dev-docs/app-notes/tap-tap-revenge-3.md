@@ -142,3 +142,21 @@ screens: the song titles, the tip text, the nav bar titles and the difficulty
 tab labels all read backwards, while text baked into the app's own images is
 correct. Some labels ("Loading", "Tip") are correct, so it is not every path.
 This is general, not specific to this app, and is not investigated here.
+
+## A boundary that went unreported, recorded here because it cannot be filed
+
+On `8ec4049e` this app was **1 star**: it aborted inside `-[NSInvocation
+invoke]` before drawing anything, against the 2 stars report 48 records. That
+was measured directly, with a log, and **no report was filed at the time**. The
+fix that restored it to 2 stars went unfiled too.
+
+Neither can be recovered now. A report asserts that an artifact was run at a
+revision and rated *then*, and composing one afterwards from a note or a later
+rerun cannot honestly assert it — so the remedy the guide gives is this entry
+plus submitting the rating the app holds now. It holds 2 stars, which report 48
+already records for this app, so submitting again would be moderation noise and
+nothing is filed.
+
+What that costs: the database has no evidence that `8ec4049e` was the revision
+where this app could not start, which is exactly what a later regression hunt
+would want. File the boundary when it is crossed.
