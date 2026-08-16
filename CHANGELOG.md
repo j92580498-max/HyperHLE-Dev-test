@@ -36,6 +36,12 @@
 
 - Running tapHLE from a terminal is unchanged.
 
+- Stop games crashing on startup the moment they ask to be told about the
+  network. tapHLE remembered *where* the game had put the details of that
+  request rather than the details themselves, and by the time it answered, the
+  game had reused that memory — so the answer went to the wrong place and the
+  game stopped. Flight Control HD could not start at all, and now plays again.
+
 - Tell a game who owns its files and what they may do, instead of nothing. A
   game that asks a file for its owner, its group or its permissions used to get
   no answer at all, and a game that then uses the answer without checking stops
