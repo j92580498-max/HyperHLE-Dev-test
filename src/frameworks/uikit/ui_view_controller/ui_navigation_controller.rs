@@ -344,6 +344,20 @@ pub const CLASSES: ClassExports = objc_classes! {
     }
 }
 
+// What the user can actually see, which is not always the top of the stack: a
+// modal presented over the navigation controller covers it, and UIKit reports
+// the modal here while `-topViewController` keeps reporting the stack. An app
+// asking this question is usually deciding whether the screen it cares about is
+// in front, so answering with the stack top would tell it the opposite of the
+// truth whenever a modal is up.
+- (id)visibleViewController {
+    let modal: id = msg![env; this modalViewController];
+    if modal != nil {
+        return modal;
+    }
+    msg![env; this topViewController]
+}
+
 - (id)viewControllers {
     let vcs = env.objc.borrow::<UINavigationControllerHostObject>(this).navigation_stack.to_vec();
     for vc in &vcs {
