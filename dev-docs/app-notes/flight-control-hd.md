@@ -136,3 +136,30 @@ the build.
 Not yet filed. The rating has changed and a regression is a result worth
 publishing, so this needs a report against a pushed revision naming the startup
 crash as the frontier.
+
+## 2026-08-15, later: fixed, and three stars again
+
+The cause was **`SCNetworkReachabilitySetCallback` keeping a pointer to the
+caller's context struct** instead of copying it. The app builds that struct as a
+local, and the initial callback is delivered a turn of the run loop later, by
+which time the frame is gone — so `info` read back as null and the app's own
+callback stored through it. `info` is copied at registration now
+(`fix/reachability-context-copied`).
+
+The register dump had said so on its own: in a guest function entered from a
+host one, `r1` and `r2` were both zero, which is the shape of
+`(target, flags, info)` with the last two empty. Reading the dump against the
+callback's signature would have been quicker than the bisect.
+
+Re-driven on the fixed build: the menu loads, `PLAY!` at `(185, 830)` enters a
+live round — island map, runways and helipads, `AIRCRAFT LANDED` and `HI SCORE`,
+an aircraft in flight, pause and fast-forward — and two captures twelve seconds
+apart differ by SHA-256. Three stars.
+
+The route is now recorded as `dev-docs/clickmaps/flight-control-hd.json` rather
+than only as prose here.
+
+### Reports
+
+- 1 star at `8ec4049e` (report 74), filed when the regression was measured.
+- 3 stars on the fixed revision, filed with this commit.
