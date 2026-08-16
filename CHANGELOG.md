@@ -36,6 +36,11 @@
 
 - Running tapHLE from a terminal is unchanged.
 
+- Let a game ask which screen the player is actually looking at. A game that
+  checks this before deciding what to do next used to stop on the spot; the
+  answer now accounts for a pop-up screen covering the one underneath, which is
+  the case the question is usually asked about.
+
 - Stop games crashing on startup the moment they ask to be told about the
   network. tapHLE remembered *where* the game had put the details of that
   request rather than the details themselves, and by the time it answered, the
