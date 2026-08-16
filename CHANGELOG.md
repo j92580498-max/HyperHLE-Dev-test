@@ -36,6 +36,12 @@
 
 - Running tapHLE from a terminal is unchanged.
 
+- Stop telling shader-based games they cannot run. tapHLE has supported the
+  newer graphics standard these games need for some time — it creates the
+  context, draws through it and puts the result on screen — but it still
+  announced at every launch that only the older one was available, which was
+  simply untrue and put people off trying games that work.
+
 - Let a game ask which screen the player is actually looking at. A game that
   checks this before deciding what to do next used to stop on the spot; the
   answer now accounts for a pop-up screen covering the one underneath, which is
