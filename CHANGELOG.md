@@ -40,6 +40,8 @@
   particular set of features, instead of ending the game over the question. The
   answer is read from what the game itself declared, so it is the same one a
   device would give.
+- Stop games quitting when they read settings from a file that is not there.
+  Handing on the nothing they got back is ordinary, and it used to be fatal.
 
 - Stop games quitting over the parts of their sound setup tapHLE does not
   provide. A game that asks for a mixer, or configures a channel that is not
