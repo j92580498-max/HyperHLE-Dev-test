@@ -36,6 +36,9 @@
 
 - Running tapHLE from a terminal is unchanged.
 
+- Let games ask which of two moments came first. The question had no answer at
+  all, so asking it ended the game.
+
 - Answer truthfully when a game asks whether one of its objects supports a
   particular set of features, instead of ending the game over the question. The
   answer is read from what the game itself declared, so it is the same one a
