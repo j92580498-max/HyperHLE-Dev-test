@@ -36,6 +36,11 @@
 
 - Running tapHLE from a terminal is unchanged.
 
+- Show the picture in shader-based games instead of a black window. Games using
+  the newer graphics standard were drawing correctly all along — the frame was
+  built, and every check said so — but it was thrown away a moment before it
+  reached the screen, so the window stayed black and the game looked broken.
+
 - Let a game ask which screen the player is actually looking at. A game that
   checks this before deciding what to do next used to stop on the spot; the
   answer now accounts for a pop-up screen covering the one underneath, which is

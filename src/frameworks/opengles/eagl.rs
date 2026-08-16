@@ -679,6 +679,21 @@ unsafe fn present_renderbuffer_es2(
     );
     gles.DrawArrays(gles2::TRIANGLES, 0, 6);
 
+    // Flush **here**, while the default framebuffer is still bound, and not
+    // after the state restore below.
+    //
+    // The restore rebinds whatever framebuffer the app was rendering into, and
+    // the window swap happens after that. Without this flush the frame just
+    // drawn never reaches the screen: the app's own rendering appears in its
+    // renderbuffer, the copy and the draw both report success and read back the
+    // right pixels, and the window stays black — which is a hard failure to
+    // attribute, because every check along the way passes.
+    //
+    // A `Finish()` placed after the restore does *not* fix it, so this is about
+    // the order of the flush against the binding rather than about waiting for
+    // the GPU.
+    gles.Flush();
+
     // Optional: virtual cursor.
     if let Some((cx, cy, pressed)) = virtual_cursor_visible_at {
         let (vx, vy, vw, vh) = viewport;
