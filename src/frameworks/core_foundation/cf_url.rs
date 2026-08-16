@@ -87,9 +87,14 @@ fn CFURLCreateWithBytes(
     base_url: CFURLRef,
 ) -> CFURLRef {
     assert!(allocator == kCFAllocatorDefault || env.mem.read(allocator).is_system_default()); // unimplemented
-    assert_eq!(encoding, kCFStringEncodingASCII); // TODO
-    assert!(base_url.is_null()); // TODO
+    if !base_url.is_null() {
+        log!("TODO: CFURLCreateWithBytes() with a base URL; ignoring the base");
+    }
 
+    // The encoding is whatever the caller says. It used to be asserted to be
+    // ASCII, which ended any app that built a URL from UTF-8 bytes — the
+    // ordinary choice, and what a URL containing an escape or a non-ASCII
+    // character needs.
     // TODO: interpret percent escape sequences using encoding as well
     let encoding = CFStringConvertEncodingToNSStringEncoding(env, encoding);
     let length: NSUInteger = length.try_into().unwrap();
@@ -103,13 +108,38 @@ fn CFURLCreateWithBytes(
                                              length:length
                                            encoding:encoding];
 
-    assert!(!to_rust_string(env, string).contains("://")); // TODO
-
-    // Assume file URL case here
+    // A URL with a scheme is an absolute URL and has to be parsed as one;
+    // anything else is a file path. Treating everything as a path aborted on
+    // the first `http://` an app built this way.
+    let has_scheme = to_rust_string(env, string).contains("://");
     let url: id = msg_class![env; NSURL alloc];
-    let res = msg![env; url initFileURLWithPath:string];
+    let res = if has_scheme {
+        msg![env; url initWithString:string]
+    } else {
+        msg![env; url initFileURLWithPath:string]
+    };
     release(env, string);
     res
+}
+
+/// The same as [CFURLCreateWithBytes] but resolved against a base URL, and with
+/// a flag saying whether the bytes are already percent-escaped.
+///
+/// With no base URL the two are the same call, and that is the case apps reach
+/// here on: a URL built from bytes that turn out to be absolute already.
+fn CFURLCreateAbsoluteURLWithBytes(
+    env: &mut Environment,
+    allocator: CFAllocatorRef,
+    url_bytes: ConstPtr<u8>,
+    length: CFIndex,
+    encoding: CFStringEncoding,
+    base_url: CFURLRef,
+    _use_compatibility_mode: bool,
+) -> CFURLRef {
+    if !base_url.is_null() {
+        log!("TODO: CFURLCreateAbsoluteURLWithBytes() with a base URL; ignoring the base");
+    }
+    CFURLCreateWithBytes(env, allocator, url_bytes, length, encoding, Ptr::null())
 }
 
 fn CFURLCreateWithFileSystemPath(
@@ -361,6 +391,7 @@ pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(CFURLGetFileSystemRepresentation(_, _, _, _)),
     export_c_func!(CFURLCreateFromFileSystemRepresentation(_, _, _, _)),
     export_c_func!(CFURLCreateWithBytes(_, _, _, _, _)),
+    export_c_func!(CFURLCreateAbsoluteURLWithBytes(_, _, _, _, _, _)),
     export_c_func!(CFURLCreateWithFileSystemPath(_, _, _, _)),
     export_c_func!(CFURLCreateWithString(_, _, _)),
     export_c_func!(CFURLCreateStringByAddingPercentEscapes(_, _, _, _, _)),

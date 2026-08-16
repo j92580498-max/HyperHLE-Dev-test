@@ -40,6 +40,9 @@
   all, so asking it ended the game.
 - Let a game send its own log to a file. Redirecting output that way was not
   supported and ended the game at the attempt.
+- Build web and file addresses from text the way games actually write it,
+  instead of quitting: any character encoding, and addresses that are already
+  complete rather than only bare file paths.
 
 - Answer truthfully when a game asks whether one of its objects supports a
   particular set of features, instead of ending the game over the question. The
