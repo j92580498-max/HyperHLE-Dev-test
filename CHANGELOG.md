@@ -36,6 +36,10 @@
 
 - Running tapHLE from a terminal is unchanged.
 
+- Understand the reply to a web request well enough for games to ask about it —
+  its status, its headers, its size. tapHLE has no network, but games name these
+  things while handling a failure, and naming one used to end the game.
+
 - Stop games quitting over the parts of their sound setup tapHLE does not
   provide. A game that asks for a mixer, or configures a channel that is not
   there, or leaves a sound format unset because another part of its audio chain
