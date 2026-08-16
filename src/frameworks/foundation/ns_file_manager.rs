@@ -501,6 +501,21 @@ pub const CLASSES: ClassExports = objc_classes! {
     true
 }
 
+// tapHLE's guest filesystem has no symbolic links, so no path is one. Apple
+// answers a path that is not a symlink with nil and an error, which is the
+// same answer, and callers already handle it — they ask precisely because a
+// path may not be a link.
+- (id)destinationOfSymbolicLinkAtPath:(id)path // NSString *
+                                error:(MutPtr<id>)error { // NSError **
+    log_dbg!(
+        "[(NSFileManager *){:?} destinationOfSymbolicLinkAtPath:{:?}] => nil (no symbolic links here)",
+        this,
+        path
+    );
+    write_error(env, error, NSFileReadNoSuchFileError);
+    nil
+}
+
 - (id)attributesOfItemAtPath:(id)path // NSString *
                        error:(MutPtr<id>)error { // NSError **
     // A caller asking for an error is normal; there is no error detail worth
