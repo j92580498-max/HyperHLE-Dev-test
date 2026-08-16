@@ -38,6 +38,8 @@
 
 - Let games ask which of two moments came first. The question had no answer at
   all, so asking it ended the game.
+- Let a game send its own log to a file. Redirecting output that way was not
+  supported and ended the game at the attempt.
 
 - Answer truthfully when a game asks whether one of its objects supports a
   particular set of features, instead of ending the game over the question. The
