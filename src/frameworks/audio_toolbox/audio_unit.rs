@@ -105,10 +105,20 @@ fn AudioUnitSetProperty(
         return 0;
     }
 
-    let host_object = audio_components::State::get(&mut env.framework_state)
+    // An app that asked for a unit tapHLE does not provide got NULL from
+    // AudioComponentFindNext and commonly carries on configuring it without
+    // checking, so a property set can arrive for a unit that was never created.
+    // That is the app's mistake, but aborting makes it tapHLE's: answer the way
+    // Core Audio does for a bad instance and let the app continue.
+    let Some(host_object) = audio_components::State::get(&mut env.framework_state)
         .audio_component_instances
         .get_mut(&in_unit)
-        .unwrap();
+    else {
+        log_once!(
+            "AudioUnitSetProperty() for a unit tapHLE never created; reporting it as unsupported"
+        );
+        return kAudioUnitErr_InvalidProperty;
+    };
 
     let result;
     match in_id {
@@ -178,12 +188,30 @@ fn AudioUnitGetProperty(
     out_data: MutVoidPtr,
     io_data_size: MutPtr<u32>,
 ) -> OSStatus {
-    assert!(in_element == 0);
+    // Element 0 is the output bus, the only one tapHLE models — the same
+    // limitation AudioUnitSetProperty states above. A read of another bus is
+    // answered as an unsupported property rather than aborting: that is what an
+    // app asking about a bus a unit does not have already has to handle, and it
+    // leaves its own buffer untouched instead of filling it with a guess.
+    if in_element != 0 {
+        log!(
+            "TODO: AudioUnitGetProperty({:?}, property {}, element {}), reporting it as unsupported",
+            in_unit,
+            in_id,
+            in_element
+        );
+        return kAudioUnitErr_InvalidProperty;
+    }
 
-    let host_object = audio_components::State::get(&mut env.framework_state)
+    let Some(host_object) = audio_components::State::get(&mut env.framework_state)
         .audio_component_instances
         .get_mut(&in_unit)
-        .unwrap();
+    else {
+        log_once!(
+            "AudioUnitGetProperty() for a unit tapHLE never created; reporting it as unsupported"
+        );
+        return kAudioUnitErr_InvalidProperty;
+    };
 
     match in_id {
         kAudioUnitProperty_MaximumFramesPerSlice => {
@@ -249,10 +277,15 @@ fn AudioOutputUnitStart(env: &mut Environment, ci: AudioUnit) -> OSStatus {
     }
 
     let audio_components_state = audio_components::State::get(&mut env.framework_state);
-    let audio_unit_state = audio_components_state
+    let Some(audio_unit_state) = audio_components_state
         .audio_component_instances
         .get_mut(&ci)
-        .unwrap();
+    else {
+        log_once!(
+            "AudioOutputUnitStart() for a unit tapHLE never created; reporting it as unsupported"
+        );
+        return kAudioUnitErr_InvalidProperty;
+    };
     audio_unit_state.al_source = Some(source);
     audio_unit_state.last_render_time = Some(Instant::now());
     audio_unit_state.started = true;
@@ -310,10 +343,15 @@ pub fn render_audio_unit(env: &mut Environment, audio_unit: AudioUnit) {
     } = at_state.audio_session;
 
     let audio_components_state = &mut at_state.audio_components;
-    let audio_unit_host_object = audio_components_state
+    // The run loop can still hold a unit that was never created, or was
+    // created and then released; neither is a reason to stop the app.
+    let Some(audio_unit_host_object) = audio_components_state
         .audio_component_instances
         .get_mut(&audio_unit)
-        .unwrap();
+    else {
+        log_once!("The run loop holds an audio unit tapHLE never created; skipping its rendering");
+        return;
+    };
 
     if !audio_unit_host_object.started {
         return;
@@ -343,15 +381,33 @@ pub fn render_audio_unit(env: &mut Environment, audio_unit: AudioUnit) {
     let sample_rate = if let Some(input_stream_format) = input_stream_format {
         input_stream_format.sample_rate
     } else {
-        assert!(output_stream_format.is_some());
+        // With neither an input nor an output format set, the unit is running
+        // on whatever the hardware is doing, which is what this branch already
+        // assumed for the output-only case. An app that never set a format on
+        // this unit — because it set it on another unit in a graph tapHLE does
+        // not model — used to abort here instead.
+        if output_stream_format.is_none() {
+            log_once!("An audio unit is rendering with no stream format set; using the hardware sample rate instead");
+        }
         // TODO: confirm that this is the general behaviour
         // (and not only RE4 thing)
         current_hardware_sample_rate
     };
 
-    assert!(is_supported_audio_format(&stream_format));
+    // A format tapHLE cannot play means silence from this unit, not the end of
+    // the app. An app whose audio graph tapHLE does not model reaches here with
+    // whatever default its unit was left holding, and that is not a reason to
+    // stop the game.
+    if !is_supported_audio_format(&stream_format) {
+        log_once!("An audio unit is rendering in a format tapHLE cannot play; it will be silent");
+        log_if_broken_audio_format(&stream_format);
+        return;
+    }
 
-    let al_source = audio_unit_host_object.al_source.unwrap();
+    let Some(al_source) = audio_unit_host_object.al_source else {
+        log_once!("An audio unit is rendering with no source; it will be silent");
+        return;
+    };
     let mut al_buffers = Vec::new();
     unsafe {
         let mut buffers_processed = 0;

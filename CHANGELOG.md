@@ -36,6 +36,13 @@
 
 - Running tapHLE from a terminal is unchanged.
 
+- Stop games quitting over the parts of their sound setup tapHLE does not
+  provide. A game that asks for a mixer, or configures a channel that is not
+  there, or leaves a sound format unset because another part of its audio chain
+  would have supplied it, used to end on the spot. Those now go quiet rather
+  than taking the game with them. Bookworm got its whole start-up sequence back
+  this way.
+
 - Stop games quitting when they write an error into their log. Asking an error
   to describe itself is what any logging line does, and it was not answered at
   all, so a game that handled a failure perfectly well died reporting it.
