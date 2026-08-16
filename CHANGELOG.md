@@ -36,6 +36,12 @@
 
 - Running tapHLE from a terminal is unchanged.
 
+- Text is the right way up. Every piece of writing tapHLE draws for a game —
+  button labels, menu items, messages, whole paragraphs — was coming out
+  mirrored top to bottom, with the lines of a paragraph stacked in reverse
+  order, in any game that draws its interface rather than assembling it from
+  pictures. It reads correctly now.
+
 - Shader-based games work and say so. Games needing the newer graphics
   standard drew their frame correctly but it was discarded a moment before
   reaching the screen, so the window stayed black and the game looked broken;
