@@ -36,6 +36,11 @@
 
 - Running tapHLE from a terminal is unchanged.
 
+- Stop games quitting when they write an error into their log. Asking an error
+  to describe itself is what any logging line does, and it was not answered at
+  all, so a game that handled a failure perfectly well died reporting it.
+  PapiJump could not get past its start-up network check.
+
 - Text is the right way up. Every piece of writing tapHLE draws for a game —
   button labels, menu items, messages, whole paragraphs — was coming out
   mirrored top to bottom, with the lines of a paragraph stacked in reverse
