@@ -23,7 +23,7 @@ use crate::frameworks::foundation::ns_run_loop::{
 };
 use crate::frameworks::foundation::ns_thread::detach_new_thread_inner;
 use crate::libc::semaphore::{host_destroy_semaphore, sem_wait};
-use crate::mem::{ConstVoidPtr, MutVoidPtr, Ptr};
+use crate::mem::{ConstPtr, ConstVoidPtr, MutVoidPtr, Ptr};
 use crate::objc::{
     autorelease, id, msg, msg_class, msg_send, msg_send_no_type_checking, nil, objc_classes,
     retain, Class, ClassExports, NSZonePtr, ObjC, TrivialHostObject, IMP, SEL,
@@ -458,6 +458,40 @@ forUndefinedKey:(id)key { // NSString*
 }
 - (())didChangeValueForKey:(id)_key { // NSString *
     log_once!("TODO: NSObject didChangeValueForKey:");
+}
+
+// Whether the receiver's class declares that it adopts a protocol.
+//
+// The answer comes from the class's own adopted-protocol list in the binary,
+// walked up the superclass chain and through any protocols those protocols
+// adopt — so it is the truth for a class the app defined, which is what apps
+// ask about. A class tapHLE implements itself carries no such list and answers
+// false; that is a real limit, and preferable to claiming a conformance whose
+// methods may not exist.
+- (bool)conformsToProtocol:(ConstPtr<ConstPtr<u8>>)protocol { // Protocol *
+    if protocol.is_null() {
+        return false;
+    }
+    // A protocol structure begins with an isa word and then its name, in both
+    // the legacy and modern layouts. Same read as NSStringFromProtocol.
+    let name_ptr = env.mem.read(protocol + 1);
+    if name_ptr.is_null() {
+        return false;
+    }
+    let Ok(name) = env.mem.cstr_at_utf8(name_ptr) else {
+        return false;
+    };
+    let name = name.to_string();
+    let class = ObjC::read_isa(this, &env.mem);
+    let conforms = env.objc.class_conforms_to_protocol(&env.mem, class, &name);
+    log_dbg!(
+        "[{:?} conformsToProtocol:{:?}] ({}) => {}",
+        this,
+        protocol,
+        name,
+        conforms
+    );
+    conforms
 }
 
 - (bool)respondsToSelector:(SEL)selector {
