@@ -40,6 +40,9 @@
   to describe itself is what any logging line does, and it was not answered at
   all, so a game that handled a failure perfectly well died reporting it.
   PapiJump could not get past its start-up network check.
+- Let a game ask what one of its interfaces is called. Games use the answer to
+  build keys and log lines, and the question had no answer at all, so asking it
+  ended the game.
 
 - Text is the right way up. Every piece of writing tapHLE draws for a game —
   button labels, menu items, messages, whole paragraphs — was coming out
