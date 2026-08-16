@@ -468,7 +468,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 - (id)fileAttributesAtPath:(id)path // NSString *
               traverseLink:(bool)traverse {
     // TODO: other attributes
-    log_once!("Warning: NSFileManager fileAttributesAtPath:traverseLink: returns only NSFileType, NSFileModificationDate and NSFileSize attributes!");
+    log_once!("Warning: NSFileManager fileAttributesAtPath:traverseLink: returns only type, modification date, size, owner, group and permissions!");
 
     let path = ns_string::to_rust_string(env, path); // TODO: avoid copy
     // TODO: traverse link
@@ -511,7 +511,7 @@ pub const CLASSES: ClassExports = objc_classes! {
     }
 
     // TODO: other attributes
-    log_once!("Warning: NSFileManager attributesOfItemAtPath:error: returns only NSFileType, NSFileModificationDate and NSFileSize attributes!");
+    log_once!("Warning: NSFileManager attributesOfItemAtPath:error: returns only type, modification date, size, owner, group and permissions!");
 
     let path = ns_string::to_rust_string(env, path); // TODO: avoid copy
     // TODO: traverse link
@@ -592,6 +592,30 @@ fn file_attributes_common(env: &mut Environment, guest_path: &GuestPath) -> id {
 
     let size_key = get_static_str(env, NSFileSize);
     () = msg![env; dict setObject:size_num forKey:size_key];
+
+    // Ownership and permissions. tapHLE's guest filesystem does not model
+    // either, but every file an app can see on iPhone OS belongs to the same
+    // account it runs as, so answering with that account is accurate rather
+    // than invented — and it is what the app would have read on a device.
+    //
+    // Leaving them out is not neutral: an app that asks for an attribute and
+    // gets nil back commonly stores or dereferences the answer without
+    // checking, and a null write is a much harder failure to trace than a
+    // wrong-looking string would have been.
+    let owner: id = get_static_str(env, "mobile");
+    let owner_key = get_static_str(env, NSFileOwnerAccountName);
+    () = msg![env; dict setObject:owner forKey:owner_key];
+    let group_key = get_static_str(env, NSFileGroupOwnerAccountName);
+    () = msg![env; dict setObject:owner forKey:group_key];
+
+    let permissions: NSUInteger = if env.fs.is_dir(guest_path) {
+        0o755
+    } else {
+        0o644
+    };
+    let permissions: id = msg_class![env; NSNumber numberWithUnsignedInt:permissions];
+    let permissions_key = get_static_str(env, NSFilePosixPermissions);
+    () = msg![env; dict setObject:permissions forKey:permissions_key];
 
     let file_type_key = get_static_str(env, NSFileType);
     // TODO: other types
