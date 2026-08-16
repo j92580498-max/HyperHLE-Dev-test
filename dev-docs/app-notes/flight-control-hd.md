@@ -55,3 +55,23 @@ score, and check pause/resume, map switching, and audio.
 - Artifact hash verification (MD5/SHA-1/size vs live metadata): pass; SHA-256
   recorded above.
 - `cargo fmt --all -- --check`; `cargo test --workspace --lib`.
+
+## 2026-07-27: 3 stars re-confirmed on tapHLE `87acd74a`
+
+Re-driven on a clean committed build after a session of broad UIKit changes.
+`PLAY!` at `(185, 830)` enters live gameplay: the island map with its runways
+and helipads, an aircraft in flight, the `AIRCRAFT LANDED` and `HI SCORE`
+readouts, and the pause and fast-forward controls. Two captures ten seconds
+apart differ by SHA-256, so the loop is running.
+
+### A false alarm worth recording
+
+An earlier check in the same session reported that this app "renders but taps
+produced no change", which read as a possible regression. It was not. The taps
+were at `(384, 512)` — the middle of the screen, chosen without reading this
+note — and `PLAY!` is at `(185, 830)`.
+
+The lesson is narrow and practical: **read the app's click map before
+concluding anything from a tap that did nothing.** A blind tap landing on
+nothing is indistinguishable from broken input, and this note has had the right
+coordinates in it the whole time.

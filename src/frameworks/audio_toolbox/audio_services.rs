@@ -181,8 +181,12 @@ fn AudioServicesPlaySystemSound(env: &mut Environment, sys_sound_id: SystemSound
                 );
             }
         } else {
-            panic!(
-                "Incorrect/unsupported system sound {:x} played!",
+            // An ID tapHLE never handed out, or one already disposed. The API
+            // returns void and has no way to report this, and the real
+            // framework simply does not play anything, so neither does this.
+            // Aborting here turned a silent sound into a dead app.
+            log!(
+                "Warning: AudioServicesPlaySystemSound({:#x}) names a sound that was never created, ignoring",
                 sys_sound_id
             );
         }
@@ -264,7 +268,8 @@ fn AudioServicesRemoveSystemSoundCompletion(env: &mut Environment, sys_sound_id:
 /// since the last check. Called from the run loop.
 pub fn handle_system_sound_completions(env: &mut Environment) {
     // Collect first: a completion routine is guest code, which may play, add,
-    // remove or dispose sounds, so the map must not be borrowed across the call.
+    // remove or dispose sounds, so the map must not be borrowed across the
+    // call.
     let mut finished = Vec::new();
     {
         let (state, context) =

@@ -61,9 +61,10 @@ static inline NSRange NSMakeRange(NSUInteger loc, NSUInteger len) {
 - (void *)methodForSelector:(SEL)selector;
 - (id)performSelector:(SEL)selector;
 - (BOOL)respondsToSelector:(SEL)selector;
-// NSKeyValueCoding. NSString is not declared yet, so the key is typed as id.
+// NSKeyValueCoding. NSString and NSArray are not declared yet, so the key and
+// the key list are typed as id.
 - (id)valueForKey:(id)key;
-- (id)dictionaryWithValuesForKeys:(NSArray *)keys;
+- (id)dictionaryWithValuesForKeys:(id)keys;
 - (void)setValue:(id)value forKey:(id)key;
 - (void)setNilValueForKey:(id)key;
 @end

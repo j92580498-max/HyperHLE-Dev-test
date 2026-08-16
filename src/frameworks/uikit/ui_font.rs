@@ -12,7 +12,7 @@ use crate::frameworks::core_graphics::{CGFloat, CGPoint, CGRect, CGSize};
 use crate::frameworks::foundation::ns_string::{from_rust_string, get_static_str, to_rust_string};
 use crate::frameworks::foundation::NSInteger;
 use crate::objc::{
-    autorelease, id, msg, msg_class, objc_classes, release, retain, ClassExports, HostObject,
+    autorelease, id, msg, msg_class, objc_classes, release, retain, Class, ClassExports, HostObject,
 };
 use crate::Environment;
 use std::collections::HashMap;
@@ -172,6 +172,23 @@ pub const CLASSES: ClassExports = objc_classes! {
     retain(env, font)
 }
 
+// The same typeface at a different size. Resolving through the name keeps the
+// font-substitution table as the single place that maps a name to a FontKind.
+- (id)fontWithSize:(CGFloat)fontSize {
+    let host_object = env.objc.borrow::<UIFontHostObject>(this);
+    if host_object.size == fontSize {
+        return this;
+    }
+    let host_object = UIFontHostObject {
+        kind: host_object.kind,
+        size: fontSize,
+        name: host_object.name.clone(),
+    };
+    let class: Class = msg![env; this class];
+    let new = env.objc.alloc_object(class, Box::new(host_object), &mut env.mem);
+    autorelease(env, new)
+}
+
 - (CGFloat)pointSize {
     env.objc.borrow::<UIFontHostObject>(this).size
 }
@@ -224,10 +241,26 @@ fn convert_line_break_mode(ui_mode: UILineBreakMode) -> WrapMode {
     match ui_mode {
         UILineBreakModeWordWrap => WrapMode::Word,
         UILineBreakModeCharacterWrap => WrapMode::Char,
-        // TODO: support this properly; fake support is so that UILabel works,
-        // which has this as its default line break mode
-        UILineBreakModeTailTruncation => WrapMode::Word,
-        _ => unimplemented!("TODO: line break mode {}", ui_mode),
+        // Clipping and the three truncation modes all mean "do not wrap": the
+        // text stays on one line and the part that does not fit is cut or
+        // replaced with an ellipsis. tapHLE draws neither, and it has only the
+        // two wrapping modes to choose between, so they are approximated by
+        // word wrapping — the text that would have been cut appears on a
+        // following line instead of vanishing. That is wrong, but it is wrong
+        // in a way that shows the app's text; refusing the mode ended the app,
+        // which is worse, and one of these was already faked for exactly that
+        // reason because it is UILabel's default.
+        UILineBreakModeClip
+        | UILineBreakModeHeadTruncation
+        | UILineBreakModeTailTruncation
+        | UILineBreakModeMiddleTruncation => WrapMode::Word,
+        _ => {
+            log!(
+                "Warning: unknown line break mode {}, wrapping on words",
+                ui_mode
+            );
+            WrapMode::Word
+        }
     }
 }
 

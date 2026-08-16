@@ -359,6 +359,27 @@ fn unarchive_key(env: &mut Environment, unarchiver: id, key: Uid) -> id {
             let number: id = msg_class![env; NSNumber alloc];
             msg![env; number initWithDouble:val]
         }
+        Value::Boolean(b) => {
+            let b = *b;
+            let number: id = msg_class![env; NSNumber alloc];
+            msg![env; number initWithBool:b]
+        }
+        Value::Data(d) => {
+            // A raw data value in a keyed archive, e.g. a payload an app
+            // stashed alongside its objects. The same conversion the property
+            // list deserializer does, minus the mutability choice: a keyed
+            // archive's leaves are immutable.
+            // Copy the bytes out first: `d` borrows the archive, which lives
+            // in the unarchiver's host object, and allocating touches `env`.
+            let bytes = d.to_vec();
+            let length: NSUInteger = bytes.len().try_into().unwrap();
+            let alloc: MutVoidPtr = env.mem.alloc(length);
+            env.mem
+                .bytes_at_mut(alloc.cast(), length)
+                .copy_from_slice(&bytes);
+            let ns_data: id = msg_class![env; NSData alloc];
+            msg![env; ns_data initWithBytesNoCopy:alloc length:length]
+        }
         _ => unimplemented!("Unarchive: {:#?}", item),
     };
 

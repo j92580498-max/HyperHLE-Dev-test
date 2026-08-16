@@ -19,6 +19,7 @@ use crate::objc::{
     id, impl_HostObject_with_superclass, msg, msg_class, msg_super, nil, objc_classes, release,
     retain, todo_objc_setter, ClassExports, NSZonePtr,
 };
+use crate::Environment;
 
 pub struct UILabelHostObject {
     superclass: super::UIViewHostObject,
@@ -31,6 +32,10 @@ pub struct UILabelHostObject {
     text_alignment: UITextAlignment,
     line_break_mode: UILineBreakMode,
     number_of_lines: NSInteger,
+    adjusts_font_size_to_fit_width: bool,
+    /// The floor for shrink-to-fit. 0 means "no floor stated by the app", which
+    /// is UIKit's default and is treated here as [MIN_SHRUNK_FONT_SIZE].
+    minimum_font_size: CGFloat,
 }
 impl_HostObject_with_superclass!(UILabelHostObject);
 impl Default for UILabelHostObject {
@@ -43,8 +48,53 @@ impl Default for UILabelHostObject {
             text_alignment: UITextAlignmentLeft,
             line_break_mode: UILineBreakModeTailTruncation,
             number_of_lines: 1,
+            adjusts_font_size_to_fit_width: false,
+            minimum_font_size: 0.0,
         }
     }
+}
+
+/// Floor used for shrink-to-fit when the app did not set `minimumFontSize`.
+/// Without a floor the search could shrink text to nothing.
+const MIN_SHRUNK_FONT_SIZE: CGFloat = 4.0;
+
+/// Pick the largest size no greater than the label's own font size at which
+/// `text` fits within `max_width`, but never below the label's minimum.
+///
+/// UIKit applies `adjustsFontSizeToFitWidth` to single-line labels, shrinking
+/// the text rather than truncating it. This walks the size down in whole
+/// points, which is what the property's granularity is worth: the alternative,
+/// drawing at the full size, overflows the label.
+fn font_shrunk_to_fit(
+    env: &mut Environment,
+    text: id,
+    font: id,
+    max_width: CGFloat,
+    minimum_font_size: CGFloat,
+) -> id {
+    let size: CGSize = msg![env; text sizeWithFont:font];
+    if size.width <= max_width || max_width <= 0.0 {
+        return font;
+    }
+
+    let original_size: CGFloat = msg![env; font pointSize];
+    let floor_size = if minimum_font_size > 0.0 {
+        minimum_font_size
+    } else {
+        MIN_SHRUNK_FONT_SIZE
+    };
+
+    let mut candidate_size = original_size - 1.0;
+    while candidate_size >= floor_size {
+        let candidate: id = msg![env; font fontWithSize:candidate_size];
+        let size: CGSize = msg![env; text sizeWithFont:candidate];
+        if size.width <= max_width {
+            return candidate;
+        }
+        candidate_size -= 1.0;
+    }
+    // Nothing fits: draw at the floor, which is what UIKit does too.
+    msg![env; font fontWithSize:floor_size]
 }
 
 pub const CLASSES: ClassExports = objc_classes! {
@@ -109,6 +159,8 @@ pub const CLASSES: ClassExports = objc_classes! {
         text_alignment: _,
         line_break_mode: _,
         number_of_lines: _,
+        adjusts_font_size_to_fit_width: _,
+        minimum_font_size: _,
     } = env.objc.borrow(this);
     release(env, text);
     release(env, font);
@@ -155,14 +207,19 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (bool)adjustsFontSizeToFitWidth {
-    false // default value
+    env.objc.borrow::<UILabelHostObject>(this).adjusts_font_size_to_fit_width
 }
 - (())setAdjustsFontSizeToFitWidth:(bool)adjusts {
-    assert!(!adjusts); // TODO
+    env.objc.borrow_mut::<UILabelHostObject>(this).adjusts_font_size_to_fit_width = adjusts;
+    () = msg![env; this setNeedsDisplay];
 }
 
+- (CGFloat)minimumFontSize {
+    env.objc.borrow::<UILabelHostObject>(this).minimum_font_size
+}
 - (())setMinimumFontSize:(CGFloat)size {
-    todo_objc_setter!(this, size);
+    env.objc.borrow_mut::<UILabelHostObject>(this).minimum_font_size = size;
+    () = msg![env; this setNeedsDisplay];
 }
 
 - (id)textColor {
@@ -249,6 +306,8 @@ pub const CLASSES: ClassExports = objc_classes! {
         text_alignment,
         line_break_mode,
         number_of_lines,
+        adjusts_font_size_to_fit_width,
+        minimum_font_size,
     } = env.objc.borrow_mut(this);
 
     let (r, g, b, a) = ui_color::get_rgba(&env.objc, text_color);
@@ -257,6 +316,13 @@ pub const CLASSES: ClassExports = objc_classes! {
     // TODO: handle line counts other than 0 and 1 properly. 0 = unlimited
     // (note the log message in setNumberOfLines:)
     let single_line = number_of_lines == 1;
+
+    // UIKit only applies shrink-to-fit to single-line labels.
+    let font = if single_line && adjusts_font_size_to_fit_width {
+        font_shrunk_to_fit(env, text, font, bounds.size.width, minimum_font_size)
+    } else {
+        font
+    };
 
     let calculated_size: CGSize = if single_line {
         msg![env; text sizeWithFont:font]

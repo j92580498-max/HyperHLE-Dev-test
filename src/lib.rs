@@ -25,9 +25,18 @@
 // so this warning is unhelpful.
 #![allow(rustdoc::private_intra_doc_links)]
 
+// A few modules are `pub` because the desktop frontend (`tapHLE_gui`) links
+// this library rather than growing a second, drifting copy of bundle parsing
+// and option parsing. What it may use is deliberately narrow: `app_bundle` is
+// a facade written for it, and `options`, `paths`, `licenses` and `log` are
+// small and already shaped for outside use. The guest filesystem, the bundle
+// reader and the renderer stay private — they are the emulator's internals,
+// and exposing them would make every one of their signatures part of what
+// tapHLE promises.
 #[macro_use]
-mod log;
+pub mod log;
 mod abi;
+pub mod app_bundle;
 mod audio;
 mod bundle;
 mod cpu;
@@ -38,17 +47,23 @@ mod font;
 mod frameworks;
 mod fs;
 mod gdb;
+// Not public: the frontend has no use for it, and exposing it would make
+// Environment publicly reachable and drag half the emulator's internals into
+// the crate's public interface.
 mod gles;
 mod image;
 mod libc;
-mod licenses;
+pub mod licenses;
 mod mach_o;
 mod matrix;
 mod mem;
 mod objc;
-mod options;
-mod paths;
+pub mod options;
+pub mod paths;
 mod stack;
+// Not public, for the same reason as `gles`: its host-facing helpers take an
+// Environment. The frontend reads device families and orientations through
+// `bundle` and `options`, which do not require naming the types.
 mod window;
 
 // Environment is used very frequently used and used to be in this module, so
@@ -101,7 +116,8 @@ Usage:
 
 PATH should be a path to a .app bundle or .ipa file.
 
-If no app path or special option is specified, a GUI app picker is displayed.
+If no app path or special option is specified, a simple built-in app picker is
+displayed. For a library, settings and a log, run tapHLE-gui instead.
 
 Special options:
     --help
@@ -196,7 +212,7 @@ pub fn main<T: Iterator<Item = String>>(mut args: T) -> Result<(), String> {
             );
         }
         echo!(
-            "No app specified, opening app picker. Use the --help flag to see command-line usage."
+            "No app specified, opening the built-in app picker. Use the --help flag to see              command-line usage, or run tapHLE-gui for the desktop frontend."
         );
         let (bundle_path, mut extra_options) = environment::app_picker::app_picker(options)?;
         option_args.append(&mut extra_options);

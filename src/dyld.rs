@@ -519,6 +519,11 @@ impl Dyld {
             } else if name == "___CFConstantStringClassReference" {
                 // See ns_string::register_constant_strings
                 nil.cast().cast_const()
+            } else if name == "_OBJC_IVAR_$_NSObject.isa" {
+                // The non-lazy-symbol pass below provides the address of the
+                // ivar-offset global. Do not treat the slot's relocation as an
+                // ordinary missing data symbol first.
+                continue;
             } else if let Some(&external_addr) = bins
                 .iter()
                 .flat_map(|other_bin| other_bin.exported_symbols.get(name))
@@ -589,6 +594,15 @@ impl Dyld {
             };
 
             let ptr_ptr: MutPtr<ConstVoidPtr> = Ptr::from_bits(ptrs.addr + i * entry_size);
+
+            if symbol == "_OBJC_IVAR_$_NSObject.isa" {
+                // Compiled Objective-C code loads an ivar offset through this
+                // symbol. NSObject's root `isa` field is always at offset zero,
+                // but the symbol itself must still be a non-null pointer.
+                let offset_ptr = mem.alloc_and_write(0u32);
+                mem.write(ptr_ptr, offset_ptr.cast().cast_const());
+                continue;
+            }
 
             for other_bin in bins {
                 if let Some(&addr) = other_bin.exported_symbols.get(symbol) {

@@ -70,6 +70,13 @@ impl SEL {
     pub fn null() -> SEL {
         SEL(Ptr::null())
     }
+    /// The selector's name as it lives in guest memory.
+    ///
+    /// A selector *is* a pointer to its own name, so `sel_getName` has nothing
+    /// to allocate or cache: it hands back the pointer it was given.
+    pub fn name_ptr(self) -> ConstPtr<u8> {
+        self.0
+    }
 }
 
 unsafe impl SafeRead for SEL {}
@@ -275,6 +282,12 @@ impl ObjC {
 }
 
 /// Standard Objective-C runtime function for selector registration.
+/// The older name for [sel_registerName]. Apple's runtime documents the two as
+/// equivalent, so this forwards rather than duplicating the interning logic.
+pub(super) fn sel_getUid(env: &mut Environment, name: ConstPtr<u8>) -> SEL {
+    sel_registerName(env, name)
+}
+
 pub(super) fn sel_registerName(env: &mut Environment, name: ConstPtr<u8>) -> SEL {
     let name = env.mem.cstr_at_utf8(name).unwrap();
 
@@ -284,4 +297,19 @@ pub(super) fn sel_registerName(env: &mut Environment, name: ConstPtr<u8>) -> SEL
 
     let name = name.to_string();
     env.objc.register_host_selector(name, &mut env.mem)
+}
+
+/// The selector's name.
+///
+/// A selector is a pointer to its own name, so there is nothing to allocate.
+pub(super) fn sel_getName(env: &mut Environment, sel: SEL) -> ConstPtr<u8> {
+    if sel.is_null() {
+        // Apple's runtime returns the literal string "<null selector>" rather
+        // than a null pointer, and callers print the result without checking.
+        return env
+            .mem
+            .alloc_and_write_cstr(b"<null selector>")
+            .cast_const();
+    }
+    sel.name_ptr()
 }

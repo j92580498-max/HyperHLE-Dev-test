@@ -23,6 +23,7 @@ pub mod ns_bundle;
 pub mod ns_calendar;
 pub mod ns_character_set;
 pub mod ns_coder;
+pub mod ns_counted_set;
 pub mod ns_data;
 pub mod ns_date;
 pub mod ns_date_formatter;
@@ -33,6 +34,7 @@ pub mod ns_exception;
 pub mod ns_file_handle;
 pub mod ns_file_manager;
 pub mod ns_garbage_collector;
+pub mod ns_http_cookie_storage;
 pub mod ns_index_path;
 pub mod ns_invocation;
 pub mod ns_keyed_archiver;
@@ -42,9 +44,11 @@ pub mod ns_lock;
 pub mod ns_log;
 pub mod ns_mach_port;
 pub mod ns_method_signature;
+pub mod ns_net_service;
 pub mod ns_notification;
 pub mod ns_notification_center;
 pub mod ns_null;
+pub mod ns_number_formatter;
 pub mod ns_objc_runtime;
 pub mod ns_object;
 pub mod ns_operation;
@@ -53,6 +57,7 @@ pub mod ns_property_list_serialization;
 pub mod ns_run_loop;
 pub mod ns_scanner;
 pub mod ns_set;
+pub mod ns_sort_descriptor;
 pub mod ns_string;
 pub mod ns_thread;
 pub mod ns_time_zone;
@@ -78,7 +83,12 @@ pub const DYLIB: crate::dyld::HostDylib = crate::dyld::HostDylib {
         ns_coder::CLASSES,
         ns_data::CLASSES,
         ns_date::CLASSES,
+        ns_counted_set::CLASSES,
         ns_date_formatter::CLASSES,
+        ns_http_cookie_storage::CLASSES,
+        ns_net_service::CLASSES,
+        ns_number_formatter::CLASSES,
+        ns_sort_descriptor::CLASSES,
         ns_dictionary::CLASSES,
         ns_enumerator::CLASSES,
         ns_error::CLASSES,
@@ -117,16 +127,21 @@ pub const DYLIB: crate::dyld::HostDylib = crate::dyld::HostDylib {
     ],
     constant_exports: &[
         CONSTANTS,
+        ns_calendar::CONSTANTS,
         ns_error::CONSTANTS,
         ns_exception::CONSTANTS,
         ns_file_manager::CONSTANTS,
         ns_keyed_unarchiver::CONSTANTS,
         ns_locale::CONSTANTS,
+        ns_object::CONSTANTS,
         ns_run_loop::CONSTANTS,
+        ns_url_connection::CONSTANTS,
+        ns_user_defaults::CONSTANTS,
     ],
     function_exports: &[
         FUNCTIONS,
         ns_exception::FUNCTIONS,
+        ns_object::FUNCTIONS,
         ns_file_manager::FUNCTIONS,
         ns_log::FUNCTIONS,
         ns_objc_runtime::FUNCTIONS,
@@ -136,10 +151,12 @@ pub const DYLIB: crate::dyld::HostDylib = crate::dyld::HostDylib {
 #[derive(Default)]
 pub struct State {
     ns_bundle: ns_bundle::State,
+    ns_http_cookie_storage: ns_http_cookie_storage::State,
     ns_file_manager: ns_file_manager::State,
     ns_locale: ns_locale::State,
     ns_notification_center: ns_notification_center::State,
     ns_null: ns_null::State,
+    ns_operation: ns_operation::State,
     ns_process_info: ns_process_info::State,
     ns_string: ns_string::State,
     ns_thread: ns_thread::State,
@@ -236,9 +253,17 @@ const CONSTANTS: ConstantExports = &[
                 .cast_const()
         }),
     ),
-    // `NSGregorianCalendar` (the pre-iOS-8 calendar identifier) is an NSString
-    // whose value is "gregorian"; apps pass it to
-    // -[NSCalendar initWithCalendarIdentifier:]. Previously an unhandled
-    // non-lazy symbol left null, so dereferencing it crashed.
-    ("_NSGregorianCalendar", HostConstant::NSString("gregorian")),
+    // `NSGregorianCalendar` and its sibling calendar identifiers now live with
+    // the class that consumes them, in ns_calendar::CONSTANTS.
+    // NSHTTPCookie property keys. Their values are the documented dictionary
+    // keys; apps (e.g. via networking SDKs) reference them, and an unhandled
+    // non-lazy symbol left null crashes on dereference.
+    ("_NSHTTPCookieName", HostConstant::NSString("Name")),
+    ("_NSHTTPCookieValue", HostConstant::NSString("Value")),
+    ("_NSHTTPCookieDomain", HostConstant::NSString("Domain")),
+    ("_NSHTTPCookiePath", HostConstant::NSString("Path")),
+    (
+        "_NSUnderlyingErrorKey",
+        HostConstant::NSString("NSUnderlyingError"),
+    ),
 ];

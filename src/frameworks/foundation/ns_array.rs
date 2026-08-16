@@ -9,11 +9,12 @@ use super::ns_enumerator::{fast_enumeration_helper, NSFastEnumerationState};
 use super::ns_property_list_serialization::{
     deserialize_plist_from_file, NSPropertyListBinaryFormat_v1_0,
 };
+use super::ns_sort_descriptor;
 use super::{
     _nib_archive_decoder, ns_keyed_unarchiver, ns_string, ns_url, NSComparisonResult, NSNotFound,
     NSRange, NSUInteger,
 };
-use crate::abi::{CallFromHost, GuestFunction};
+use crate::abi::{CallFromHost, DotDotDot, GuestFunction};
 use crate::frameworks::foundation::ns_keyed_archiver::{
     encode_object, get_value_to_encode_for_current_key,
 };
@@ -53,9 +54,23 @@ pub const CLASSES: ClassExports = objc_classes! {
 @implementation NSArray: NSObject
 
 + (id)allocWithZone:(NSZonePtr)zone {
-    // NSArray might be subclassed by something which needs allocWithZone:
-    // to have the normal behaviour. Unimplemented: call superclass alloc then.
-    assert!(this == env.objc.get_known_class("NSArray", &mut env.mem));
+    // A guest subclass of NSArray gets a working _tapHLE_NSArray rather than an
+    // instance of itself. That loses the subclass identity, so a check for the
+    // app's own class fails while -isKindOfClass:[NSArray class] still passes,
+    // and any method the subclass added is not found.
+    //
+    // It is the wrong answer, and it is a much better one than aborting.
+    // tapHLE's array primitives live on the concrete class, not on NSArray, so
+    // an instance of the subclass would have no storage and would fail on
+    // -count; there is no version of honouring the subclass that works without
+    // making NSArray itself concrete.
+    //
+    // In practice these subclasses are helpers — an app may ship an
+    // AS_NSArrayJSONSerializable — where the class exists to hang methods off
+    // and the instances are ordinary arrays.
+    if this != env.objc.get_known_class("NSArray", &mut env.mem) {
+        log_once!("TODO: a guest subclass of NSArray was allocated; it gets a plain array and loses its own class");
+    }
     msg_class![env; _tapHLE_NSArray allocWithZone:zone]
 }
 
@@ -117,6 +132,12 @@ pub const CLASSES: ClassExports = objc_classes! {
 // These probably comes from some category related to plists.
 - (id)initWithContentsOfFile:(id)path { // NSString*
     release(env, this);
+    if path == nil {
+        // There is no file to read, so there is no array. Apps reach here by
+        // building a path out of something that turned out to be nil, and
+        // expect the same nil they would get for a file that does not exist.
+        return nil;
+    }
     let path = ns_string::to_rust_string(env, path);
     deserialize_plist_from_file(
         env,
@@ -164,6 +185,44 @@ pub const CLASSES: ClassExports = objc_classes! {
     }
     NSNotFound as NSUInteger
 }
+// Send one message to every element.
+//
+// The elements are snapshotted first. UIKit and app code routinely use this to
+// tell every subview to remove itself, or to invalidate every timer in a list,
+// and those messages mutate the receiver mid-iteration; walking the live array
+// would skip elements or index past its end. Apple's documents the array as
+// not to be mutated during the call, but tolerating it costs one clone and
+// turns a crash into the obvious behaviour.
+//
+// A nil element is skipped rather than messaged. An array cannot hold nil, so
+// this only arises for the non-retaining variants, where an element may have
+// died.
+- (())makeObjectsPerformSelector:(SEL)selector {
+    let count: NSUInteger = msg![env; this count];
+    let mut objects = Vec::with_capacity(count as usize);
+    for i in 0..count {
+        objects.push(msg![env; this objectAtIndex:i]);
+    }
+    for object in objects {
+        if object != nil {
+            () = msg_send(env, (object, selector));
+        }
+    }
+}
+
+- (())makeObjectsPerformSelector:(SEL)selector withObject:(id)argument {
+    let count: NSUInteger = msg![env; this count];
+    let mut objects = Vec::with_capacity(count as usize);
+    for i in 0..count {
+        objects.push(msg![env; this objectAtIndex:i]);
+    }
+    for object in objects {
+        if object != nil {
+            () = msg_send(env, (object, selector, argument));
+        }
+    }
+}
+
 - (bool)containsObject:(id)object {
     let idx: NSUInteger = msg![env; this indexOfObject:object];
     idx != NSNotFound as NSUInteger
@@ -183,6 +242,34 @@ pub const CLASSES: ClassExports = objc_classes! {
         return nil;
     }
     msg![env; this objectAtIndex:(size - 1)]
+}
+
+// NSPathUtilities. Returns the receiver's elements whose path extension is one
+// of `extensions`. Apple documents the comparison as case-insensitive, and an
+// extension in the argument array may be written with or without a leading dot.
+- (id)pathsMatchingExtensions:(id)extensions { // NSArray* of NSString*
+    let mut wanted: Vec<String> = Vec::new();
+    let extension_count: NSUInteger = msg![env; extensions count];
+    for i in 0..extension_count {
+        let extension: id = msg![env; extensions objectAtIndex:i];
+        let extension = ns_string::to_rust_string(env, extension);
+        let extension = extension.trim_start_matches('.').to_lowercase();
+        wanted.push(extension);
+    }
+
+    let result: id = msg_class![env; NSMutableArray array];
+    let count: NSUInteger = msg![env; this count];
+    for i in 0..count {
+        let path: id = msg![env; this objectAtIndex:i];
+        let path_extension: id = msg![env; path pathExtension];
+        let path_extension = ns_string::to_rust_string(env, path_extension).to_lowercase();
+        if wanted.contains(&path_extension) {
+            () = msg![env; result addObject:path];
+        }
+    }
+    // Documented to return an NSArray.
+    let immutable: id = msg![env; result copy];
+    autorelease(env, immutable)
 }
 
 - (id)componentsJoinedByString:(id)str { // NSString *
@@ -262,9 +349,11 @@ pub const CLASSES: ClassExports = objc_classes! {
 @implementation NSMutableArray: NSArray
 
 + (id)allocWithZone:(NSZonePtr)zone {
-    // NSArray might be subclassed by something which needs allocWithZone:
-    // to have the normal behaviour. Unimplemented: call superclass alloc then.
-    assert!(this == env.objc.get_known_class("NSMutableArray", &mut env.mem));
+    // See the note on +[NSArray allocWithZone:]: the same trade, for the same
+    // reason.
+    if this != env.objc.get_known_class("NSMutableArray", &mut env.mem) {
+        log_once!("TODO: a guest subclass of NSMutableArray was allocated; it gets a plain array and loses its own class");
+    }
     msg_class![env; _tapHLE_NSMutableArray allocWithZone:zone]
 }
 
@@ -299,6 +388,9 @@ pub const CLASSES: ClassExports = objc_classes! {
 // These probably comes from some category related to plists.
 - (id)initWithContentsOfFile:(id)path { // NSString*
     release(env, this);
+    if path == nil {
+        return nil;
+    }
     let path = ns_string::to_rust_string(env, path);
     let tmp = deserialize_plist_from_file(
         env,
@@ -359,6 +451,14 @@ pub const CLASSES: ClassExports = objc_classes! {
     env.objc.alloc_object(this, host_object, &mut env.mem)
 }
 
+- (id)init {
+    // Adopt an instance a guest subclass allocated itself instead of through
+    // +alloc; see ObjC::ensure_host_object. For an object tapHLE did allocate
+    // this is a no-op, because +allocWithZone: already installed the storage.
+    env.objc.ensure_host_object::<ArrayHostObject>(this);
+    this
+}
+
 // NSCoding implementation
 - (id)initWithCoder:(id)coder {
     init_with_coder_inner(env, this, coder)
@@ -383,30 +483,11 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (id)initWithObjects:(id)firstObj, ...args {
-    retain(env, firstObj);
-    let mut objects = vec![firstObj];
-    let mut varargs = args.start();
-    loop {
-        let next_arg: id = varargs.next(env);
-        if next_arg.is_null() {
-            break;
-        }
-        retain(env, next_arg);
-        objects.push(next_arg);
-    }
-    env.objc.borrow_mut::<ArrayHostObject>(this).array = objects;
-    this
+    init_with_objects_varargs_inner(env, this, firstObj, args)
 }
 
 - (id)initWithObjects:(ConstPtr<id>)objects_ptr count:(NSUInteger)count {
-    let mut objects = Vec::new();
-    for i in 0..count {
-        let obj: id = env.mem.read(objects_ptr + i);
-        retain(env, obj);
-        objects.push(obj);
-    }
-    env.objc.borrow_mut::<ArrayHostObject>(this).array = objects;
-    this
+    init_with_objects_count_inner(env, this, objects_ptr, count)
 }
 
 - (())dealloc {
@@ -452,8 +533,23 @@ pub const CLASSES: ClassExports = objc_classes! {
     env.objc.borrow::<ArrayHostObject>(this).array.len().try_into().unwrap()
 }
 - (id)objectAtIndex:(NSUInteger)index {
-    // TODO: throw real exception rather than panic if out-of-bounds?
-    env.objc.borrow::<ArrayHostObject>(this).array[index as usize]
+    // Foundation raises NSRangeException here. tapHLE cannot raise, and the
+    // Rust panic that stood in for it reported the app's own bounds bug as an
+    // emulator crash. Return nil and say what happened: an app with a @try
+    // around this survives on device, and one without at least fails somewhere
+    // it chose.
+    let array = &env.objc.borrow::<ArrayHostObject>(this).array;
+    match array.get(index as usize) {
+        Some(&object) => object,
+        None => {
+            let count = array.len();
+            log!(
+                "Warning: objectAtIndex:{} on array {:?} is out of bounds for {} elements, which Foundation would raise NSRangeException for; returning nil",
+                index, this, count
+            );
+            nil
+        }
+    }
 }
 
 - (id)description {
@@ -475,6 +571,12 @@ pub const CLASSES: ClassExports = objc_classes! {
 - (id)sortedArrayUsingSelector:(SEL)comparator {
     let new = msg![env; this mutableCopy];
     () = msg![env; new sortUsingSelector:comparator];
+    autorelease(env, new)
+}
+
+- (id)sortedArrayUsingDescriptors:(id)descriptors { // NSArray* of NSSortDescriptor*
+    let new = msg![env; this mutableCopy];
+    () = msg![env; new sortUsingDescriptors:descriptors];
     autorelease(env, new)
 }
 
@@ -516,7 +618,15 @@ pub const CLASSES: ClassExports = objc_classes! {
     env.objc.alloc_object(this, host_object, &mut env.mem)
 }
 
+- (id)init {
+    // See the immutable class's init: JSONKit's JKArray allocates its own
+    // instances and then sends init.
+    env.objc.ensure_host_object::<ArrayHostObject>(this);
+    this
+}
+
 - (id)initWithCapacity:(NSUInteger)capacity {
+    env.objc.ensure_host_object::<ArrayHostObject>(this);
     env.objc.borrow_mut::<ArrayHostObject>(this).array.reserve(capacity as usize);
     this
 }
@@ -534,6 +644,17 @@ pub const CLASSES: ClassExports = objc_classes! {
     }
     env.objc.borrow_mut::<ArrayHostObject>(this).array = objects;
     this
+}
+
+// Inherited from NSArray. These are not reached through _tapHLE_NSArray,
+// because the mutable class descends from NSMutableArray rather than from the
+// immutable implementation, so they have to be provided here as well.
+- (id)initWithObjects:(id)firstObj, ...args {
+    init_with_objects_varargs_inner(env, this, firstObj, args)
+}
+
+- (id)initWithObjects:(ConstPtr<id>)objects_ptr count:(NSUInteger)count {
+    init_with_objects_count_inner(env, this, objects_ptr, count)
 }
 
 // NSCoding implementation
@@ -608,6 +729,45 @@ pub const CLASSES: ClassExports = objc_classes! {
     env.objc.borrow_mut::<ArrayHostObject>(this).array = array;
 }
 
+// Inherited from NSArray, so they must be provided on this concrete class
+// too: _tapHLE_NSMutableArray descends from NSMutableArray, not from
+// _tapHLE_NSArray, so it inherits none of the immutable class's methods.
+- (id)sortedArrayUsingSelector:(SEL)comparator {
+    let new = msg![env; this mutableCopy];
+    () = msg![env; new sortUsingSelector:comparator];
+    autorelease(env, new)
+}
+
+- (id)sortedArrayUsingDescriptors:(id)descriptors { // NSArray* of NSSortDescriptor*
+    let new = msg![env; this mutableCopy];
+    () = msg![env; new sortUsingDescriptors:descriptors];
+    autorelease(env, new)
+}
+
+// Sorting by NSSortDescriptors, which order by a key path and can be chained:
+// the first descriptor that distinguishes two elements decides.
+- (())sortUsingDescriptors:(id)descriptors { // NSArray* of NSSortDescriptor*
+    let host_object: &mut ArrayHostObject = env.objc.borrow_mut(this);
+    let mut array = std::mem::take(&mut host_object.array);
+    let len = array.len().try_into().unwrap();
+    let mut user_data = (env, &mut array);
+    qsort_generic(
+        &mut user_data,
+        len,
+        &mut |(env, array), l, r| {
+            let (l, r): (usize, usize) = (l.try_into().unwrap(), r.try_into().unwrap());
+            ns_sort_descriptor::compare_with_descriptors(env, descriptors, array[l], array[r])
+        },
+        &mut |(_, array), l, r| {
+            let (l, r): (usize, usize) = (l.try_into().unwrap(), r.try_into().unwrap());
+            array.swap(l, r);
+        },
+    );
+
+    let (env, _) = user_data;
+    env.objc.borrow_mut::<ArrayHostObject>(this).array = array;
+}
+
 - (())sortUsingSelector:(SEL)comparator {
     let host_object: &mut ArrayHostObject = env.objc.borrow_mut(this);
     let mut array = std::mem::take(&mut host_object.array);
@@ -650,8 +810,23 @@ pub const CLASSES: ClassExports = objc_classes! {
     env.objc.borrow::<ArrayHostObject>(this).array.len().try_into().unwrap()
 }
 - (id)objectAtIndex:(NSUInteger)index {
-    // TODO: throw real exception rather than panic if out-of-bounds?
-    env.objc.borrow::<ArrayHostObject>(this).array[index as usize]
+    // Foundation raises NSRangeException here. tapHLE cannot raise, and the
+    // Rust panic that stood in for it reported the app's own bounds bug as an
+    // emulator crash. Return nil and say what happened: an app with a @try
+    // around this survives on device, and one without at least fails somewhere
+    // it chose.
+    let array = &env.objc.borrow::<ArrayHostObject>(this).array;
+    match array.get(index as usize) {
+        Some(&object) => object,
+        None => {
+            let count = array.len();
+            log!(
+                "Warning: objectAtIndex:{} on array {:?} is out of bounds for {} elements, which Foundation would raise NSRangeException for; returning nil",
+                index, this, count
+            );
+            nil
+        }
+    }
 }
 
 - (id)description {
@@ -669,6 +844,40 @@ pub const CLASSES: ClassExports = objc_classes! {
 - (())addObject:(id)object {
     retain(env, object);
     env.objc.borrow_mut::<ArrayHostObject>(this).array.push(object);
+}
+
+- (())addObjectsFromArray:(id)other { // NSArray*
+    let enumerator: id = msg![env; other objectEnumerator];
+    loop {
+        let next: id = msg![env; enumerator nextObject];
+        if next == nil {
+            break;
+        }
+        () = msg![env; this addObject:next];
+    }
+}
+
+// Documented as equivalent to removing everything and then adding the other
+// array's objects, which is exactly how it is implemented here. `other` may be
+// this same array, so its contents are read before anything is removed.
+- (())setArray:(id)other { // NSArray*
+    let mut objects = Vec::new();
+    let enumerator: id = msg![env; other objectEnumerator];
+    loop {
+        let next: id = msg![env; enumerator nextObject];
+        if next == nil {
+            break;
+        }
+        retain(env, next);
+        objects.push(next);
+    }
+    let old = std::mem::replace(
+        &mut env.objc.borrow_mut::<ArrayHostObject>(this).array,
+        objects,
+    );
+    for object in old {
+        release(env, object);
+    }
 }
 
 - (())removeObject:(id)object {
@@ -849,6 +1058,48 @@ fn object_enumerator_inner_helper(env: &mut Environment, arr: id, vec: Vec<id>) 
         .get_known_class("_tapHLE_NSArray_ObjectEnumerator", &mut env.mem);
     let enumerator = env.objc.alloc_object(class, host_object, &mut env.mem);
     autorelease(env, enumerator)
+}
+
+/// Shared body of `-[NSArray initWithObjects:]`, the nil-terminated variadic
+/// initializer. `NSMutableArray` inherits it from `NSArray`, so both concrete
+/// classes need it.
+fn init_with_objects_varargs_inner(
+    env: &mut Environment,
+    arr: id,
+    first_obj: id,
+    args: DotDotDot,
+) -> id {
+    retain(env, first_obj);
+    let mut objects = vec![first_obj];
+    let mut varargs = args.start();
+    loop {
+        let next_arg: id = varargs.next(env);
+        if next_arg.is_null() {
+            break;
+        }
+        retain(env, next_arg);
+        objects.push(next_arg);
+    }
+    env.objc.borrow_mut::<ArrayHostObject>(arr).array = objects;
+    arr
+}
+
+/// Shared body of `-[NSArray initWithObjects:count:]`, the C-array
+/// initializer. As above, `NSMutableArray` inherits it too.
+fn init_with_objects_count_inner(
+    env: &mut Environment,
+    arr: id,
+    objects_ptr: ConstPtr<id>,
+    count: NSUInteger,
+) -> id {
+    let mut objects = Vec::with_capacity(count as usize);
+    for i in 0..count {
+        let obj: id = env.mem.read(objects_ptr + i);
+        retain(env, obj);
+        objects.push(obj);
+    }
+    env.objc.borrow_mut::<ArrayHostObject>(arr).array = objects;
+    arr
 }
 
 fn mutable_copy_inner(env: &mut Environment, arr: id) -> id {
