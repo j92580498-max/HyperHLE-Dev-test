@@ -134,10 +134,11 @@ cargoNdk {
     // Make sure this matches the android abiFilters above.
     targets = arrayListOf("arm64")
     module = ".."
-    librariesNames = arrayListOf("libtapHLE.so", "libSDL2.so", "libc++_shared.so")
+    librariesNames = arrayListOf("libtapHLE.so", "libc++_shared.so")
     extraCargoEnv = mapOf(
         "ANDROID_NDK" to android.ndkDirectory.toString(),
         "ANDROID_NDK_HOME" to android.ndkDirectory.toString(),
+        "RUSTFLAGS" to "-L native=${projectDir}/jniLibs/arm64-v8a",
     )
 
     if (DefaultNativePlatform.host().operatingSystem.isWindows) {
