@@ -388,7 +388,7 @@ Other options:
 
     --corrupt-interval=<frames>
         How many main-loop iterations to wait between corruption bursts.
-        Lower is more aggressive. Default: 30. Implies --corrupt-game.
+        Lower is more aggressive. Default: 400. Implies --corrupt-game.
 
     --corrupt-intensity=<count>
         How many random bytes to corrupt per burst. Higher is more
