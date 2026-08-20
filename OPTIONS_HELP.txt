@@ -392,7 +392,7 @@ Other options:
 
     --corrupt-intensity=<count>
         How many random bytes to corrupt per burst. Higher is more
-        destructive. Default: 8. Implies --corrupt-game.
+        destructive. Default: 1. Implies --corrupt-game.
 
     --corrupt-seed=<number>
         Seed for the corruption PRNG. A given seed reproduces the same

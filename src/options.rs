@@ -45,7 +45,7 @@ impl Default for CorruptionOptions {
         Self {
             enabled: true,
             interval_frames: 30,
-            bytes_per_burst: 8,
+            bytes_per_burst: 1,
             max_offset: None,
             seed: 0x6a09e667f3bcc909,
         }
