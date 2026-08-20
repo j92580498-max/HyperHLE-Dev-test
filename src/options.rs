@@ -44,7 +44,7 @@ impl Default for CorruptionOptions {
     fn default() -> Self {
         Self {
             enabled: true,
-            interval_frames: 400,
+            interval_frames: 30,
             bytes_per_burst: 1,
             max_offset: None,
             seed: 0x6a09e667f3bcc909,
