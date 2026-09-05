@@ -27,6 +27,7 @@ use crate::frameworks::uikit::ui_view::ui_control::ui_button::{
 use crate::frameworks::uikit::ui_view::ui_control::{
     UIControlEventTouchUpInside, UIControlEventValueChanged, UIControlStateNormal,
 };
+use super::of_dashboard;
 use crate::fs::BundleData;
 use crate::image::Image;
 use crate::mem::Ptr;
@@ -40,14 +41,15 @@ use std::ffi::OsStr;
 use std::num::NonZeroU32;
 use std::path::{Path, PathBuf};
 
-struct AppInfo {
-    path: PathBuf,
-    display_name: String,
-    icon: Option<Image>,
+pub struct AppInfo {
+    pub path: PathBuf,
+    pub display_name: String,
+    pub bundle_id: String,
+    pub icon: Option<Image>,
     /// `NSString*`
-    display_name_ns_string: Option<id>,
+    pub display_name_ns_string: Option<id>,
     /// `UIImage*`
-    icon_ui_image: Option<id>,
+    pub icon_ui_image: Option<id>,
 }
 
 pub fn app_picker(options: Options) -> Result<(PathBuf, Vec<String>), String> {
@@ -106,6 +108,7 @@ fn enumerate_apps(apps_dir: &Path) -> Result<Vec<AppInfo>, std::io::Error> {
 
         // TODO: what if this crashes?
         let display_name = bundle.display_name().to_owned();
+        let bundle_id = bundle.bundle_identifier().to_owned();
 
         let icon = match bundle.load_icon(&fs) {
             Ok(icon) => Some(icon),
@@ -118,6 +121,7 @@ fn enumerate_apps(apps_dir: &Path) -> Result<Vec<AppInfo>, std::io::Error> {
         apps.push(AppInfo {
             path: app_path,
             display_name,
+            bundle_id: bundle.bundle_identifier().to_owned(),
             icon,
             display_name_ns_string: None,
             icon_ui_image: None,
@@ -154,6 +158,13 @@ struct AppPickerDelegateHostObject {
     device_model_toggle: bool,
     device_model_scroll_up: bool,
     device_model_scroll_down: bool,
+    // OpenFeint dashboard flags
+    of_show_all_apps: bool,
+    of_game_tapped: Option<usize>,
+    of_back: bool,
+    of_launch: bool,
+    of_prev_page: bool,
+    of_next_page: bool,
 }
 impl HostObject for AppPickerDelegateHostObject {}
 
@@ -255,6 +266,37 @@ const CLASSES: ClassExports = objc_classes! {
 - (())deviceModelScrollDown {
     env.objc.borrow_mut::<AppPickerDelegateHostObject>(this).device_model_scroll_down = true;
 }
+
+- (())ofShowAllApps {
+    env.objc.borrow_mut::<AppPickerDelegateHostObject>(this).of_show_all_apps = true;
+}
+- (())ofGameTapped:(id)sender { // UIButton*, tag = game index + 1
+    let tag: NSInteger = msg![env; sender tag];
+    if tag > 0 {
+        env.objc
+            .borrow_mut::<AppPickerDelegateHostObject>(this)
+            .of_game_tapped = Some((tag - 1) as usize);
+    }
+}
+- (())ofBack {
+    env.objc.borrow_mut::<AppPickerDelegateHostObject>(this).of_back = true;
+}
+- (())ofLaunch:(id)sender { // UIButton*, tag = game index + 1
+    let tag: NSInteger = msg![env; sender tag];
+    if tag > 0 {
+        env.objc
+            .borrow_mut::<AppPickerDelegateHostObject>(this)
+            .of_game_tapped = Some((tag - 1) as usize);
+    }
+    env.objc.borrow_mut::<AppPickerDelegateHostObject>(this).of_launch = true;
+}
+- (())ofPrevPage {
+    env.objc.borrow_mut::<AppPickerDelegateHostObject>(this).of_prev_page = true;
+}
+- (())ofNextPage {
+    env.objc.borrow_mut::<AppPickerDelegateHostObject>(this).of_next_page = true;
+}
+
 
 - (())openFileManager {
     // Assert (see above).
@@ -540,6 +582,25 @@ fn app_picker_inner(
         None,
     );
 
+    // OpenFeint dashboard (default screen when OpenFeint data exists)
+    let mut of_games: Vec<of_dashboard::GameStats> = match &mut apps {
+        Ok(apps) => of_dashboard::collect_game_stats(apps),
+        Err(_) => Vec::new(),
+    };
+    let of_stuff = if of_games.is_empty() {
+        None
+    } else {
+        Some(of_dashboard::setup(
+            env,
+            delegate,
+            main_view,
+            app_frame,
+            &mut of_games,
+        ))
+    };
+    let mut of_detail_game: usize = 0;
+    let mut of_detail_page: usize = 0;
+
     let copyright_info_text = crate::licenses::get_text();
     let mut copyright_info_stuff = setup_copyright_info(env, delegate, main_view, app_frame);
     let mut copyright_info_page_idx = 0;
@@ -609,6 +670,47 @@ fn app_picker_inner(
     let app_path = loop {
         run_run_loop_single_iteration(env, main_run_loop);
         let host_obj = env.objc.borrow_mut::<AppPickerDelegateHostObject>(delegate);
+        if of_stuff.is_some() {
+            let of_show_all_apps = std::mem::take(&mut host_obj.of_show_all_apps);
+            let of_game_tapped = std::mem::take(&mut host_obj.of_game_tapped);
+            let of_back = std::mem::take(&mut host_obj.of_back);
+            let of_launch = std::mem::take(&mut host_obj.of_launch);
+            let of_prev_page = std::mem::take(&mut host_obj.of_prev_page);
+            let of_next_page = std::mem::take(&mut host_obj.of_next_page);
+            drop(host_obj);
+            let of = of_stuff.as_ref().unwrap();
+            if of_show_all_apps {
+                of_dashboard::show_all_apps(env, of);
+            }
+            if of_back {
+                of_dashboard::hide_detail(env, of);
+            }
+            if let Some(game_idx) = of_game_tapped {
+                of_detail_game = game_idx;
+                of_detail_page = 0;
+                of_dashboard::show_detail(env, of, &of_games, game_idx, 0);
+            }
+            if of_prev_page {
+                of_detail_page = of_detail_page.saturating_sub(1);
+                of_dashboard::show_detail(env, of, &of_games, of_detail_game, of_detail_page);
+            }
+            if of_next_page {
+                of_detail_page += 1;
+                of_dashboard::show_detail(env, of, &of_games, of_detail_game, of_detail_page);
+            }
+            if of_launch {
+                let app_path = of_games[of_detail_game].app_path.clone();
+                echo!("Picked (OpenFeint dashboard): {}", app_path.display());
+                break app_path;
+            }
+            let host_obj = env.objc.borrow_mut::<AppPickerDelegateHostObject>(delegate);
+            let icon_tapped = std::mem::take(&mut host_obj.icon_tapped);
+            drop(host_obj);
+            if icon_tapped != nil {
+                continue; // ignore app-grid taps while the dashboard handles input
+            }
+            continue;
+        }
         let icon_tapped = std::mem::take(&mut host_obj.icon_tapped);
         if icon_tapped != nil {
             match icon_grid_stuff.as_ref().unwrap().icon_map.get(&icon_tapped) {
