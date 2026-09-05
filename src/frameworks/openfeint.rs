@@ -348,7 +348,16 @@ fn show_dashboard(env: &mut Environment, page: &str) {
     dismiss_dashboard(env);
 
     let app: id = msg_class![env; UIApplication sharedApplication];
-    let window: id = msg![env; app keyWindow];
+    let mut window: id = msg![env; app keyWindow];
+    if window == nil {
+        // Some games never explicitly make their window key. Fall back to
+        // the first application window so the dashboard can still show.
+        let windows: id = msg![env; app windows];
+        let count: crate::frameworks::foundation::NSUInteger = msg![env; windows count];
+        if count > 0 {
+            window = msg![env; windows objectAtIndex:(0)];
+        }
+    }
     if window == nil {
         log!("OpenFeint HLE: no key window, cannot show dashboard");
         return;
@@ -385,6 +394,7 @@ fn show_dashboard(env: &mut Environment, page: &str) {
     () = msg![env; title setTextColor:white];
     let title_bg: id = msg_class![env; UIColor clearColor];
     () = msg![env; title setBackgroundColor:title_bg];
+    () = msg![env; title setUserInteractionEnabled:false];
     () = msg![env; overlay addSubview:title];
 
     // Content.
@@ -410,6 +420,7 @@ fn show_dashboard(env: &mut Environment, page: &str) {
     () = msg![env; content setFont:content_font];
     () = msg![env; content setTextColor:white];
     () = msg![env; content setBackgroundColor:title_bg];
+    () = msg![env; content setUserInteractionEnabled:false];
     () = msg![env; overlay addSubview:content];
 
     // Hint.
@@ -434,6 +445,7 @@ fn show_dashboard(env: &mut Environment, page: &str) {
     let gray: id = msg_class![env; UIColor colorWithWhite:(0.7f32) alpha:(1.0f32)];
     () = msg![env; hint setTextColor:gray];
     () = msg![env; hint setBackgroundColor:title_bg];
+    () = msg![env; hint setUserInteractionEnabled:false];
     () = msg![env; overlay addSubview:hint];
 
     // Tap anywhere on the overlay to dismiss.

@@ -136,7 +136,12 @@ pub const CLASSES: ClassExports = objc_classes! {
                    length:(NSUInteger)length
              freeWhenDone:(bool)free_when_done {
     let host_object = env.objc.borrow_mut::<NSDataHostObject>(this);
-    assert!(host_object.bytes.is_null() && host_object.length == 0);
+    // Re-initializing an already-initialized instance is legal in
+    // Objective-C (some games do it). Release the old buffer first if
+    // this instance owns it, then install the new one.
+    if !host_object.bytes.is_null() && host_object.free_when_done {
+        env.mem.free(host_object.bytes);
+    }
     host_object.bytes = bytes;
     host_object.length = length;
     host_object.free_when_done = free_when_done;
@@ -145,8 +150,13 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 - (id)initWithBytes:(ConstVoidPtr)bytes length:(NSUInteger)length {
     let host_object = env.objc.borrow_mut::<NSDataHostObject>(this);
-    assert!(host_object.bytes.is_null() && host_object.length == 0);
+    // Same re-initialization tolerance as initWithBytesNoCopy above.
+    if !host_object.bytes.is_null() && host_object.free_when_done {
+        env.mem.free(host_object.bytes);
+    }
     if length == 0 {
+        host_object.bytes = Ptr::null();
+        host_object.length = 0;
         return this;
     }
     let alloc = env.mem.alloc(length);
