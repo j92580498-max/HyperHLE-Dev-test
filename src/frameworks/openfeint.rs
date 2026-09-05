@@ -46,6 +46,22 @@ struct OpenFeintState {
     initialized: bool,
     achievements: HashMap<String, AchEntry>,
     highscores: HashMap<String, HighScoreEntry>,
+    /// Achievement definitions parsed from the app's bundled
+    /// `openfeint_offline_config.xml` (OF id -> definition).
+    defs: HashMap<String, AchDef>,
+    /// Leaderboard definitions parsed from the offline config (OF id -> name).
+    boards: Vec<(String, String)>,
+    /// Currently displayed dashboard overlay view, if any.
+    overlay: Option<id>,
+}
+
+/// A single achievement definition from the offline config.
+#[derive(Clone, Debug, Default)]
+struct AchDef {
+    title: String,
+    description: String,
+    gamerscore: u32,
+    position: u32,
 }
 
 static STATE: std::sync::Mutex<Option<OpenFeintState>> = std::sync::Mutex::new(None);
@@ -127,6 +143,96 @@ fn save_store(env: &mut Environment) {
     }
 }
 
+// MARK: - Offline config
+
+/// Parse the app's bundled `openfeint_offline_config.xml` (a snapshot of the
+/// dead OpenFeint server data) so achievements and leaderboards have their
+/// real titles and descriptions in the HLE layer.
+fn load_offline_config(env: &mut Environment) {
+    let path = env.bundle.bundle_path().join("openfeint_offline_config.xml");
+    let Ok(mut file) = env.fs.open(&path) else {
+        return;
+    };
+    let mut buf = Vec::new();
+    if std::io::Read::read_to_end(&mut file, &mut buf).is_err() {
+        return;
+    }
+    let xml = String::from_utf8_lossy(&buf).into_owned();
+
+    // Extract a tag's inner text without pulling in an XML crate.
+    fn tag_text(block: &str, tag: &str) -> String {
+        let open = format!("<{}>", tag);
+        let close = format!("</{}>", tag);
+        let Some(start) = block.find(&open) else {
+            return String::new();
+        };
+        let rest = &block[start + open.len()..];
+        let Some(end) = rest.find(&close) else {
+            return String::new();
+        };
+        rest[..end].trim().to_string()
+    }
+
+    // Split the document into `<achievement>` / `<leaderboard>` blocks.
+    let mut defs = HashMap::new();
+    let mut boards = Vec::new();
+    let mut split_on = |xml: &str, tag: &str| -> Vec<String> {
+        let open = format!("<{}>", tag);
+        let close = format!("</{}>", tag);
+        let mut blocks = Vec::new();
+        let mut rest = xml;
+        while let Some(open_at) = rest.find(&open) {
+            let after_open = &rest[open_at + open.len()..];
+            let Some(close_at) = after_open.find(&close) else {
+                break;
+            };
+            blocks.push(after_open[..close_at].to_string());
+            rest = &after_open[close_at + close.len()..];
+        }
+        blocks
+    };
+
+    for block in split_on(&xml, "achievement") {
+        let id = tag_text(&block, "id");
+        if id.is_empty() {
+            continue;
+        }
+        let title = tag_text(&block, "title");
+        let description = tag_text(&block, "description");
+        if title.is_empty() {
+            continue;
+        }
+        defs.insert(
+            id,
+            AchDef {
+                title: title.clone(),
+                description: description.clone(),
+                gamerscore: tag_text(&block, "gamerscore").parse().unwrap_or(0),
+                position: tag_text(&block, "position").parse().unwrap_or(0),
+            },
+        );
+    }
+    for block in split_on(&xml, "leaderboard") {
+        let id = tag_text(&block, "id");
+        let name = tag_text(&block, "name");
+        if !id.is_empty() && !name.is_empty() {
+            boards.push((id, name));
+        }
+    }
+    let (a, l) = (defs.len(), boards.len());
+    if a > 0 || l > 0 {
+        with_state(|s| {
+            s.defs = defs;
+            s.boards = boards;
+        });
+        log!(
+            "OpenFeint HLE: loaded offline config: {} achievement definitions, {} leaderboards",
+            a,
+            l
+        );
+    }
+}
+
 // MARK: - Unlock toast
 
 /// Show a short-lived "Achievement Unlocked!" toast over the key window.
@@ -153,7 +259,13 @@ fn show_unlock_toast(env: &mut Environment, achievement_id: &str) {
     };
     let label: id = msg_class![env; UILabel new];
     () = msg![env; label initWithFrame:frame];
-    let text = format!("Achievement Unlocked!\n{}", achievement_id);
+    let title = with_state(|s| {
+        s.defs
+            .get(achievement_id)
+            .map(|d| d.title.clone())
+            .unwrap_or_else(|| achievement_id.to_string())
+    });
+    let text = format!("Achievement Unlocked!\n{}", title);
     let ns_text = crate::frameworks::foundation::ns_string::from_rust_string(env, text);
     () = msg![env; label setText:ns_text];
     () = msg![env; label setTextAlignment:UITextAlignmentCenter];
@@ -226,6 +338,198 @@ impl AchEntry {
     }
 }
 
+// MARK: - Dashboard overlay
+
+/// Show a native, tap-to-dismiss overlay listing the game's achievements
+/// (with unlocked state) or leaderboards (with local best scores), replacing
+/// the dead OpenFeint dashboard.
+fn show_dashboard(env: &mut Environment, page: &str) {
+    // Dismiss any existing overlay first.
+    dismiss_dashboard(env);
+
+    let app: id = msg_class![env; UIApplication sharedApplication];
+    let window: id = msg![env; app keyWindow];
+    if window == nil {
+        log!("OpenFeint HLE: no key window, cannot show dashboard");
+        return;
+    }
+    let screen: id = msg_class![env; UIScreen mainScreen];
+    let bounds: CGRect = msg![env; screen bounds];
+
+    let overlay: id = msg_class![env; UIView new];
+    () = msg![env; overlay initWithFrame:bounds];
+    let bg: id = msg_class![env; UIColor colorWithWhite:(0.08f32) alpha:(0.94f32)];
+    () = msg![env; overlay setBackgroundColor:bg];
+
+    // Title.
+    let title_frame = CGRect {
+        origin: CGPoint { x: 0.0, y: 20.0 },
+        size: CGSize {
+            width: bounds.size.width,
+            height: 30.0,
+        },
+    };
+    let title: id = msg_class![env; UILabel new];
+    () = msg![env; title initWithFrame:title_frame];
+    let title_text = if page == "leaderboards" {
+        "Leaderboards".to_string()
+    } else {
+        "Achievements".to_string()
+    };
+    let ns_title = crate::frameworks::foundation::ns_string::from_rust_string(env, title_text);
+    () = msg![env; title setText:ns_title];
+    () = msg![env; title setTextAlignment:UITextAlignmentCenter];
+    let title_font: id = msg_class![env; UIFont boldSystemFontOfSize:(18.0f32)];
+    () = msg![env; title setFont:title_font];
+    let white: id = msg_class![env; UIColor whiteColor];
+    () = msg![env; title setTextColor:white];
+    let title_bg: id = msg_class![env; UIColor clearColor];
+    () = msg![env; title setBackgroundColor:title_bg];
+    () = msg![env; overlay addSubview:title];
+
+    // Content.
+    let content_frame = CGRect {
+        origin: CGPoint { x: 12.0, y: 58.0 },
+        size: CGSize {
+            width: bounds.size.width - 24.0,
+            height: bounds.size.height - 96.0,
+        },
+    };
+    let content: id = msg_class![env; UILabel new];
+    () = msg![env; content initWithFrame:content_frame];
+    let text = if page == "leaderboards" {
+        dashboard_leaderboards_text(env)
+    } else {
+        dashboard_achievements_text(env)
+    };
+    let ns_text = crate::frameworks::foundation::ns_string::from_rust_string(env, text);
+    () = msg![env; content setText:ns_text];
+    () = msg![env; content setTextAlignment:UITextAlignmentCenter];
+    () = msg![env; content setNumberOfLines:(0 as NSInteger)];
+    let content_font: id = msg_class![env; UIFont systemFontOfSize:(13.0f32)];
+    () = msg![env; content setFont:content_font];
+    () = msg![env; content setTextColor:white];
+    () = msg![env; content setBackgroundColor:title_bg];
+    () = msg![env; overlay addSubview:content];
+
+    // Hint.
+    let hint_frame = CGRect {
+        origin: CGPoint {
+            x: 0.0,
+            y: bounds.size.height - 32.0,
+        },
+        size: CGSize {
+            width: bounds.size.width,
+            height: 24.0,
+        },
+    };
+    let hint: id = msg_class![env; UILabel new];
+    () = msg![env; hint initWithFrame:hint_frame];
+    let hint_text = "Tap anywhere to close";
+    let ns_hint = crate::frameworks::foundation::ns_string::from_rust_string(env, hint_text.to_string());
+    () = msg![env; hint setText:ns_hint];
+    () = msg![env; hint setTextAlignment:UITextAlignmentCenter];
+    let hint_font: id = msg_class![env; UIFont systemFontOfSize:(11.0f32)];
+    () = msg![env; hint setFont:hint_font];
+    let gray: id = msg_class![env; UIColor colorWithWhite:(0.7f32) alpha:(1.0f32)];
+    () = msg![env; hint setTextColor:gray];
+    () = msg![env; hint setBackgroundColor:title_bg];
+    () = msg![env; overlay addSubview:hint];
+
+    // Tap anywhere on the overlay to dismiss.
+    let remove_sel: SEL = env
+        .objc
+        .lookup_selector("removeFromSuperview")
+        .unwrap_or_else(|| {
+            env.objc
+                .register_host_selector("removeFromSuperview".to_string(), &mut env.mem)
+        });
+    let tap: id = msg_class![env; UITapGestureRecognizer alloc];
+    let tap: id = msg![env; tap initWithTarget:overlay action:remove_sel];
+    () = msg![env; overlay addGestureRecognizer:tap];
+
+    () = msg![env; window addSubview:overlay];
+    let overlay_for_state = overlay;
+    with_state(|s| s.overlay = Some(overlay_for_state));
+    autorelease(env, overlay);
+    log!("OpenFeint HLE: showing {} dashboard overlay", page);
+}
+
+fn dismiss_dashboard(env: &mut Environment) {
+    let overlay = with_state(|s| s.overlay.take());
+    if let Some(overlay) = overlay {
+        () = msg![env; overlay removeFromSuperview];
+        log!("OpenFeint HLE: dismissed dashboard overlay");
+    }
+}
+
+fn dashboard_achievements_text(env: &mut Environment) -> String {
+    let mut defs: Vec<(u32, String, String, u32)> = with_state(|s| {
+        s.defs
+            .values()
+            .map(|d| (d.position, d.title.clone(), d.description.clone(), d.gamerscore))
+            .collect()
+    });
+    if defs.is_empty() {
+        // No offline config: fall back to a progress summary.
+        let (total, unlocked) = with_state(|s| {
+            (
+                s.achievements.len(),
+                s.achievements
+                    .values()
+                    .filter(|e| e.percent_ge_100())
+                    .count(),
+            )
+        });
+        if total == 0 {
+            return "No achievements unlocked yet.\nAchievements unlock during gameplay.".to_string();
+        }
+        return format!(
+            "{}/{} achievements unlocked.\nKeep playing to unlock the rest!",
+            unlocked, total
+        );
+    }
+    defs.sort();
+    let unlocked_count = with_state(|s| {
+        s.achievements
+            .iter()
+            .filter(|(_, e)| e.percent_ge_100())
+            .count()
+    });
+    let total = defs.len();
+    let mut text = format!("\u{2713} {}/{} unlocked\n\n", unlocked_count, total);
+    for (_, title, description, gamerscore) in defs {
+        text.push_str(&format!(
+            "\u{25A1} {} ({}G)\n{}\n\n",
+            title, gamerscore, description
+        ));
+    }
+    text
+}
+
+fn dashboard_leaderboards_text(env: &mut Environment) -> String {
+    let boards: Vec<(String, String)> = with_state(|s| s.boards.clone());
+    if boards.is_empty() {
+        return "No leaderboards available.".to_string();
+    }
+    let scores: Vec<(String, i64)> = with_state(|s| {
+        s.highscores
+            .iter()
+            .map(|(k, v)| (k.clone(), v.score))
+            .collect()
+    });
+    let mut text = String::new();
+    for (id, name) in &boards {
+        let best = scores
+            .iter()
+            .find(|(k, _)| k == id)
+            .map(|(_, v)| *v)
+            .unwrap_or(0);
+        text.push_str(&format!("{}\nBest: {}\n\n", name, best));
+    }
+    text
+}
+
 // MARK: - Message interpose
 
 /// Returns true if the message was handled by the OpenFeint HLE and the
@@ -270,6 +574,11 @@ pub fn try_openfeint_interpose(
     if !handled && sel.starts_with("setHighScore") {
         handled = true;
     }
+    if !handled
+        && (sel.starts_with("launchDashboard") || sel == "presentDashboard" || sel == "dismissDashboard")
+    {
+        handled = true;
+    }
     if !handled {
         return false;
     }
@@ -296,6 +605,7 @@ pub fn try_openfeint_interpose(
         ("OpenFeint", "initializeWithProductKey:andSecret:andDisplayName:andSettings:andDelegates:")
         | ("OpenFeint", "initializeWithProductKey:andDelegates:") => {
             with_state(|s| s.initialized = true);
+            load_offline_config(env);
             log!(
                 "OpenFeint HLE: initialized for {} (offline local achievements mode)",
                 env.bundle.bundle_identifier()
@@ -319,6 +629,25 @@ pub fn try_openfeint_interpose(
             // Report an OpenFeint 2.10-ish version.
             env.cpu.regs_mut()[0] = 0x0002_0A00;
             env.cpu.regs_mut()[1] = 0;
+            true
+        }
+        ("OpenFeint", "dismissDashboard") => {
+            dismiss_dashboard(env);
+            env.cpu.regs_mut()[0..2].fill(0);
+            true
+        }
+        (_, _) if class_name == "OpenFeint"
+            && (sel.starts_with("launchDashboard") || sel == "presentDashboard") =>
+        {
+            let page = if sel.contains("Achievement") {
+                "achievements"
+            } else if sel.contains("Leaderboard") || sel.contains("Highscore") {
+                "leaderboards"
+            } else {
+                "achievements"
+            };
+            show_dashboard(env, page);
+            env.cpu.regs_mut()[0..2].fill(0);
             true
         }
         ("OpenFeint", "isOnline") | ("OpenFeint", "isUserLoggedIn") => {
