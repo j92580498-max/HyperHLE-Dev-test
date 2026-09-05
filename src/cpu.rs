@@ -215,6 +215,12 @@ impl Cpu {
         }));
     }
 
+    /// Read one VFP/NEON extension register word (dynarmic `ExtRegs` layout:
+    /// single-precision register `sN` is word `N`).
+    pub fn ext_reg(&self, idx: usize) -> u32 {
+        unsafe { touchHLE_DynarmicWrapper_ext_reg(self.dynarmic_wrapper, idx as u32) }
+    }
+
     pub fn cpsr(&self) -> u32 {
         unsafe { touchHLE_DynarmicWrapper_cpsr(self.dynarmic_wrapper) }
     }

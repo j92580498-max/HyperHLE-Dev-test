@@ -255,6 +255,12 @@ fn objc_msgSend_inner(
         return;
     }
 
+    if super2.is_none()
+        && crate::frameworks::openfeint::try_openfeint_interpose(env, receiver, selector, orig_class)
+    {
+        return;
+    }
+
     // Lazily dispatch `+initialize` to the receiver's class (and its
     // superclasses) before this message reaches its IMP. Skipped for super
     // calls — the calling class is already initialized by the time we reach

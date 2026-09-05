@@ -62,6 +62,7 @@ pub mod metal;
 pub mod message_ui;
 pub mod mobile_core_services;
 pub mod openal;
+pub mod openfeint;
 pub mod opengles;
 pub mod security;
 pub mod social;

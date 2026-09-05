@@ -406,6 +406,7 @@ fn substitute_classes(
         || name.starts_with("FB") // Facebook
         || name.starts_with("Flurry")
         || name.starts_with("OpenFeint")
+        || name.starts_with("OF") // OpenFeint SDK classes (OFAchievementService, ...)
         || name.starts_with("Tapjoy")
         || name.starts_with("UA")
         || name.starts_with("GAD")
@@ -657,6 +658,7 @@ impl ObjC {
                 || name.starts_with("FB")
                 || name.starts_with("Flurry")
                 || name.starts_with("OpenFeint")
+                || name.starts_with("OF") // OpenFeint SDK classes
                 || name.starts_with("Tapjoy")
                 || name.starts_with("UA")
                 || name.starts_with("GAD")
