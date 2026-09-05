@@ -160,6 +160,7 @@ struct AppPickerDelegateHostObject {
     device_model_scroll_down: bool,
     // OpenFeint dashboard flags
     of_show_all_apps: bool,
+    of_tab: Option<usize>,
     of_game_tapped: Option<usize>,
     of_back: bool,
     of_launch: bool,
@@ -267,6 +268,17 @@ const CLASSES: ClassExports = objc_classes! {
     env.objc.borrow_mut::<AppPickerDelegateHostObject>(this).device_model_scroll_down = true;
 }
 
+- (())ofTab:(id)sender { // UIButton*, tag = tab index + 1
+    let tag: NSInteger = msg![env; sender tag];
+    if tag > 0 {
+        env.objc
+            .borrow_mut::<AppPickerDelegateHostObject>(this)
+            .of_tab = Some((tag - 1) as usize);
+    }
+}
+- (())ofSelectDiscovery {
+    env.objc.borrow_mut::<AppPickerDelegateHostObject>(this).of_tab = Some(0);
+}
 - (())ofShowAllApps {
     env.objc.borrow_mut::<AppPickerDelegateHostObject>(this).of_show_all_apps = true;
 }
@@ -296,8 +308,6 @@ const CLASSES: ClassExports = objc_classes! {
 - (())ofNextPage {
     env.objc.borrow_mut::<AppPickerDelegateHostObject>(this).of_next_page = true;
 }
-
-
 - (())openFileManager {
     // Assert (see above).
     let _ = env.objc.borrow_mut::<AppPickerDelegateHostObject>(this);
@@ -583,21 +593,17 @@ fn app_picker_inner(
     );
 
     // OpenFeint dashboard (default screen when OpenFeint data exists)
-    let mut of_games: Vec<of_dashboard::GameStats> = match &mut apps {
+    let of_games: Vec<of_dashboard::GameStats> = match &mut apps {
         Ok(apps) => of_dashboard::collect_game_stats(apps),
         Err(_) => Vec::new(),
     };
-    let of_stuff = if of_games.is_empty() {
-        None
-    } else {
-        Some(of_dashboard::setup(
-            env,
-            delegate,
-            main_view,
-            app_frame,
-            &mut of_games,
-        ))
-    };
+    let of_stuff = of_dashboard::setup(
+        env,
+        delegate,
+        main_view,
+        app_frame,
+        &of_games,
+    );
     let mut of_detail_game: usize = 0;
     let mut of_detail_page: usize = 0;
 
@@ -670,20 +676,22 @@ fn app_picker_inner(
     let app_path = loop {
         run_run_loop_single_iteration(env, main_run_loop);
         let host_obj = env.objc.borrow_mut::<AppPickerDelegateHostObject>(delegate);
-        if of_stuff.is_some() {
-            let of_show_all_apps = std::mem::take(&mut host_obj.of_show_all_apps);
+        {
             let of_game_tapped = std::mem::take(&mut host_obj.of_game_tapped);
             let of_back = std::mem::take(&mut host_obj.of_back);
             let of_launch = std::mem::take(&mut host_obj.of_launch);
             let of_prev_page = std::mem::take(&mut host_obj.of_prev_page);
             let of_next_page = std::mem::take(&mut host_obj.of_next_page);
+            let of_tab = std::mem::take(&mut host_obj.of_tab);
             drop(host_obj);
-            let of = of_stuff.as_ref().unwrap();
-            if of_show_all_apps {
-                of_dashboard::show_all_apps(env, of);
+            let of = &of_stuff;
+            if let Some(tab) = of_tab {
+                of_detail_page = 0;
+                of_dashboard::show_page(env, of, tab);
             }
             if of_back {
-                of_dashboard::hide_detail(env, of);
+                of_detail_page = 0;
+                of_dashboard::show_page(env, of, of_dashboard::PAGE_MY_GAMES);
             }
             if let Some(game_idx) = of_game_tapped {
                 of_detail_game = game_idx;
@@ -699,7 +707,9 @@ fn app_picker_inner(
                 of_dashboard::show_detail(env, of, &of_games, of_detail_game, of_detail_page);
             }
             if of_launch {
-                let app_path = of_games[of_detail_game].app_path.clone();
+                let app_path = of_games[of_detail_game.min(of_games.len().saturating_sub(1))]
+                .app_path
+                .clone();
                 echo!("Picked (OpenFeint dashboard): {}", app_path.display());
                 break app_path;
             }
